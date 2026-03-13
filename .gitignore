@@ -1,0 +1,6 @@
+/app/
+/.gradle/
+/.idea/
+/.kotlin/
+/.vscode/
+/build/
