@@ -14,9 +14,6 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url 'https://api.mapbox.com/downloads/v2/releases/maven' }
-        maven { url 'https://mirrors.tencent.com/nexus/repository/maven-public/' }
-        maven { url 'https://maven.tencent.com/repository/tencent' }
     }
 }
 

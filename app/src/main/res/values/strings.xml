@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">TrackRecord</string>
+    <string name="hello_world">TrackRecord</string>
+    <string name="welcome_message">点击下方按钮打开高德地图</string>
+    <string name="click_me">打开地图</string>
+    <string name="reset_camera">定位到当前位置</string>
+    <string name="search_hint">高德地图</string>
+    <string name="location_permission_denied">未授予定位权限</string>
+    <string name="location_service_disabled">请先开启系统定位服务</string>
+    <string name="location_unavailable">暂时获取不到当前位置</string>
+    <string name="amap_api_key">65838463e4656ba025759aee07a5eefa</string>
+    <string name="amap_key_missing">请先替换高德地图 Key</string>
+</resources>
