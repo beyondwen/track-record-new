@@ -33,6 +33,7 @@ import com.amap.api.maps.MapsInitializer
 import com.amap.api.maps.model.LatLng
 import com.amap.api.maps.model.MyLocationStyle
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.floatingactionbutton.FloatingActionButton
@@ -64,7 +65,7 @@ class MapActivity : AppCompatActivity(), LocationSource {
     private var gnssStatusCallback: GnssStatus.Callback? = null
     private var satelliteDialog: BottomSheetDialog? = null
     private var historyDialog: AlertDialog? = null
-    private var historyPanelDialog: AlertDialog? = null
+    private var historyPanelDialog: BottomSheetDialog? = null
     private var satelliteAdapter: SatelliteAdapter? = null
     private var historyPanelAdapter: HistoryAdapter? = null
     private var currentSatellites = mutableListOf<SatelliteInfo>()
@@ -378,20 +379,21 @@ class MapActivity : AppCompatActivity(), LocationSource {
         }
 
         historyPanelDialog?.dismiss()
-        historyPanelDialog = MaterialAlertDialogBuilder(this)
-            .setView(view)
-            .setNegativeButton("关闭", null)
-            .create().apply {
-                setOnDismissListener { clearHistoryPanelDialogRefs() }
-                setOnShowListener {
-                    recyclerView.post {
-                        updateHistoryPanel()
-                        historyPanelAdapter?.notifyDataSetChanged()
-                        recyclerView.scrollToPosition(0)
-                        recyclerView.requestLayout()
-                    }
+        historyPanelDialog = BottomSheetDialog(this).apply {
+            setContentView(view)
+            setOnDismissListener { clearHistoryPanelDialogRefs() }
+            setOnShowListener {
+                behavior.state = BottomSheetBehavior.STATE_EXPANDED
+                behavior.skipCollapsed = true
+                recyclerView.post {
+                    updateHistoryPanel()
+                    historyPanelAdapter?.notifyDataSetChanged()
+                    recyclerView.scrollToPosition(0)
+                    recyclerView.invalidateItemDecorations()
+                    recyclerView.requestLayout()
                 }
             }
+        }
 
         historyPanelDialog?.show()
     }
