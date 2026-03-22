@@ -1,5 +1,6 @@
-package com.example.helloworld
+package com.example.helloworld.data.history
 
+import com.example.helloworld.data.tracking.TrackPoint
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -10,19 +11,20 @@ data class HistoryItem(
     val distanceKm: Double,
     val durationSeconds: Int,
     val averageSpeedKmh: Double,
-    val title: String? = null
+    val title: String? = null,
+    val points: List<TrackPoint> = emptyList()
 ) {
     val displayTitle: String
-        get() = title?.takeIf { it.isNotBlank() } ?: "轨迹 #${id.toString().padStart(2, '0')}"
+        get() = title?.takeIf { it.isNotBlank() } ?: "行程 #${id.toString().padStart(2, '0')}"
 
     val formattedTime: String
-        get() = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(timestamp))
+        get() = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.getDefault()).format(Date(timestamp))
 
     val formattedDateTitle: String
-        get() = SimpleDateFormat("MM月dd日 HH:mm", Locale.getDefault()).format(Date(timestamp))
+        get() = SimpleDateFormat("M月d日 HH:mm", Locale.getDefault()).format(Date(timestamp))
 
     val formattedDateDetail: String
-        get() = SimpleDateFormat("yyyy年MM月dd日 HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
+        get() = SimpleDateFormat("yyyy年M月d日 HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
 
     val formattedDuration: String
         get() {
@@ -48,11 +50,11 @@ data class HistoryItem(
         }
 
     val formattedDistance: String
-        get() = String.format(Locale.getDefault(), "%.2f km", distanceKm)
+        get() = String.format(Locale.getDefault(), "%.2f 公里", distanceKm)
 
     val formattedSpeed: String
-        get() = String.format(Locale.getDefault(), "%.1f km/h", averageSpeedKmh)
+        get() = String.format(Locale.getDefault(), "%.1f 公里/小时", averageSpeedKmh)
 
     val summary: String
-        get() = "${formattedDistance} / ${formattedDuration} / 均速 ${formattedSpeed}"
+        get() = "${formattedDistance} / ${formattedDuration} / 平均${formattedSpeed}"
 }

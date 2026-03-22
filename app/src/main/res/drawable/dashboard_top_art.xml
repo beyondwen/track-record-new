@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="360dp"
+    android:height="320dp"
+    android:viewportWidth="360"
+    android:viewportHeight="320">
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@color/dashboard_grid_line"
+        android:strokeWidth="1"
+        android:pathData="M36,0L36,320M72,0L72,320M108,0L108,320M144,0L144,320M180,0L180,320M216,0L216,320M252,0L252,320M288,0L288,320M324,0L324,320M0,36L360,36M0,72L360,72M0,108L360,108M0,144L360,144M0,180L360,180M0,216L360,216M0,252L360,252M0,288L360,288" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M20,118C86,118 122,194 177,178C222,165 237,48 289,62C342,76 330,245 271,332"
+        android:strokeColor="@color/dashboard_route_line"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="6" />
+    <path
+        android:fillColor="@color/white"
+        android:pathData="M286,72m-11,0a11,11 0,1 1,22 0a11,11 0,1 1,-22 0" />
+    <path
+        android:fillColor="@color/dashboard_route_line"
+        android:pathData="M286,72m-13,0a13,13 0,1 1,26 0a13,13 0,1 1,-26 0" />
+    <path
+        android:fillColor="@color/dashboard_route_marker"
+        android:pathData="M286,72m-7,0a7,7 0,1 1,14 0a7,7 0,1 1,-14 0" />
+</vector>

@@ -1,14 +1,102 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">TrackRecord</string>
-    <string name="hello_world">TrackRecord</string>
-    <string name="welcome_message">点击下方按钮打开高德地图</string>
-    <string name="click_me">打开地图</string>
-    <string name="reset_camera">定位到当前位置</string>
+    <string name="app_name">轨迹记录</string>
+
+    <string name="dashboard_gps_ready">GPS 已就绪</string>
+    <string name="dashboard_gps_searching">正在搜索 GPS</string>
+    <string name="dashboard_gps_weak">信号较弱</string>
+    <string name="dashboard_gps_disabled">定位未开启</string>
+    <string name="dashboard_gps_no_permission">未授予定位权限</string>
+
+    <string name="dashboard_distance_value">0.00</string>
+    <string name="dashboard_distance_unit">公里</string>
+    <string name="dashboard_time_label">时长</string>
+    <string name="dashboard_time_value">00:00</string>
+    <string name="dashboard_speed_label">速度</string>
+    <string name="dashboard_speed_value">0.0 公里/小时</string>
+
+    <string name="dashboard_record">记录</string>
+    <string name="dashboard_history">历史</string>
+    <string name="dashboard_history_title">我的行程</string>
+    <string name="dashboard_history_subtitle">查看已经保存的轨迹</string>
+    <string name="dashboard_history_count_zero">0 条记录</string>
+    <string name="dashboard_history_count_single">%1$d 条记录</string>
+    <string name="dashboard_history_count_plural">%1$d 条记录</string>
+    <string name="dashboard_history_empty_title">暂无记录</string>
+    <string name="dashboard_history_empty_message">完成一次记录后，会自动出现在这里。</string>
+    <string name="dashboard_history_latest">最近一次保存于 %1$s</string>
+    <string name="dashboard_history_no_route">这条记录还没有可显示的轨迹点。</string>
+    <string name="dashboard_history_open_map">在地图中查看</string>
+
+    <string name="dashboard_start_recording">开始记录</string>
+    <string name="dashboard_stop_recording">结束记录</string>
+    <string name="dashboard_pause_recording">暂停记录</string>
+    <string name="dashboard_resume_recording">继续记录</string>
+    <string name="dashboard_locate">定位到当前位置</string>
+    <string name="dashboard_track_saved">轨迹已保存</string>
+    <string name="dashboard_finish_recording_first">请先结束当前记录，再查看历史。</string>
+
+    <string name="dashboard_status_ready">准备开始</string>
+    <string name="dashboard_status_recording">记录中</string>
+    <string name="dashboard_status_paused">已暂停</string>
+    <string name="dashboard_hint_idle">点击下方按钮开始记录，结束后会自动保存到历史。</string>
+    <string name="dashboard_hint_paused">记录已暂停，点击“继续记录”后会继续采集轨迹。</string>
+    <string name="dashboard_hint_recording">已采集 %1$d 个定位点，结束后会自动保存到历史。</string>
+    <string name="dashboard_hint_recording_searching">正在等待定位更稳定，已先开始记录。</string>
+    <string name="dashboard_hint_recording_weak">GPS 信号较弱，轨迹可能会有轻微偏差。</string>
+    <string name="dashboard_hint_idle_searching">正在搜索 GPS，稳定后开始会更准确。</string>
+    <string name="dashboard_hint_idle_weak">当前位置 GPS 较弱，建议稍等稳定后再开始。</string>
+
+    <string name="dashboard_gps_prompt_title">定位提醒</string>
+    <string name="dashboard_gps_prompt_searching">当前还在搜索 GPS，马上开始也可以记录，但前几个点可能不够稳定。要继续吗？</string>
+    <string name="dashboard_gps_prompt_weak">当前 GPS 信号较弱，轨迹精度可能受影响。要继续开始吗？</string>
+    <string name="action_wait_more">再等等</string>
+    <string name="action_continue_start">继续开始</string>
+
+    <string name="dashboard_save_feedback_title">已保存到历史</string>
+    <string name="dashboard_save_feedback_action">查看历史</string>
+    <string name="dashboard_save_feedback_summary">%1$s · %2$s</string>
+
+    <string name="reset_camera">定位当前位置</string>
     <string name="search_hint">高德地图</string>
-    <string name="location_permission_denied">未授予定位权限</string>
-    <string name="location_service_disabled">请先开启系统定位服务</string>
-    <string name="location_unavailable">暂时获取不到当前位置</string>
+    <string name="location_permission_denied">定位权限被拒绝</string>
+    <string name="location_service_disabled">请先开启定位服务</string>
+    <string name="location_unavailable">暂时无法获取当前位置</string>
     <string name="amap_api_key">65838463e4656ba025759aee07a5eefa</string>
     <string name="amap_key_missing">请先替换高德地图 Key</string>
+
+    <string name="history_default_title">行程 #%1$02d</string>
+    <string name="history_card_latest_label">最近</string>
+    <string name="history_card_saved_label">已保存</string>
+    <string name="history_map_back">返回历史列表</string>
+    <string name="history_map_start">起点</string>
+    <string name="history_map_end">终点</string>
+    <string name="history_metric_distance">距离</string>
+    <string name="history_metric_duration">时长</string>
+    <string name="history_metric_speed">平均速度</string>
+
+    <string name="history_group_today">今天</string>
+    <string name="history_group_yesterday">昨天</string>
+    <string name="history_group_month">%1$d月</string>
+    <string name="history_group_year_month">%1$d年%2$d月</string>
+    <string name="history_summary_viewing">当前正在查看这条轨迹，点击可重新打开地图详情。</string>
+    <string name="history_summary_default">点击查看轨迹地图，长按可重命名或删除。</string>
+    <string name="history_action_viewing">查看中</string>
+    <string name="history_action_view">查看轨迹</string>
+    <string name="history_preview_title">轨迹预览</string>
+    <string name="history_preview_subtitle">点击查看详情</string>
+
+    <string name="history_list_options_title">轨迹操作</string>
+    <string name="history_option_rename">重命名</string>
+    <string name="history_option_delete">删除</string>
+    <string name="history_rename_title">重命名轨迹</string>
+    <string name="history_rename_hint">请输入轨迹名称</string>
+    <string name="history_delete_title">删除轨迹</string>
+    <string name="history_delete_message">删除后无法恢复，确定删除“%1$s”吗？</string>
+    <string name="history_saved_name_updated">轨迹名称已更新</string>
+    <string name="history_saved_deleted">轨迹已删除</string>
+
+    <string name="action_cancel">取消</string>
+    <string name="action_save">保存</string>
+    <string name="action_delete">删除</string>
 </resources>

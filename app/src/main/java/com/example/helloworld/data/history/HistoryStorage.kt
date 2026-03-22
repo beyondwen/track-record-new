@@ -1,6 +1,7 @@
-package com.example.helloworld
+package com.example.helloworld.data.history
 
 import android.content.Context
+import com.example.helloworld.data.tracking.TrackPoint
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -15,13 +16,23 @@ object HistoryStorage {
         val items = mutableListOf<HistoryItem>()
         for (index in 0 until jsonArray.length()) {
             val obj = jsonArray.getJSONObject(index)
+            val pointsArray = obj.optJSONArray("points") ?: JSONArray()
+            val points = mutableListOf<TrackPoint>()
+            for (pointIndex in 0 until pointsArray.length()) {
+                val point = pointsArray.getJSONObject(pointIndex)
+                points += TrackPoint(
+                    latitude = point.getDouble("latitude"),
+                    longitude = point.getDouble("longitude")
+                )
+            }
             items += HistoryItem(
                 id = obj.getLong("id"),
                 timestamp = obj.getLong("timestamp"),
                 distanceKm = obj.getDouble("distanceKm"),
                 durationSeconds = obj.getInt("durationSeconds"),
                 averageSpeedKmh = obj.getDouble("averageSpeedKmh"),
-                title = obj.optString("title").takeIf { it.isNotBlank() }
+                title = obj.optString("title").takeIf { it.isNotBlank() },
+                points = points
             )
         }
         return items
@@ -30,6 +41,16 @@ object HistoryStorage {
     fun save(context: Context, items: List<HistoryItem>) {
         val jsonArray = JSONArray()
         items.forEach { item ->
+            val pointsArray = JSONArray()
+            item.points.forEach { point ->
+                pointsArray.put(
+                    JSONObject().apply {
+                        put("latitude", point.latitude)
+                        put("longitude", point.longitude)
+                    }
+                )
+            }
+
             jsonArray.put(
                 JSONObject().apply {
                     put("id", item.id)
@@ -38,6 +59,7 @@ object HistoryStorage {
                     put("durationSeconds", item.durationSeconds)
                     put("averageSpeedKmh", item.averageSpeedKmh)
                     put("title", item.title ?: "")
+                    put("points", pointsArray)
                 }
             )
         }
