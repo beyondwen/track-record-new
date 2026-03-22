@@ -41,10 +41,14 @@ class HistoryRoutePreviewView @JvmOverloads constructor(
     }
 
     private val routePath = Path()
-    private var points: List<TrackPoint> = emptyList()
+    private var segments: List<List<TrackPoint>> = emptyList()
 
     fun setPoints(points: List<TrackPoint>) {
-        this.points = points
+        setSegments(if (points.isEmpty()) emptyList() else listOf(points))
+    }
+
+    fun setSegments(segments: List<List<TrackPoint>>) {
+        this.segments = segments.map { segment -> segment.toList() }
         invalidate()
     }
 
@@ -57,6 +61,7 @@ class HistoryRoutePreviewView @JvmOverloads constructor(
         val contentBottom = height - paddingBottom.toFloat() - dp(6f)
         val rect = RectF(contentLeft, contentTop, contentRight, contentBottom)
         val centerY = rect.centerY()
+        val points = segments.flatten()
 
         canvas.drawRoundRect(rect, dp(16f), dp(16f), guidePaint)
 
@@ -77,34 +82,49 @@ class HistoryRoutePreviewView @JvmOverloads constructor(
         val latRange = max(maxLat - minLat, 0.00001)
         val lngRange = max(maxLng - minLng, 0.00001)
 
-        routePath.reset()
+        segments.forEach { segment ->
+            if (segment.isEmpty()) return@forEach
 
-        points.forEachIndexed { index, point ->
-            val xRatio = (point.longitude - minLng) / lngRange
-            val yRatio = (point.latitude - minLat) / latRange
-            val x = rect.left + (rect.width() * xRatio).toFloat()
-            val y = rect.bottom - (rect.height() * yRatio).toFloat()
-            val clampedX = min(rect.right, max(rect.left, x))
-            val clampedY = min(rect.bottom, max(rect.top, y))
-
-            if (index == 0) {
-                routePath.moveTo(clampedX, clampedY)
-            } else {
-                routePath.lineTo(clampedX, clampedY)
+            if (segment.size == 1) {
+                val projected = project(segment.first(), rect, minLat, minLng, latRange, lngRange)
+                canvas.drawCircle(projected.first, projected.second, dp(3f), linePaint)
+                return@forEach
             }
+
+            routePath.reset()
+            segment.forEachIndexed { index, point ->
+                val projected = project(point, rect, minLat, minLng, latRange, lngRange)
+                if (index == 0) {
+                    routePath.moveTo(projected.first, projected.second)
+                } else {
+                    routePath.lineTo(projected.first, projected.second)
+                }
+            }
+            canvas.drawPath(routePath, linePaint)
         }
 
-        canvas.drawPath(routePath, linePaint)
+        val start = segments.firstOrNull { it.isNotEmpty() }?.first() ?: points.first()
+        val end = segments.lastOrNull { it.isNotEmpty() }?.last() ?: points.last()
+        val startProjected = project(start, rect, minLat, minLng, latRange, lngRange)
+        val endProjected = project(end, rect, minLat, minLng, latRange, lngRange)
 
-        val start = points.first()
-        val end = points.last()
-        val startX = rect.left + (rect.width() * ((start.longitude - minLng) / lngRange)).toFloat()
-        val startY = rect.bottom - (rect.height() * ((start.latitude - minLat) / latRange)).toFloat()
-        val endX = rect.left + (rect.width() * ((end.longitude - minLng) / lngRange)).toFloat()
-        val endY = rect.bottom - (rect.height() * ((end.latitude - minLat) / latRange)).toFloat()
+        canvas.drawCircle(startProjected.first, startProjected.second, dp(4f), startPaint)
+        canvas.drawCircle(endProjected.first, endProjected.second, dp(4f), endPaint)
+    }
 
-        canvas.drawCircle(startX, startY, dp(4f), startPaint)
-        canvas.drawCircle(endX, endY, dp(4f), endPaint)
+    private fun project(
+        point: TrackPoint,
+        rect: RectF,
+        minLat: Double,
+        minLng: Double,
+        latRange: Double,
+        lngRange: Double
+    ): Pair<Float, Float> {
+        val xRatio = (point.longitude - minLng) / lngRange
+        val yRatio = (point.latitude - minLat) / latRange
+        val x = rect.left + (rect.width() * xRatio).toFloat()
+        val y = rect.bottom - (rect.height() * yRatio).toFloat()
+        return min(rect.right, max(rect.left, x)) to min(rect.bottom, max(rect.top, y))
     }
 
     private fun dp(value: Float): Float = value * resources.displayMetrics.density

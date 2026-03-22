@@ -123,19 +123,21 @@
                         android:id="@+id/tvRouteTitle"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="行程 #01"
+                        android:ellipsize="end"
+                        android:maxLines="1"
                         android:textColor="@color/md_theme_light_onSurface"
                         android:textSize="22sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        tools:text="行程 #01" />
 
                     <TextView
                         android:id="@+id/tvRouteTime"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="4dp"
-                        android:text="2026年3月21日 18:20:00"
                         android:textColor="@color/md_theme_light_onSurfaceVariant"
-                        android:textSize="12sp" />
+                        android:textSize="12sp"
+                        tools:text="2026年3月21日 18:20:00" />
                 </LinearLayout>
 
                 <TextView
@@ -144,7 +146,7 @@
                     android:background="@drawable/history_status_background"
                     android:paddingHorizontal="10dp"
                     android:paddingVertical="6dp"
-                    android:text="历史轨迹"
+                    android:text="@string/history_map_badge"
                     android:textColor="@color/md_theme_light_onSecondaryContainer"
                     android:textSize="11sp"
                     android:textStyle="bold" />
@@ -154,30 +156,50 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="14dp"
-                android:orientation="horizontal">
+                android:orientation="vertical">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@drawable/history_info_chip_background"
-                    android:drawablePadding="6dp"
-                    android:paddingHorizontal="12dp"
-                    android:paddingVertical="7dp"
-                    android:text="起点 / 终点已标注"
-                    android:textColor="@color/md_theme_light_onPrimaryContainer"
-                    android:textSize="11sp"
-                    android:textStyle="bold" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tvRouteQuality"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:background="@drawable/history_info_chip_background"
+                        android:drawablePadding="6dp"
+                        android:paddingHorizontal="12dp"
+                        android:paddingVertical="7dp"
+                        android:textColor="@color/md_theme_light_onPrimaryContainer"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        tools:text="良好 82分" />
+
+                    <TextView
+                        android:id="@+id/tvRoutePointCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="10dp"
+                        android:background="@drawable/history_status_background"
+                        android:paddingHorizontal="10dp"
+                        android:paddingVertical="7dp"
+                        android:textColor="@color/md_theme_light_onSecondaryContainer"
+                        android:textSize="11sp"
+                        android:textStyle="bold"
+                        tools:text="12 points" />
+                </LinearLayout>
 
                 <TextView
                     android:id="@+id/tvRouteSummary"
-                    android:layout_width="0dp"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="10dp"
-                    android:layout_weight="1"
-                    android:gravity="end|center_vertical"
-                    android:text="0.00 公里 / 00:00 / 平均0.0 公里/小时"
+                    android:layout_marginTop="10dp"
+                    android:lineSpacingExtra="2dp"
                     android:textColor="@color/md_theme_light_onSecondaryContainer"
-                    android:textSize="12sp" />
+                    android:textSize="12sp"
+                    tools:text="0.00 公里 / 00:00 / 平均 0.0 公里/小时" />
             </LinearLayout>
 
             <LinearLayout
@@ -207,10 +229,10 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="0.00 公里"
                         android:textColor="@color/md_theme_light_onPrimaryContainer"
                         android:textSize="16sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        tools:text="0.00 公里" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -235,10 +257,10 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="0分钟"
                         android:textColor="@color/md_theme_light_onPrimaryContainer"
                         android:textSize="16sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        tools:text="0 分钟" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -263,10 +285,10 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
-                        android:text="0.0 公里/小时"
                         android:textColor="@color/md_theme_light_onPrimaryContainer"
                         android:textSize="16sp"
-                        android:textStyle="bold" />
+                        android:textStyle="bold"
+                        tools:text="0.0 公里/小时" />
                 </LinearLayout>
             </LinearLayout>
         </LinearLayout>

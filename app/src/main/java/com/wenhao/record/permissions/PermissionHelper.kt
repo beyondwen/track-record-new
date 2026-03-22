@@ -2,14 +2,12 @@ package com.wenhao.record.permissions
 
 import android.Manifest
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.ContextCompat
 import com.wenhao.record.R
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
@@ -57,9 +55,8 @@ class PermissionHelper(
         val recognitionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             permissions[Manifest.permission.ACTIVITY_RECOGNITION] == true ||
             hasActivityRecognitionPermission()
-
         if (!locationGranted || !recognitionGranted) {
-            Toast.makeText(activity, "\u5f00\u542f\u65e0\u611f\u8bb0\u5f55\u9700\u8981\u5b9a\u4f4d\u548c\u6d3b\u52a8\u8bc6\u522b\u6743\u9650\u3002", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, R.string.smart_tracking_permission_required, Toast.LENGTH_LONG).show()
             onRefreshDashboard()
             return@registerForActivityResult
         }
@@ -70,15 +67,17 @@ class PermissionHelper(
         }
 
         onStartBackgroundTracking()
+        maybeShowNotificationPermissionHint()
     }
 
     private val appSettingsLauncher = activity.registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         if (needsBackgroundLocationPermission()) {
-            Toast.makeText(activity, "\u5982\u9700\u540e\u53f0\u81ea\u52a8\u8bb0\u5f55\uff0c\u8bf7\u5728\u7cfb\u7edf\u8bbe\u7f6e\u91cc\u628a\u5b9a\u4f4d\u6743\u9650\u6539\u4e3a\u201c\u59cb\u7ec8\u5141\u8bb8\u201d\u3002", Toast.LENGTH_LONG).show()
+            Toast.makeText(activity, R.string.background_location_permission_required, Toast.LENGTH_LONG).show()
         } else {
             onStartBackgroundTracking()
+            maybeShowNotificationPermissionHint()
         }
         onRefreshDashboard()
     }
@@ -95,12 +94,14 @@ class PermissionHelper(
         }
 
         onStartBackgroundTracking()
+        maybeShowNotificationPermissionHint()
     }
 
     fun startBackgroundTrackingServiceIfReady() {
         if (!hasSmartTrackingBasePermissions()) return
         if (needsBackgroundLocationPermission()) return
         onStartBackgroundTracking()
+        maybeShowNotificationPermissionHint()
     }
 
     fun requestLocatePermissionOrRun() {
@@ -123,31 +124,19 @@ class PermissionHelper(
     }
 
     fun hasLocationPermission(): Boolean {
-        val fineGranted = ContextCompat.checkSelfPermission(
-            activity,
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        val coarseGranted = ContextCompat.checkSelfPermission(
-            activity,
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-        return fineGranted || coarseGranted
+        return TrackingPermissionGate.hasLocationPermission(activity)
     }
 
     fun needsBackgroundLocationPermission(): Boolean {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
-        return ContextCompat.checkSelfPermission(
-            activity,
-            Manifest.permission.ACCESS_BACKGROUND_LOCATION
-        ) != PackageManager.PERMISSION_GRANTED
+        return TrackingPermissionGate.needsBackgroundLocationPermission(activity)
     }
 
-    private fun hasActivityRecognitionPermission(): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-            ContextCompat.checkSelfPermission(
-                activity,
-                Manifest.permission.ACTIVITY_RECOGNITION
-            ) == PackageManager.PERMISSION_GRANTED
+    fun hasActivityRecognitionPermission(): Boolean {
+        return TrackingPermissionGate.hasActivityRecognitionPermission(activity)
+    }
+
+    fun needsNotificationPermission(): Boolean {
+        return TrackingPermissionGate.needsNotificationPermission(activity)
     }
 
     private fun buildSmartTrackingPermissionList(): Array<String> {
@@ -166,10 +155,10 @@ class PermissionHelper(
 
     private fun showBackgroundLocationSettingsPrompt() {
         MaterialAlertDialogBuilder(activity)
-            .setTitle("\u540e\u53f0\u8bb0\u5f55\u9700\u8981\u201c\u59cb\u7ec8\u5141\u8bb8\u201d")
-            .setMessage("\u4e3a\u4e86\u8ba9\u5e94\u7528\u5728\u540e\u53f0\u65e0\u611f\u5730\u81ea\u52a8\u8bb0\u5f55\u884c\u7a0b\uff0c\u8bf7\u5728\u63a5\u4e0b\u6765\u7684\u7cfb\u7edf\u8bbe\u7f6e\u9875\u91cc\u628a\u5b9a\u4f4d\u6743\u9650\u8bbe\u4e3a\u201c\u59cb\u7ec8\u5141\u8bb8\u201d\u3002")
+            .setTitle(R.string.background_location_settings_title)
+            .setMessage(R.string.background_location_settings_message)
             .setNegativeButton(R.string.action_cancel, null)
-            .setPositiveButton("\u53bb\u8bbe\u7f6e") { _, _ ->
+            .setPositiveButton(R.string.action_go_to_settings) { _, _ ->
                 val intent = Intent(
                     Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.fromParts("package", activity.packageName, null)
@@ -177,5 +166,10 @@ class PermissionHelper(
                 appSettingsLauncher.launch(intent)
             }
             .show()
+    }
+
+    private fun maybeShowNotificationPermissionHint() {
+        if (!needsNotificationPermission()) return
+        Toast.makeText(activity, R.string.notification_permission_limited, Toast.LENGTH_LONG).show()
     }
 }

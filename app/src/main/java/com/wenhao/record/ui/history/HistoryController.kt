@@ -1,7 +1,6 @@
 package com.wenhao.record.ui.history
 
 import android.view.View
-import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -10,15 +9,15 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.wenhao.record.R
-import com.wenhao.record.data.history.HistoryItem
-import com.wenhao.record.data.history.HistoryStorage
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import java.util.Locale
+import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryDayItem
+import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.history.TrackQualityLevel
 
 class HistoryController(
     private val activity: AppCompatActivity,
-    private val onHistoryOpen: (HistoryItem) -> Unit
+    private val onHistoryOpen: (HistoryDayItem) -> Unit
 ) {
     private val historyScreen: View = activity.findViewById(R.id.historyScreen)
     private val rvHistoryPage: RecyclerView = activity.findViewById(R.id.rvHistoryPage)
@@ -33,11 +32,10 @@ class HistoryController(
     private val tvHistoryPageTabHistory: TextView = activity.findViewById(R.id.tvHistoryPageTabHistory)
     private val historyPageTabRecord: View = activity.findViewById(R.id.historyPageTabRecord)
 
-    private val historyList = mutableListOf<HistoryItem>()
-    private var selectedHistoryId: Long? = null
+    private var historyItems: List<HistoryDayItem> = emptyList()
+    private var selectedDayStartMillis: Long? = null
 
     private val historyAdapter = HistoryAdapter(
-        historyList = historyList,
         onHistoryClick = { item, _ -> handleHistoryClick(item) },
         onHistoryLongClick = { item, _ -> showHistoryActions(item) }
     )
@@ -66,82 +64,75 @@ class HistoryController(
     }
 
     fun reload() {
-        historyList.clear()
-        historyList.addAll(HistoryStorage.load(activity))
+        historyItems = HistoryStorage.loadDaily(activity)
     }
 
     fun updateContent() {
-        if (selectedHistoryId != null && historyList.none { it.id == selectedHistoryId }) {
-            selectedHistoryId = historyList.firstOrNull()?.id
+        if (selectedDayStartMillis != null &&
+            historyItems.none { it.dayStartMillis == selectedDayStartMillis }
+        ) {
+            selectedDayStartMillis = historyItems.firstOrNull()?.dayStartMillis
         }
-        historyAdapter.setSelectedHistoryId(selectedHistoryId)
-        historyAdapter.notifyDataSetChanged()
+        historyAdapter.setSelectedDayStartMillis(selectedDayStartMillis)
+        historyAdapter.submitHistoryList(historyItems)
 
-        val count = historyList.size
+        val count = historyItems.size
         val hasItems = count > 0
-        val latest = historyList.firstOrNull()
-        val totalDistance = historyList.sumOf { it.distanceKm }
-        val totalDurationSeconds = historyList.sumOf { it.durationSeconds }
+        val latest = historyItems.firstOrNull()
+        val totalDistance = historyItems.sumOf { it.totalDistanceKm }
+        val totalDurationSeconds = historyItems.sumOf { it.totalDurationSeconds }
+        val lowQualityCount = historyItems.count { item ->
+            item.quality.level == TrackQualityLevel.LOW
+        }
 
-        tvHistoryPageCount.text = "${count} \u6761\u8bb0\u5f55"
-        tvHistoryTotalDistance.text = String.format(Locale.getDefault(), "\u7d2f\u8ba1 %.1f \u516c\u91cc", totalDistance)
-        tvHistoryTotalDuration.text = "\u7d2f\u8ba1 ${formatHistoryTotalDuration(totalDurationSeconds)}"
+        tvHistoryPageCount.text = activity.getString(R.string.dashboard_history_count_value, count)
+        tvHistoryTotalDistance.text = activity.getString(R.string.history_total_distance, totalDistance)
+        tvHistoryTotalDuration.text = activity.getString(
+            R.string.history_total_duration,
+            formatHistoryTotalDuration(totalDurationSeconds)
+        )
         layoutHistoryEmptyPage.visibility = if (hasItems) View.GONE else View.VISIBLE
         rvHistoryPage.visibility = if (hasItems) View.VISIBLE else View.GONE
-        tvHistoryPageSubtitle.text = latest?.let {
-            activity.getString(R.string.dashboard_history_latest, it.formattedDateTitle)
-        } ?: "\u67e5\u770b\u5df2\u7ecf\u4fdd\u5b58\u7684\u8f68\u8ff9"
+
+        val subtitle = latest?.let {
+            activity.getString(R.string.dashboard_history_latest, it.displayTitle)
+        } ?: activity.getString(R.string.dashboard_history_default_subtitle)
+        tvHistoryPageSubtitle.text = if (lowQualityCount > 0) {
+            activity.getString(R.string.dashboard_history_low_quality_hint, subtitle, lowQualityCount)
+        } else {
+            subtitle
+        }
     }
 
-    private fun handleHistoryClick(item: HistoryItem) {
+    private fun handleHistoryClick(item: HistoryDayItem) {
         if (item.points.isEmpty()) {
             Toast.makeText(activity, R.string.dashboard_history_no_route, Toast.LENGTH_SHORT).show()
             return
         }
 
-        selectedHistoryId = item.id
-        historyAdapter.setSelectedHistoryId(item.id)
-        historyAdapter.notifyDataSetChanged()
+        selectedDayStartMillis = item.dayStartMillis
+        historyAdapter.setSelectedDayStartMillis(item.dayStartMillis)
+        historyAdapter.submitHistoryList(historyItems)
         onHistoryOpen(item)
     }
 
-    private fun showHistoryActions(item: HistoryItem) {
-        val options = arrayOf(
-            activity.getString(R.string.history_option_rename),
-            activity.getString(R.string.history_option_delete)
-        )
+    private fun showHistoryActions(item: HistoryDayItem) {
+        val options = arrayOf(activity.getString(R.string.history_option_delete))
         MaterialAlertDialogBuilder(activity)
             .setTitle(R.string.history_list_options_title)
             .setItems(options) { _, which ->
-                when (which) {
-                    0 -> showRenameHistoryDialog(item)
-                    1 -> confirmDeleteHistory(item)
+                if (which == 0) {
+                    confirmDeleteHistory(item)
                 }
             }
             .setNegativeButton(R.string.action_cancel, null)
             .show()
     }
 
-    private fun showRenameHistoryDialog(item: HistoryItem) {
-        val input = EditText(activity).apply {
-            setText(item.title ?: item.displayTitle)
-            setSelection(text.length)
-            hint = activity.getString(R.string.history_rename_hint)
-        }
+    private fun confirmDeleteHistory(item: HistoryDayItem) {
         MaterialAlertDialogBuilder(activity)
-            .setTitle(R.string.history_rename_title)
-            .setView(input)
-            .setNegativeButton(R.string.action_cancel, null)
-            .setPositiveButton(R.string.action_save) { _, _ ->
-                renameHistory(item, input.text?.toString().orEmpty().trim())
-            }
-            .show()
-    }
-
-    private fun confirmDeleteHistory(item: HistoryItem) {
-        MaterialAlertDialogBuilder(activity)
-            .setTitle(R.string.history_delete_title)
-            .setMessage(activity.getString(R.string.history_delete_message, item.displayTitle))
+            .setTitle(R.string.history_delete_day_title)
+            .setMessage(activity.getString(R.string.history_delete_day_message, item.displayTitle))
             .setNegativeButton(R.string.action_cancel, null)
             .setPositiveButton(R.string.action_delete) { _, _ ->
                 deleteHistory(item)
@@ -149,31 +140,19 @@ class HistoryController(
             .show()
     }
 
-    private fun renameHistory(item: HistoryItem, newTitle: String) {
-        val index = historyList.indexOfFirst { it.id == item.id }
+    private fun deleteHistory(item: HistoryDayItem) {
+        val updated = historyItems.toMutableList()
+        val index = updated.indexOfFirst { it.dayStartMillis == item.dayStartMillis }
         if (index == -1) return
 
-        historyList[index] = historyList[index].copy(title = newTitle.ifBlank { null })
-        saveHistoryData()
-        updateContent()
-        Toast.makeText(activity, R.string.history_saved_name_updated, Toast.LENGTH_SHORT).show()
-    }
-
-    private fun deleteHistory(item: HistoryItem) {
-        val index = historyList.indexOfFirst { it.id == item.id }
-        if (index == -1) return
-
-        historyList.removeAt(index)
-        if (selectedHistoryId == item.id) {
-            selectedHistoryId = historyList.firstOrNull()?.id
+        updated.removeAt(index)
+        historyItems = updated
+        if (selectedDayStartMillis == item.dayStartMillis) {
+            selectedDayStartMillis = historyItems.firstOrNull()?.dayStartMillis
         }
-        saveHistoryData()
+        HistoryStorage.deleteMany(activity, item.sourceIds)
         updateContent()
-        Toast.makeText(activity, R.string.history_saved_deleted, Toast.LENGTH_SHORT).show()
-    }
-
-    private fun saveHistoryData() {
-        HistoryStorage.save(activity, historyList)
+        Toast.makeText(activity, R.string.history_saved_day_deleted, Toast.LENGTH_SHORT).show()
     }
 
     private fun formatHistoryTotalDuration(totalSeconds: Int): String {
@@ -181,9 +160,10 @@ class HistoryController(
         val hours = totalMinutes / 60
         val minutes = totalMinutes % 60
         return when {
-            hours > 0 && minutes > 0 -> "${hours}\u5c0f\u65f6${minutes}\u5206\u949f"
-            hours > 0 -> "${hours}\u5c0f\u65f6"
-            else -> "${totalMinutes}\u5206\u949f"
+            hours > 0 && minutes > 0 -> "${hours}小时${minutes}分钟"
+            hours > 0 -> "${hours}小时"
+            totalMinutes > 0 -> "${totalMinutes}分钟"
+            else -> "少于 1 分钟"
         }
     }
 }

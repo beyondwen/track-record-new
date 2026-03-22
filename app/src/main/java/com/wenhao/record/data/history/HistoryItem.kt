@@ -4,6 +4,7 @@ import com.wenhao.record.data.tracking.TrackPoint
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.LazyThreadSafetyMode
 
 data class HistoryItem(
     val id: Long,
@@ -14,17 +15,21 @@ data class HistoryItem(
     val title: String? = null,
     val points: List<TrackPoint> = emptyList()
 ) {
+    val quality: TrackQuality by lazy(LazyThreadSafetyMode.NONE) {
+        TrackQualityEvaluator.evaluate(this)
+    }
+
     val displayTitle: String
         get() = title?.takeIf { it.isNotBlank() } ?: "行程 #${id.toString().padStart(2, '0')}"
 
     val formattedTime: String
-        get() = SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.getDefault()).format(Date(timestamp))
+        get() = formatHistoryDate("yyyy年M月d日 HH:mm", timestamp)
 
     val formattedDateTitle: String
-        get() = SimpleDateFormat("M月d日 HH:mm", Locale.getDefault()).format(Date(timestamp))
+        get() = formatHistoryDate("M月d日 HH:mm", timestamp)
 
     val formattedDateDetail: String
-        get() = SimpleDateFormat("yyyy年M月d日 HH:mm:ss", Locale.getDefault()).format(Date(timestamp))
+        get() = formatHistoryDate("yyyy年M月d日 HH:mm:ss", timestamp)
 
     val formattedDuration: String
         get() {
@@ -50,11 +55,18 @@ data class HistoryItem(
         }
 
     val formattedDistance: String
-        get() = String.format(Locale.getDefault(), "%.2f 公里", distanceKm)
+        get() = String.format(Locale.CHINA, "%.2f 公里", distanceKm)
 
     val formattedSpeed: String
-        get() = String.format(Locale.getDefault(), "%.1f 公里/小时", averageSpeedKmh)
+        get() = String.format(Locale.CHINA, "%.1f 公里/小时", averageSpeedKmh)
 
     val summary: String
-        get() = "${formattedDistance} / ${formattedDuration} / 平均${formattedSpeed}"
+        get() = "${formattedDistance} / ${formattedDuration} / 平均 ${formattedSpeed}"
+
+    val pointCountLabel: String
+        get() = "共 ${points.size} 个定位点"
+}
+
+private fun formatHistoryDate(pattern: String, timestamp: Long): String {
+    return SimpleDateFormat(pattern, Locale.CHINA).format(Date(timestamp))
 }

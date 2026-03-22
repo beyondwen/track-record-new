@@ -1,4 +1,4 @@
-package com.wenhao.record.ui.main
+﻿package com.wenhao.record.ui.main
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -10,35 +10,48 @@ import android.location.LocationManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
 import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryDayItem
+import com.wenhao.record.data.tracking.AutoTrackDiagnostics
+import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
+import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
+import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrackPoint
-import com.wenhao.record.map.MapMarkerIconFactory
 import com.wenhao.record.map.CoordinateTransformUtils
+import com.wenhao.record.map.MapMarkerIconFactory
 import com.wenhao.record.permissions.PermissionHelper
 import com.wenhao.record.tracking.BackgroundTrackingService
+import com.wenhao.record.tracking.LocationSelectionUtils
 import com.wenhao.record.ui.dashboard.DashboardUiController
 import com.wenhao.record.ui.history.HistoryController
 import com.wenhao.record.ui.map.MapActivity
 import com.baidu.mapapi.map.BaiduMap
-import com.baidu.mapapi.map.BitmapDescriptorFactory
+import com.baidu.mapapi.map.Gradient
+import com.baidu.mapapi.map.HeatMap
 import com.baidu.mapapi.map.MapStatusUpdateFactory
 import com.baidu.mapapi.map.Marker
 import com.baidu.mapapi.map.MarkerOptions
 import com.baidu.mapapi.map.Polyline
 import com.baidu.mapapi.map.PolylineOptions
+import com.baidu.mapapi.map.WeightedLatLng
 import com.baidu.mapapi.model.LatLng
 import com.baidu.mapapi.model.LatLngBounds
+import java.util.Calendar
 
 class MainActivity : AppCompatActivity() {
-
-    private companion object {
-        const val DASHBOARD_REFRESH_INTERVAL_MS = 3_000L
-    }
 
     private enum class DashboardTab {
         RECORD,
@@ -65,21 +78,28 @@ class MainActivity : AppCompatActivity() {
     private var liveStartMarker: Marker? = null
     private var liveCurrentMarker: Marker? = null
     private var activeTrackPolyline: Polyline? = null
+    private val todayTrackPolylines = mutableListOf<Polyline>()
+    private var todayHeatMap: HeatMap? = null
     private var centerOnNextFix = false
     private var lastDashboardSessionStart: Long? = null
+    private var shouldRefitDashboardMap = true
 
     private val currentTrackPoints = mutableListOf<TrackPoint>()
+    private val todayTrackPoints = mutableListOf<LatLng>()
     private val defaultLatLng = LatLng(39.9042, 116.4074)
-    private val uiHandler = Handler(Looper.getMainLooper())
-    private val dashboardRefreshRunnable = object : Runnable {
-        override fun run() {
+    private val dataChangeListener = object : TrackDataChangeNotifier.Listener {
+        override fun onDashboardDataChanged() {
             refreshDashboardContent()
-            uiHandler.postDelayed(this, DASHBOARD_REFRESH_INTERVAL_MS)
+        }
+
+        override fun onHistoryDataChanged() {
+            historyController.reload()
+            historyController.updateContent()
+            shouldRefitDashboardMap = true
+            refreshDashboardContent()
         }
     }
-    private val freshLocationListener = android.location.LocationListener { location ->
-        handleLocationUpdate(location)
-    }
+    private val freshLocationListener = android.location.LocationListener(::handleLocationUpdate)
 
     private val mapView
         get() = dashboardUiController.mapView
@@ -87,10 +107,11 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
+        applyWindowInsets()
 
         dashboardUiController = DashboardUiController(this)
-        historyController = HistoryController(this) { item ->
-            startActivity(MapActivity.createHistoryIntent(this, item.id))
+        historyController = HistoryController(this) { item: HistoryDayItem ->
+            startActivity(MapActivity.createHistoryIntent(this, item.dayStartMillis))
         }
         locationManager = getSystemService(LocationManager::class.java)
 
@@ -112,6 +133,8 @@ class MainActivity : AppCompatActivity() {
             onLocateClick = {
                 if (currentTrackPoints.isNotEmpty()) {
                     fitActiveTrackToMap(forceSinglePointZoom = true)
+                } else if (todayTrackPoints.isNotEmpty()) {
+                    fitTodayTracksToMap(forceSinglePointZoom = true)
                 } else {
                     centerOnCurrentLocation()
                 }
@@ -129,6 +152,7 @@ class MainActivity : AppCompatActivity() {
         aMap.uiSettings.setCompassEnabled(false)
         aMap.uiSettings.setRotateGesturesEnabled(false)
         aMap.uiSettings.setOverlookingGesturesEnabled(false)
+        aMap.setBaiduHeatMapEnabled(aMap.isSupportBaiduHeatMap())
 
         val previewLocation = loadPreviewLocation() ?: defaultLatLng
         updateMarker(previewLocation)
@@ -144,7 +168,7 @@ class MainActivity : AppCompatActivity() {
         gnssStatusCallback = object : GnssStatus.Callback() {
             override fun onStarted() {
                 dashboardUiController.updateGpsStatusBadge(
-                    "\u6b63\u5728\u641c\u7d22 GPS",
+                    getString(R.string.dashboard_gps_searching),
                     R.color.dashboard_badge_yellow
                 )
             }
@@ -166,21 +190,21 @@ class MainActivity : AppCompatActivity() {
                 when {
                     usedInFixCount == 0 -> {
                         dashboardUiController.updateGpsStatusBadge(
-                            "\u6b63\u5728\u641c\u7d22 GPS",
+                            getString(R.string.dashboard_gps_searching),
                             R.color.dashboard_badge_yellow
                         )
                     }
 
                     averageCn0 >= 20f -> {
                         dashboardUiController.updateGpsStatusBadge(
-                            "GPS \u5df2\u5c31\u7eea",
+                            getString(R.string.dashboard_gps_ready),
                             R.color.dashboard_badge_green
                         )
                     }
 
                     else -> {
                         dashboardUiController.updateGpsStatusBadge(
-                            "\u4fe1\u53f7\u8f83\u5f31",
+                            getString(R.string.dashboard_gps_weak),
                             R.color.dashboard_badge_red
                         )
                     }
@@ -200,8 +224,10 @@ class MainActivity : AppCompatActivity() {
 
         dashboardUiController.render(session, dashboardState, durationSeconds)
         renderDashboardTrack(session)
+        renderDashboardDiagnosticsRefined()
 
         if (previousSessionStart != null && session == null) {
+            shouldRefitDashboardMap = true
             historyController.reload()
             historyController.updateContent()
         }
@@ -228,13 +254,68 @@ class MainActivity : AppCompatActivity() {
 
         if (currentTrackPoints.isEmpty()) {
             clearActiveTrack()
+            renderTodayTracks()
             loadPreviewLocation()?.let(::updateMarker)
             return
         }
 
+        clearTodayTrackOverlays()
+        removeTodayHeatMap()
         renderTrackPolyline(shouldFitMap = false)
         updateLiveTrackMarkers()
         updateMarker(currentTrackPoints.last().toLatLng())
+        if (shouldRefitDashboardMap) {
+            fitActiveTrackToMap(forceSinglePointZoom = false)
+        }
+    }
+
+    private fun renderDashboardDiagnosticsRefined() {
+        val diagnostics = AutoTrackDiagnosticsStorage.load(this)
+        val permissionSummary = buildPermissionSummarySafe()
+        val eventSummary = buildTimedSummary(diagnostics.lastEventAt, diagnostics.lastEvent)
+        val locationSummary = buildLocationSummary(diagnostics)
+        val saveSummary = diagnostics.lastSavedSummary?.let { summary ->
+            buildTimedSummary(diagnostics.lastSavedAt, summary)
+        } ?: getString(R.string.dashboard_diagnostics_saved_none)
+        val fullBody = buildString {
+            append(getString(R.string.dashboard_diagnostics_permissions))
+            append("：")
+            append(permissionSummary)
+            append('\n')
+            append(getString(R.string.dashboard_diagnostics_service))
+            append("：")
+            append(diagnostics.serviceStatus)
+            append('\n')
+            append(getString(R.string.dashboard_diagnostics_event))
+            append("：")
+            append(eventSummary)
+            append('\n')
+            append(getString(R.string.dashboard_diagnostics_location))
+            append("：")
+            append(locationSummary)
+            append('\n')
+            append(getString(R.string.dashboard_diagnostics_saved))
+            append("：")
+            append(saveSummary)
+        }
+        val compactBody = buildString {
+            append(diagnostics.serviceStatus)
+            append('\n')
+            append(eventSummary)
+            append('\n')
+            append(
+                if (diagnostics.lastLocationAt > 0L) {
+                    buildTimedSummary(diagnostics.lastLocationAt, diagnostics.lastLocationDecision)
+                } else {
+                    getString(R.string.dashboard_diagnostics_waiting_signal)
+                }
+            )
+        }
+        dashboardUiController.updateDiagnostics(
+            title = getString(R.string.dashboard_diagnostics_title),
+            body = fullBody,
+            compactBody = compactBody
+        )
     }
 
     private fun showTab(tab: DashboardTab) {
@@ -245,6 +326,7 @@ class MainActivity : AppCompatActivity() {
         historyController.setTabSelected(isRecord)
 
         if (isRecord) {
+            shouldRefitDashboardMap = true
             refreshDashboardContent()
             if (currentTrackPoints.isEmpty()) {
                 loadPreviewLocation()?.let(::updateMarker)
@@ -277,32 +359,94 @@ class MainActivity : AppCompatActivity() {
         when {
             !permissionHelper.hasLocationPermission() -> {
                 dashboardUiController.updateGpsStatusBadge(
-                    "\u672a\u6388\u4e88\u5b9a\u4f4d\u6743\u9650",
+                    getString(R.string.dashboard_gps_no_permission),
                     R.color.dashboard_badge_gray
                 )
             }
 
             !isLocationEnabled() -> {
                 dashboardUiController.updateGpsStatusBadge(
-                    "\u5b9a\u4f4d\u672a\u5f00\u542f",
+                    getString(R.string.dashboard_gps_disabled),
                     R.color.dashboard_badge_red
                 )
             }
 
             loadPreviewLocation() != null -> {
                 dashboardUiController.updateGpsStatusBadge(
-                    "GPS \u5df2\u5c31\u7eea",
+                    getString(R.string.dashboard_gps_ready),
                     R.color.dashboard_badge_green
                 )
             }
 
             else -> {
                 dashboardUiController.updateGpsStatusBadge(
-                    "\u6b63\u5728\u641c\u7d22 GPS",
+                    getString(R.string.dashboard_gps_searching),
                     R.color.dashboard_badge_yellow
                 )
             }
         }
+    }
+
+    private fun applyWindowInsets() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        val root = findViewById<View>(android.R.id.content)
+        val gpsStatusBadge = findViewById<View>(R.id.gpsStatusBadge)
+        val diagnosticsCompact = findViewById<View>(R.id.layoutRecordDiagnosticsCompact)
+        val locateButton = findViewById<View>(R.id.btnLocate)
+        val dashboardPanel = findViewById<View>(R.id.dashboardPanel)
+        val saveFeedbackCard = findViewById<View>(R.id.saveFeedbackCard)
+        val historyScreen = findViewById<View>(R.id.historyScreen)
+        val historyBottomNav = findViewById<View>(R.id.historyPageBottomNav)
+
+        val gpsStatusLayout = gpsStatusBadge.layoutParams as FrameLayout.LayoutParams
+        val gpsStatusStartMargin = gpsStatusLayout.marginStart
+        val gpsStatusTopMargin = gpsStatusLayout.topMargin
+
+        val diagnosticsCompactLayout = diagnosticsCompact.layoutParams as FrameLayout.LayoutParams
+        val diagnosticsCompactStartMargin = diagnosticsCompactLayout.marginStart
+        val diagnosticsCompactTopMargin = diagnosticsCompactLayout.topMargin
+
+        val locateLayout = locateButton.layoutParams as FrameLayout.LayoutParams
+        val locateEndMargin = locateLayout.marginEnd
+        val locateBottomMargin = locateLayout.bottomMargin
+
+        val saveFeedbackLayout = saveFeedbackCard.layoutParams as ViewGroup.MarginLayoutParams
+        val saveFeedbackBottomMargin = saveFeedbackLayout.bottomMargin
+
+        val dashboardPanelBottomPadding = dashboardPanel.paddingBottom
+        val historyScreenTopPadding = historyScreen.paddingTop
+        val historyBottomNavBottomPadding = historyBottomNav.paddingBottom
+
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+
+            gpsStatusBadge.updateLayoutParams<FrameLayout.LayoutParams> {
+                marginStart = gpsStatusStartMargin + systemBars.left
+                topMargin = gpsStatusTopMargin + systemBars.top
+            }
+
+            diagnosticsCompact.updateLayoutParams<FrameLayout.LayoutParams> {
+                marginStart = diagnosticsCompactStartMargin + systemBars.left
+                topMargin = diagnosticsCompactTopMargin + systemBars.top
+            }
+
+            locateButton.updateLayoutParams<FrameLayout.LayoutParams> {
+                marginEnd = locateEndMargin + systemBars.right
+                bottomMargin = locateBottomMargin + systemBars.bottom
+            }
+
+            dashboardPanel.updatePadding(bottom = dashboardPanelBottomPadding + systemBars.bottom)
+            saveFeedbackCard.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                bottomMargin = saveFeedbackBottomMargin + systemBars.bottom
+            }
+            historyScreen.updatePadding(top = historyScreenTopPadding + systemBars.top)
+            historyBottomNav.updatePadding(bottom = historyBottomNavBottomPadding + systemBars.bottom)
+
+            insets
+        }
+
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun handleLocationUpdate(location: Location) {
@@ -385,6 +529,71 @@ class MainActivity : AppCompatActivity() {
         liveCurrentMarker = null
     }
 
+    private fun clearTodayTrackOverlays() {
+        todayTrackPolylines.forEach { polyline -> polyline.remove() }
+        todayTrackPolylines.clear()
+        todayTrackPoints.clear()
+    }
+
+    private fun removeTodayHeatMap() {
+        todayHeatMap?.removeHeatMap()
+        todayHeatMap = null
+    }
+
+    private fun renderTodayTracks() {
+        clearTodayTrackOverlays()
+        removeTodayHeatMap()
+
+        val todayHistoryItems = HistoryStorage.load(this).filter { item ->
+            isSameDay(item.timestamp, System.currentTimeMillis())
+        }
+
+        todayHistoryItems.forEach { item ->
+            val points = item.points.map { point -> point.toLatLng() }
+            todayTrackPoints.addAll(points)
+            if (points.size > 1) {
+                val polyline = aMap.addOverlay(
+                    PolylineOptions()
+                        .points(points)
+                        .color(Color.parseColor("#7A8B5CF6"))
+                        .width(10)
+                ) as Polyline
+                todayTrackPolylines += polyline
+            }
+        }
+
+        renderTodayHeatMap(todayHistoryItems.flatMap { item -> item.points })
+
+        if (todayTrackPoints.isNotEmpty() && shouldRefitDashboardMap) {
+            fitTodayTracksToMap(forceSinglePointZoom = false)
+        }
+    }
+
+    private fun renderTodayHeatMap(points: List<TrackPoint>) {
+        if (!aMap.isSupportBaiduHeatMap() || points.size < 3) {
+            return
+        }
+
+        val weightedPoints = points.map { point ->
+            WeightedLatLng(point.toLatLng())
+        }
+        val gradient = Gradient(
+            intArrayOf(
+                Color.parseColor("#33D9CCFF"),
+                Color.parseColor("#8A8B5CF6"),
+                Color.parseColor("#F26E47D7")
+            ),
+            floatArrayOf(0.2f, 0.6f, 1f)
+        )
+        todayHeatMap = HeatMap.Builder()
+            .weightedData(weightedPoints)
+            .radius(32)
+            .opacity(0.72)
+            .gradient(gradient)
+            .build()
+        todayHeatMap?.let(aMap::addHeatMap)
+    }
+
     private fun updateLiveTrackMarkers() {
         val firstPoint = currentTrackPoints.firstOrNull()?.toLatLng() ?: return
         val lastPoint = currentTrackPoints.lastOrNull()?.toLatLng() ?: return
@@ -421,6 +630,7 @@ class MainActivity : AppCompatActivity() {
                     if (forceSinglePointZoom || centerOnNextFix) {
                         aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(points.first(), 17f))
                     }
+                    shouldRefitDashboardMap = false
                 }
 
                 else -> {
@@ -429,9 +639,88 @@ class MainActivity : AppCompatActivity() {
                     }.build()
                     aMap.setViewPadding(dpToPx(20), dpToPx(28), dpToPx(20), dpToPx(82))
                     aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngBounds(bounds))
+                    shouldRefitDashboardMap = false
                 }
             }
         }
+    }
+
+    private fun fitTodayTracksToMap(forceSinglePointZoom: Boolean) {
+        mapView.post {
+            when {
+                todayTrackPoints.isEmpty() -> Unit
+                todayTrackPoints.size == 1 -> {
+                    if (forceSinglePointZoom || shouldRefitDashboardMap) {
+                        aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(todayTrackPoints.first(), 17f))
+                    }
+                    shouldRefitDashboardMap = false
+                }
+
+                else -> {
+                    val bounds = LatLngBounds.Builder().apply {
+                        todayTrackPoints.forEach(::include)
+                    }.build()
+                    aMap.setViewPadding(dpToPx(20), dpToPx(28), dpToPx(20), dpToPx(82))
+                    aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngBounds(bounds))
+                    shouldRefitDashboardMap = false
+                }
+            }
+        }
+    }
+
+    private fun isSameDay(firstTimestamp: Long, secondTimestamp: Long): Boolean {
+        val first = Calendar.getInstance().apply { timeInMillis = firstTimestamp }
+        val second = Calendar.getInstance().apply { timeInMillis = secondTimestamp }
+        return first.get(Calendar.YEAR) == second.get(Calendar.YEAR) &&
+            first.get(Calendar.DAY_OF_YEAR) == second.get(Calendar.DAY_OF_YEAR)
+    }
+
+    private fun buildPermissionSummarySafe(): String {
+        return when {
+            !permissionHelper.hasLocationPermission() ->
+                getString(R.string.permission_summary_location_missing)
+            !permissionHelper.hasActivityRecognitionPermission() ->
+                getString(R.string.permission_summary_activity_missing)
+            permissionHelper.needsBackgroundLocationPermission() ->
+                getString(R.string.permission_summary_background_missing)
+            permissionHelper.needsNotificationPermission() ->
+                getString(R.string.permission_summary_notification_limited)
+            else ->
+                getString(R.string.permission_summary_ready)
+        }
+    }
+
+    private fun buildLocationSummary(diagnostics: AutoTrackDiagnostics): String {
+        if (diagnostics.lastLocationAt <= 0L) {
+            return getString(R.string.dashboard_diagnostics_no_fix)
+        }
+
+        return buildString {
+            append(buildTimedSummary(diagnostics.lastLocationAt, diagnostics.lastLocationDecision))
+            append("，")
+            append(
+                getString(
+                    R.string.dashboard_diagnostics_points_collected,
+                    diagnostics.acceptedPointCount
+                )
+            )
+            diagnostics.lastLocationAccuracyMeters?.let { accuracy ->
+                append("，")
+                append(
+                    getString(
+                        R.string.dashboard_diagnostics_accuracy_estimate,
+                        accuracy.toInt()
+                    )
+                )
+            }
+        }
+    }
+    private fun buildTimedSummary(timestamp: Long, summary: String): String {
+        if (timestamp <= 0L) return summary
+        val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
+        val hour = calendar.get(Calendar.HOUR_OF_DAY).toString().padStart(2, '0')
+        val minute = calendar.get(Calendar.MINUTE).toString().padStart(2, '0')
+        return "${hour}:${minute} $summary"
     }
 
     private fun isLocationEnabled(): Boolean {
@@ -482,8 +771,14 @@ class MainActivity : AppCompatActivity() {
     private fun loadLastKnownLocation(): Location? {
         if (!permissionHelper.hasLocationPermission()) return null
         val manager = locationManager ?: return null
-        val providers = collectEnabledProviders(manager)
-        return providers.mapNotNull(manager::getLastKnownLocation).maxByOrNull(Location::getTime)
+        return LocationSelectionUtils.loadBestLastKnownLocation(
+            locationManager = manager,
+            hasFineLocation = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED,
+            maxAgeMs = 15 * 60 * 1000L
+        )
     }
 
     private fun loadPreviewLocation(): LatLng? = loadLastKnownLocation()?.let(::convertToGcj02)
@@ -513,19 +808,19 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         mapView.onResume()
+        TrackDataChangeNotifier.addListener(dataChangeListener)
         registerGnssCallback()
         refreshGpsStatus()
         historyController.reload()
         historyController.updateContent()
+        shouldRefitDashboardMap = true
         refreshDashboardContent()
         permissionHelper.startBackgroundTrackingServiceIfReady()
-        uiHandler.removeCallbacks(dashboardRefreshRunnable)
-        uiHandler.post(dashboardRefreshRunnable)
     }
 
     override fun onPause() {
+        TrackDataChangeNotifier.removeListener(dataChangeListener)
         unregisterGnssCallback()
-        uiHandler.removeCallbacks(dashboardRefreshRunnable)
         stopLocationUpdates()
         mapView.onPause()
         super.onPause()
@@ -538,10 +833,12 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         dashboardUiController.onDestroy()
         unregisterGnssCallback()
-        uiHandler.removeCallbacks(dashboardRefreshRunnable)
         stopLocationUpdates()
         clearActiveTrack()
+        clearTodayTrackOverlays()
+        removeTodayHeatMap()
         homeMarker?.remove()
+        TrackDataChangeNotifier.removeListener(dataChangeListener)
         mapView.onDestroy()
         super.onDestroy()
     }

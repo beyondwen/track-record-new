@@ -5,22 +5,57 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.wenhao.record.R
-import com.wenhao.record.data.history.HistoryItem
 import com.google.android.material.card.MaterialCardView
+import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryDayItem
+import com.wenhao.record.data.history.TrackQualityLevel
 import java.util.Calendar
 
 class HistoryAdapter(
-    private val historyList: List<HistoryItem>,
-    private val onHistoryClick: (HistoryItem, Int) -> Unit,
-    private val onHistoryLongClick: (HistoryItem, Int) -> Unit
-) : RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
+    private val onHistoryClick: (HistoryDayItem, Int) -> Unit,
+    private val onHistoryLongClick: (HistoryDayItem, Int) -> Unit
+) : ListAdapter<HistoryDayItem, HistoryAdapter.ViewHolder>(DIFF_CALLBACK) {
 
-    private var selectedHistoryId: Long? = null
+    companion object {
+        private val DIFF_CALLBACK = object : DiffUtil.ItemCallback<HistoryDayItem>() {
+            override fun areItemsTheSame(oldItem: HistoryDayItem, newItem: HistoryDayItem): Boolean {
+                return oldItem.dayStartMillis == newItem.dayStartMillis
+            }
 
-    fun setSelectedHistoryId(id: Long?) {
-        selectedHistoryId = id
+            override fun areContentsTheSame(oldItem: HistoryDayItem, newItem: HistoryDayItem): Boolean {
+                return oldItem == newItem
+            }
+        }
+    }
+
+    private var selectedDayStartMillis: Long? = null
+
+    init {
+        setHasStableIds(true)
+    }
+
+    fun setSelectedDayStartMillis(dayStartMillis: Long?) {
+        val previousId = selectedDayStartMillis
+        selectedDayStartMillis = dayStartMillis
+        val previousIndex = currentList.indexOfFirst { item -> item.dayStartMillis == previousId }
+        val newIndex = currentList.indexOfFirst { item -> item.dayStartMillis == dayStartMillis }
+        if (previousIndex != -1) notifyItemChanged(previousIndex)
+        if (newIndex != -1 && newIndex != previousIndex) notifyItemChanged(newIndex)
+    }
+
+    fun submitHistoryList(items: List<HistoryDayItem>) {
+        submitList(
+            items.map { item ->
+                item.copy(
+                    sourceIds = item.sourceIds.toList(),
+                    segments = item.segments.map { segment -> segment.toList() },
+                    points = item.points.toList()
+                )
+            }
+        )
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -29,12 +64,12 @@ class HistoryAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val item = historyList[position]
-        val isSelected = item.id == selectedHistoryId
+        val item = getItem(position)
+        val isSelected = item.dayStartMillis == selectedDayStartMillis
         val context = holder.itemView.context
-        val groupLabel = buildGroupLabel(context, item.timestamp)
-        val previousGroupLabel = historyList.getOrNull(position - 1)?.let {
-            buildGroupLabel(context, it.timestamp)
+        val groupLabel = buildGroupLabel(context, item.dayStartMillis)
+        val previousGroupLabel = currentList.getOrNull(position - 1)?.let {
+            buildGroupLabel(context, it.dayStartMillis)
         }
         val showGroupHeader = position == 0 || groupLabel != previousGroupLabel
 
@@ -44,19 +79,52 @@ class HistoryAdapter(
             if (position == 0) R.string.history_card_latest_label else R.string.history_card_saved_label
         )
         holder.tvHistoryTitle.text = item.displayTitle
-        holder.tvHistorySummary.text = context.getString(
-            if (isSelected) R.string.history_summary_viewing else R.string.history_summary_default
+        holder.tvHistorySummary.text = if (item.quality.level == TrackQualityLevel.LOW) {
+            item.quality.detail
+        } else {
+            item.summary
+        }
+        holder.tvHistoryHint.text = context.getString(
+            when {
+                isSelected -> R.string.history_summary_viewing
+                item.quality.level == TrackQualityLevel.LOW -> R.string.history_quality_hint_low
+                item.quality.level == TrackQualityLevel.FAIR -> R.string.history_quality_hint_fair
+                else -> R.string.history_summary_default
+            }
         )
-        holder.tvHistoryTime.text = item.formattedDateTitle
+        holder.tvHistoryPointCount.text = item.pointCountLabel
+        holder.tvHistoryQuality.text = item.quality.badgeLabel
+        holder.tvHistoryTime.text = item.sessionCountLabel
         holder.tvHistoryDistance.text = item.formattedDistance
         holder.tvHistoryDuration.text = item.formattedDuration
         holder.tvHistorySpeed.text = item.formattedSpeed
         holder.tvHistoryAction.text = context.getString(
             if (isSelected) R.string.history_action_viewing else R.string.history_action_view
         )
-        holder.routePreview.setPoints(item.points)
+        holder.routePreview.setSegments(item.segments)
+
+        val qualityChipBackground = when (item.quality.level) {
+            TrackQualityLevel.EXCELLENT,
+            TrackQualityLevel.GOOD -> R.drawable.history_info_chip_background
+            TrackQualityLevel.FAIR,
+            TrackQualityLevel.LOW -> R.drawable.history_status_background
+        }
+        val qualityChipColor = when (item.quality.level) {
+            TrackQualityLevel.EXCELLENT,
+            TrackQualityLevel.GOOD -> R.color.md_theme_light_onPrimaryContainer
+            TrackQualityLevel.FAIR,
+            TrackQualityLevel.LOW -> R.color.md_theme_light_onSecondaryContainer
+        }
+        holder.tvHistoryQuality.setBackgroundResource(qualityChipBackground)
+        holder.tvHistoryQuality.setTextColor(ContextCompat.getColor(context, qualityChipColor))
+
+        val strokeColor = when {
+            isSelected -> 0x668B5CF6
+            item.quality.level == TrackQualityLevel.LOW -> 0x44F26E47
+            else -> 0x164A6267
+        }
         holder.card.strokeWidth = if (isSelected) 2 else 1
-        holder.card.strokeColor = if (isSelected) 0x668B5CF6 else 0x164A6267
+        holder.card.strokeColor = strokeColor
         holder.card.setCardBackgroundColor(
             ContextCompat.getColor(
                 context,
@@ -68,13 +136,13 @@ class HistoryAdapter(
         holder.itemView.setOnClickListener {
             val adapterPosition = holder.bindingAdapterPosition
             if (adapterPosition != RecyclerView.NO_POSITION) {
-                onHistoryClick(historyList[adapterPosition], adapterPosition)
+                onHistoryClick(getItem(adapterPosition), adapterPosition)
             }
         }
         holder.itemView.setOnLongClickListener {
             val adapterPosition = holder.bindingAdapterPosition
             if (adapterPosition != RecyclerView.NO_POSITION) {
-                onHistoryLongClick(historyList[adapterPosition], adapterPosition)
+                onHistoryLongClick(getItem(adapterPosition), adapterPosition)
                 true
             } else {
                 false
@@ -82,7 +150,7 @@ class HistoryAdapter(
         }
     }
 
-    override fun getItemCount(): Int = historyList.size
+    override fun getItemId(position: Int): Long = getItem(position).dayStartMillis
 
     private fun buildGroupLabel(context: android.content.Context, timestamp: Long): String {
         val now = Calendar.getInstance()
@@ -117,6 +185,9 @@ class HistoryAdapter(
         val tvHistoryLabel: TextView = itemView.findViewById(R.id.tvHistoryLabel)
         val tvHistoryTitle: TextView = itemView.findViewById(R.id.tvHistoryTitle)
         val tvHistorySummary: TextView = itemView.findViewById(R.id.tvHistorySummary)
+        val tvHistoryPointCount: TextView = itemView.findViewById(R.id.tvHistoryPointCount)
+        val tvHistoryQuality: TextView = itemView.findViewById(R.id.tvHistoryQuality)
+        val tvHistoryHint: TextView = itemView.findViewById(R.id.tvHistoryHint)
         val tvHistoryTime: TextView = itemView.findViewById(R.id.tvHistoryTime)
         val tvHistoryDistance: TextView = itemView.findViewById(R.id.tvHistoryDistance)
         val tvHistoryDuration: TextView = itemView.findViewById(R.id.tvHistoryDuration)

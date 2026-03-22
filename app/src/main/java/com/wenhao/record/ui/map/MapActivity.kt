@@ -4,13 +4,16 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.wenhao.record.R
-import com.wenhao.record.data.history.HistoryStorage
-import com.wenhao.record.map.MapMarkerIconFactory
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import com.baidu.mapapi.map.BaiduMap
 import com.baidu.mapapi.map.MapStatusUpdateFactory
 import com.baidu.mapapi.map.MapView
@@ -21,14 +24,18 @@ import com.baidu.mapapi.map.PolylineOptions
 import com.baidu.mapapi.model.LatLng
 import com.baidu.mapapi.model.LatLngBounds
 import com.google.android.material.card.MaterialCardView
+import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryDayItem
+import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.map.MapMarkerIconFactory
 
 class MapActivity : AppCompatActivity() {
 
     companion object {
-        private const val EXTRA_HISTORY_ID = "extra_history_id"
+        private const val EXTRA_DAY_START = "extra_day_start"
 
-        fun createHistoryIntent(context: Context, historyId: Long): Intent {
-            return Intent(context, MapActivity::class.java).putExtra(EXTRA_HISTORY_ID, historyId)
+        fun createHistoryIntent(context: Context, dayStartMillis: Long): Intent {
+            return Intent(context, MapActivity::class.java).putExtra(EXTRA_DAY_START, dayStartMillis)
         }
     }
 
@@ -40,9 +47,13 @@ class MapActivity : AppCompatActivity() {
     private lateinit var tvRouteDistance: TextView
     private lateinit var tvRouteDuration: TextView
     private lateinit var tvRouteSpeed: TextView
+    private lateinit var tvRouteQuality: TextView
     private lateinit var tvRouteSummary: TextView
+    private lateinit var tvRoutePointCount: TextView
+    private lateinit var btnBack: ImageView
+    private lateinit var btnRefitRoute: ImageView
 
-    private var routePolyline: Polyline? = null
+    private val routePolylines = mutableListOf<Polyline>()
     private var startMarker: Marker? = null
     private var endMarker: Marker? = null
     private var routeBounds: LatLngBounds? = null
@@ -51,6 +62,7 @@ class MapActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_map)
+        applyWindowInsets()
 
         mapView = findViewById(R.id.mapView)
         aMap = mapView.map
@@ -60,10 +72,14 @@ class MapActivity : AppCompatActivity() {
         tvRouteDistance = findViewById(R.id.tvRouteDistance)
         tvRouteDuration = findViewById(R.id.tvRouteDuration)
         tvRouteSpeed = findViewById(R.id.tvRouteSpeed)
+        tvRouteQuality = findViewById(R.id.tvRouteQuality)
         tvRouteSummary = findViewById(R.id.tvRouteSummary)
+        tvRoutePointCount = findViewById(R.id.tvRoutePointCount)
+        btnBack = findViewById(R.id.btnBack)
+        btnRefitRoute = findViewById(R.id.btnRefitRoute)
 
-        findViewById<ImageView>(R.id.btnBack).setOnClickListener { finish() }
-        findViewById<ImageView>(R.id.btnRefitRoute).setOnClickListener { refitRoute() }
+        btnBack.setOnClickListener { finish() }
+        btnRefitRoute.setOnClickListener { refitRoute() }
 
         mapView.showZoomControls(false)
         mapView.showScaleControl(false)
@@ -75,8 +91,8 @@ class MapActivity : AppCompatActivity() {
     }
 
     private fun renderHistory() {
-        val historyId = intent.getLongExtra(EXTRA_HISTORY_ID, -1L).takeIf { it > 0L }
-        val item = HistoryStorage.load(this).firstOrNull { it.id == historyId }
+        val dayStartMillis = intent.getLongExtra(EXTRA_DAY_START, -1L).takeIf { it > 0L }
+        val item = dayStartMillis?.let(::loadDayItem)
 
         if (item == null || item.points.isEmpty()) {
             Toast.makeText(this, R.string.dashboard_history_no_route, Toast.LENGTH_SHORT).show()
@@ -89,37 +105,45 @@ class MapActivity : AppCompatActivity() {
         tvRouteDistance.text = item.formattedDistance
         tvRouteDuration.text = item.formattedDurationDetail
         tvRouteSpeed.text = item.formattedSpeed
+        tvRouteQuality.text = item.quality.badgeLabel
         tvRouteSummary.text = item.summary
+        tvRoutePointCount.text = item.pointCountLabel
 
-        val points = item.points.map { it.toLatLng() }
-        singlePoint = points.firstOrNull()
-        routeBounds = if (points.size > 1) {
-            LatLngBounds.Builder().apply { points.forEach(::include) }.build()
+        val allPoints = item.points.map { it.toLatLng() }
+        singlePoint = allPoints.firstOrNull()
+        routeBounds = if (allPoints.size > 1) {
+            LatLngBounds.Builder().apply { allPoints.forEach(::include) }.build()
         } else {
             null
         }
 
-        routePolyline?.remove()
+        routePolylines.forEach { polyline -> polyline.remove() }
+        routePolylines.clear()
         startMarker?.remove()
         endMarker?.remove()
 
-        routePolyline = aMap.addOverlay(
-            PolylineOptions()
-                .points(points)
-                .color(Color.parseColor("#8B5CF6"))
-                .width(14)
-        ) as Polyline
+        item.segments.filter { it.size > 1 }.forEach { segment ->
+            routePolylines += aMap.addOverlay(
+                PolylineOptions()
+                    .points(segment.map { it.toLatLng() })
+                    .color(Color.parseColor("#8B5CF6"))
+                    .width(14)
+            ) as Polyline
+        }
+
+        val startPoint = item.segments.firstOrNull()?.firstOrNull()?.toLatLng() ?: allPoints.first()
+        val endPoint = item.segments.lastOrNull()?.lastOrNull()?.toLatLng() ?: allPoints.last()
 
         startMarker = aMap.addOverlay(
             MarkerOptions()
-                .position(points.first())
+                .position(startPoint)
                 .title(getString(R.string.history_map_start))
                 .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_start_marker))
         ) as Marker
 
         endMarker = aMap.addOverlay(
             MarkerOptions()
-                .position(points.last())
+                .position(endPoint)
                 .title(getString(R.string.history_map_end))
                 .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_end_marker))
         ) as Marker
@@ -127,6 +151,56 @@ class MapActivity : AppCompatActivity() {
         historyInfoCard.post {
             refitRoute()
         }
+    }
+
+    private fun loadDayItem(dayStartMillis: Long): HistoryDayItem? {
+        return HistoryStorage.loadDailyByStart(this, dayStartMillis)
+    }
+
+    private fun applyWindowInsets() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+
+        val root = findViewById<View>(android.R.id.content)
+        val backButton = findViewById<View>(R.id.btnBack)
+        val refitButton = findViewById<View>(R.id.btnRefitRoute)
+        val infoCard = findViewById<View>(R.id.historyInfoCard)
+
+        val backLayout = backButton.layoutParams as ViewGroup.MarginLayoutParams
+        val backTopMargin = backLayout.topMargin
+        val backStartMargin = backLayout.marginStart
+
+        val refitLayout = refitButton.layoutParams as ViewGroup.MarginLayoutParams
+        val refitBottomMargin = refitLayout.bottomMargin
+        val refitEndMargin = refitLayout.marginEnd
+
+        val infoCardLayout = infoCard.layoutParams as ViewGroup.MarginLayoutParams
+        val infoCardBottomMargin = infoCardLayout.bottomMargin
+        val infoCardStartMargin = infoCardLayout.marginStart
+        val infoCardEndMargin = infoCardLayout.marginEnd
+
+        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+
+            backButton.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                topMargin = backTopMargin + systemBars.top
+                marginStart = backStartMargin + systemBars.left
+            }
+
+            refitButton.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                bottomMargin = refitBottomMargin + systemBars.bottom
+                marginEnd = refitEndMargin + systemBars.right
+            }
+
+            infoCard.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                bottomMargin = infoCardBottomMargin + systemBars.bottom
+                marginStart = infoCardStartMargin + systemBars.left
+                marginEnd = infoCardEndMargin + systemBars.right
+            }
+
+            insets
+        }
+
+        ViewCompat.requestApplyInsets(root)
     }
 
     private fun refitRoute() {
@@ -139,11 +213,12 @@ class MapActivity : AppCompatActivity() {
             }
 
             bounds != null -> {
+                val bottomMargin = (historyInfoCard.layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
                 aMap.setViewPadding(
                     dpToPx(20),
                     dpToPx(20),
                     dpToPx(20),
-                    historyInfoCard.height + dpToPx(28)
+                    historyInfoCard.height + bottomMargin + dpToPx(12)
                 )
                 aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngBounds(bounds))
             }
@@ -165,7 +240,8 @@ class MapActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        routePolyline?.remove()
+        routePolylines.forEach { polyline -> polyline.remove() }
+        routePolylines.clear()
         startMarker?.remove()
         endMarker?.remove()
         mapView.onDestroy()

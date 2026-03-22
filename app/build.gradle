@@ -1,6 +1,26 @@
 plugins {
     id 'com.android.application'
+    id 'com.google.devtools.ksp'
     id 'org.jetbrains.kotlin.android'
+}
+
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.withInputStream { stream ->
+        localProperties.load(stream)
+    }
+}
+def baiduMapApiKey = providers.gradleProperty("BAIDU_MAP_API_KEY").orNull
+if (!baiduMapApiKey) {
+    baiduMapApiKey = localProperties.getProperty("BAIDU_MAP_API_KEY", "")
+}
+if (!baiduMapApiKey) {
+    throw new GradleException("Missing BAIDU_MAP_API_KEY. Define it in local.properties or pass -PBAIDU_MAP_API_KEY=...")
+}
+
+kotlin {
+    jvmToolchain(17)
 }
 
 android {
@@ -13,12 +33,18 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-        resValue "string", "baidu_map_api_key", "QUYzHHTexxD2u9jjEmdWVPxhTVKWqfYR"
+        resValue "string", "baidu_map_api_key", baiduMapApiKey
     }
 
     buildTypes {
-        release {
+        debug {
             minifyEnabled = false
+            shrinkResources = false
+        }
+
+        release {
+            minifyEnabled = true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -48,8 +74,9 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.1'
     implementation 'com.google.android.material:material:1.13.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'androidx.room:room-runtime:2.8.4'
     implementation 'com.baidu.lbsyun:BaiduMapSDK_Map:7.6.7'
-    implementation 'com.google.android.gms:play-services-location:21.3.0'
+    ksp 'androidx.room:room-compiler:2.8.4'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.jetbrains.kotlin:kotlin-test:2.0.20'

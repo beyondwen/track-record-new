@@ -10,40 +10,40 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.hardware.TriggerEvent
+import android.hardware.TriggerEventListener
 import android.location.Location
+import android.location.LocationManager
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.wenhao.record.map.CoordinateTransformUtils
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.wenhao.record.data.tracking.FrequentPlaceAnchor
 import com.wenhao.record.data.tracking.FrequentPlaceStorage
 import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.map.CoordinateTransformUtils
 import com.wenhao.record.ui.main.MainActivity
-import com.google.android.gms.location.ActivityRecognition
-import com.google.android.gms.location.ActivityRecognitionClient
-import com.google.android.gms.location.Geofence
-import com.google.android.gms.location.GeofenceStatusCodes
-import com.google.android.gms.location.GeofencingClient
-import com.google.android.gms.location.GeofencingRequest
-import com.google.android.gms.location.ActivityTransition
-import com.google.android.gms.location.ActivityTransitionRequest
-import com.google.android.gms.location.DetectedActivity
-import com.google.android.gms.location.FusedLocationProviderClient
-import com.google.android.gms.location.LocationCallback
-import com.google.android.gms.location.LocationRequest
-import com.google.android.gms.location.LocationResult
-import com.google.android.gms.location.LocationServices
-import com.google.android.gms.location.Priority
+import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.sqrt
 
 class BackgroundTrackingService : Service() {
 
@@ -60,28 +60,20 @@ class BackgroundTrackingService : Service() {
         val acceptedPoint: TrackPoint? = null
     )
 
-    private data class PendingMovementVerification(
-        val startedAt: Long,
-        val anchorIds: Set<String>,
-        val originPoint: TrackPoint? = null
-    )
-
     companion object {
         const val ACTION_START = "com.wenhao.record.action.START_BACKGROUND_TRACKING"
         const val ACTION_STOP = "com.wenhao.record.action.STOP_BACKGROUND_TRACKING"
-        const val ACTION_ACTIVITY_TRANSITION = "com.wenhao.record.action.ACTIVITY_TRANSITION"
-        const val ACTION_GEOFENCE_TRANSITION = "com.wenhao.record.action.GEOFENCE_TRANSITION"
-        const val EXTRA_ACTIVITY_TYPE = "extra_activity_type"
-        const val EXTRA_TRANSITION_TYPE = "extra_transition_type"
-        const val EXTRA_GEOFENCE_TRANSITION = "extra_geofence_transition"
-        const val EXTRA_GEOFENCE_IDS = "extra_geofence_ids"
 
         private const val CHANNEL_ID = "smart_tracking"
         private const val NOTIFICATION_ID = 1107
+
         private const val STILL_STOP_DELAY_MS = 2 * 60 * 1000L
-        private const val STAY_ZONE_VERIFY_TIMEOUT_MS = 2 * 60 * 1000L
+        private const val STOPPING_CONFIRM_DELAY_MS = 75_000L
+        private const val SUSPECT_MOVING_TIMEOUT_MS = 45_000L
+        private const val MAX_LAST_KNOWN_LOCATION_AGE_MS = 10 * 60 * 1000L
         private const val MIN_USEFUL_DURATION_SECONDS = 45
         private const val MIN_USEFUL_DISTANCE_KM = 0.08
+
         private const val MIN_ACCEPTED_POINT_DISTANCE_METERS = 5f
         private const val MAX_STATIONARY_JITTER_METERS = 9f
         private const val MAX_POOR_ACCURACY_METERS = 45f
@@ -91,9 +83,31 @@ class BackgroundTrackingService : Service() {
         private const val MAX_JUMP_SPEED_METERS_PER_SECOND = 55f
         private const val MIN_JUMP_TIME_DELTA_MS = 2_000L
         private const val MAX_JUMP_TIME_DELTA_MS = 20_000L
-        private const val STAY_ZONE_EXIT_MARGIN_METERS = 60f
-        private const val STAY_ZONE_VERIFY_DISTANCE_METERS = 120f
-        private const val STAY_ZONE_VERIFY_MIN_SPEED_METERS_PER_SECOND = 3f
+
+        private const val IDLE_INTERVAL_MS = 45_000L
+        private const val IDLE_INTERVAL_ANCHOR_MS = 90_000L
+        private const val IDLE_MIN_DISTANCE_METERS = 30f
+        private const val IDLE_MIN_DISTANCE_ANCHOR_METERS = 65f
+        private const val SUSPECT_INTERVAL_MS = 12_000L
+        private const val SUSPECT_MIN_DISTANCE_METERS = 10f
+        private const val STOPPING_INTERVAL_MS = 18_000L
+        private const val STOPPING_MIN_DISTANCE_METERS = 8f
+        private const val ACTIVE_FAST_INTERVAL_MS = 2_500L
+        private const val ACTIVE_NORMAL_INTERVAL_MS = 4_000L
+        private const val ACTIVE_SLOW_INTERVAL_MS = 6_500L
+
+        private const val IDLE_TRIGGER_DISTANCE_METERS = 85f
+        private const val IDLE_TRIGGER_DISTANCE_ANCHOR_METERS = 120f
+        private const val IDLE_ASSIST_DISTANCE_METERS = 48f
+        private const val IDLE_ASSIST_DISTANCE_ANCHOR_METERS = 72f
+        private const val IDLE_TRIGGER_SPEED_METERS_PER_SECOND = 2.2f
+        private const val IDLE_TRIGGER_INFERRED_SPEED_METERS_PER_SECOND = 1.25f
+        private const val MAX_IDLE_LOCATION_AGE_MS = 2 * 60 * 1000L
+        private const val MAX_IDLE_ACCURACY_METERS = 80f
+        private const val IDLE_BASELINE_RESET_GAP_MS = 4 * 60 * 1000L
+        private const val IDLE_STATIONARY_RESET_DISTANCE_METERS = 18f
+
+        private const val ACCELERATION_WINDOW_SIZE = 12
 
         fun start(context: Context) {
             val intent = Intent(context, BackgroundTrackingService::class.java).apply {
@@ -111,38 +125,87 @@ class BackgroundTrackingService : Service() {
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private val locationCallback = object : LocationCallback() {
-        override fun onLocationResult(result: LocationResult) {
-            result.locations.forEach(::handleLocationUpdate)
+    private val motionConfidenceEngine = MotionConfidenceEngine()
+    private val wifiStayContext = WifiStayContext()
+    private val accelerationWindow = ArrayDeque<Float>()
+    private val locationListener = android.location.LocationListener(::handleLocationUpdate)
+    private val finalizeRunnable = Runnable { finalizeCurrentSession() }
+
+    private val sensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            when (event.sensor.type) {
+                Sensor.TYPE_ACCELEROMETER -> handleAccelerometerChanged(event.values)
+                Sensor.TYPE_STEP_COUNTER -> handleStepCounterChanged(event.values.firstOrNull())
+            }
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
+
+    private val significantMotionListener = object : TriggerEventListener() {
+        override fun onTrigger(event: TriggerEvent?) {
+            motionConfidenceEngine.noteSignificantMotion(System.currentTimeMillis())
+            maybePromoteToSuspect("检测到显著运动")
+            registerSignificantMotionSensor(true)
         }
     }
 
-    private lateinit var fusedLocationClient: FusedLocationProviderClient
-    private lateinit var activityRecognitionClient: ActivityRecognitionClient
-    private lateinit var geofencingClient: GeofencingClient
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            refreshWifiSnapshot()
+        }
+
+        override fun onLost(network: Network) {
+            refreshWifiSnapshot()
+        }
+
+        override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+            refreshWifiSnapshot()
+        }
+    }
+
+    private lateinit var locationManager: LocationManager
+    private lateinit var sensorManager: SensorManager
+    private lateinit var wifiManager: WifiManager
+    private lateinit var connectivityManager: ConnectivityManager
+
+    private var stepCounterSensor: Sensor? = null
+    private var accelerometerSensor: Sensor? = null
+    private var significantMotionSensor: Sensor? = null
+
+    private var accelerometerRegistered = false
+    private var stepCounterRegistered = false
+    private var significantMotionRegistered = false
+    private var currentAccelerometerDelay = -1
+    private var networkCallbackRegistered = false
+
     private var currentSession: AutoTrackSession? = null
-    private var activityTransitionsRegistered = false
+    private var currentPhase = TrackingPhase.IDLE
+    private var phaseEnteredAt = 0L
     private var isLocationUpdatesActive = false
-    private var requestedPriority = -1
+    private var requestedHighAccuracy = false
     private var requestedIntervalMs = -1L
     private var requestedMinDistanceMeters = -1f
     private var stayAnchors: List<FrequentPlaceAnchor> = emptyList()
     private var insideAnchorIds: MutableSet<String> = mutableSetOf()
-    private var pendingMovementVerification: PendingMovementVerification? = null
-
-    private val finalizeRunnable = Runnable {
-        finalizeCurrentSession()
-    }
+    private var lastIdleScoutPoint: TrackPoint? = null
+    private var lastIdleScoutSamplePoint: TrackPoint? = null
+    private var currentWifiSnapshot = WifiSnapshot(false)
 
     override fun onCreate() {
         super.onCreate()
-        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-        activityRecognitionClient = ActivityRecognition.getClient(this)
-        geofencingClient = LocationServices.getGeofencingClient(this)
+        locationManager = getSystemService(LocationManager::class.java)
+        sensorManager = getSystemService(SensorManager::class.java)
+        wifiManager = applicationContext.getSystemService(WifiManager::class.java)
+        connectivityManager = getSystemService(ConnectivityManager::class.java)
+        stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+        accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        significantMotionSensor = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
         currentSession = AutoTrackStorage.loadSession(this)
         stayAnchors = FrequentPlaceStorage.loadAnchors(this)
         insideAnchorIds = FrequentPlaceStorage.loadInsideAnchorIds(this).toMutableSet()
-        createNotificationChannel()
+        registerNetworkCallback()
+        createNotificationChannelClean()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -150,47 +213,26 @@ class BackgroundTrackingService : Service() {
             ACTION_STOP -> {
                 AutoTrackStorage.setAutoTrackingEnabled(this, false)
                 AutoTrackStorage.saveUiState(this, AutoTrackUiState.DISABLED)
+                AutoTrackDiagnosticsStorage.markServiceStatus(this, "已关闭", "后台智能记录已停止")
                 stopAllTracking(clearSession = false)
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
             }
 
-            ACTION_GEOFENCE_TRANSITION -> {
-                ensureForeground()
-                val transition = intent.getIntExtra(EXTRA_GEOFENCE_TRANSITION, -1)
-                val ids = intent.getStringArrayListExtra(EXTRA_GEOFENCE_IDS).orEmpty()
-                handleGeofenceTransition(ids, transition)
-            }
-
-            ACTION_ACTIVITY_TRANSITION -> {
-                ensureForeground()
-                val activityType = intent.getIntExtra(EXTRA_ACTIVITY_TYPE, DetectedActivity.UNKNOWN)
-                val transitionType = intent.getIntExtra(
-                    EXTRA_TRANSITION_TYPE,
-                    ActivityTransition.ACTIVITY_TRANSITION_ENTER
-                )
-                handleActivityTransition(activityType, transitionType)
-            }
-
             else -> {
                 ensureForeground()
                 AutoTrackStorage.setAutoTrackingEnabled(this, true)
                 refreshFrequentPlaces()
-                registerActivityTransitionsIfPossible()
-                registerStayGeofencesIfPossible()
                 refreshInsideAnchorsFromLastKnownLocation()
+                refreshWifiSnapshot()
                 if (currentSession != null) {
-                    AutoTrackStorage.saveUiState(this, AutoTrackUiState.TRACKING)
-                    requestLocationUpdates(
-                        priority = Priority.PRIORITY_HIGH_ACCURACY,
-                        intervalMs = 5_000L,
-                        minDistanceMeters = 6f
-                    )
+                    motionConfidenceEngine.onActiveEntered()
+                    enterPhase(TrackingPhase.ACTIVE, "已恢复上一次未结束的行程", emitEvent = true)
+                    scheduleFinalizeForCurrentSession()
                 } else {
-                    AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
+                    enterPhase(TrackingPhase.IDLE, "后台等待自动识别出行", emitEvent = true)
                 }
-                updateNotification()
             }
         }
         return START_STICKY
@@ -198,6 +240,8 @@ class BackgroundTrackingService : Service() {
 
     override fun onDestroy() {
         stopAllTracking(clearSession = false)
+        AutoTrackDiagnosticsStorage.flush(this)
+        unregisterNetworkCallback()
         super.onDestroy()
     }
 
@@ -207,191 +251,334 @@ class BackgroundTrackingService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
     }
 
-    private fun handleActivityTransition(activityType: Int, transitionType: Int) {
-        when {
-            activityType == DetectedActivity.STILL &&
-                transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER -> {
-                pendingMovementVerification = null
-                stopLocationUpdates()
-                if (currentSession != null) {
-                    AutoTrackStorage.saveUiState(this, AutoTrackUiState.PAUSED_STILL)
-                    handler.removeCallbacks(finalizeRunnable)
-                    handler.postDelayed(finalizeRunnable, STILL_STOP_DELAY_MS)
-                    updateNotification(
-                        title = "\u6b63\u5728\u5224\u65ad\u672c\u6b21\u884c\u7a0b\u662f\u5426\u7ed3\u675f",
-                        content = "\u68c0\u6d4b\u5230\u4f60\u5df2\u9759\u6b62\uff0c2 \u5206\u949f\u540e\u4ecd\u9759\u6b62\u5c31\u4f1a\u81ea\u52a8\u4fdd\u5b58\u884c\u7a0b\u3002"
-                    )
-                }
+    private fun enterPhase(phase: TrackingPhase, reason: String, emitEvent: Boolean) {
+        currentPhase = phase
+        phaseEnteredAt = System.currentTimeMillis()
+        if (emitEvent) {
+            AutoTrackDiagnosticsStorage.markEvent(this, "${phaseLabel(phase)}：$reason")
+        }
+        when (phase) {
+            TrackingPhase.IDLE -> {
+                motionConfidenceEngine.onIdleEntered()
+                lastIdleScoutPoint = null
+                lastIdleScoutSamplePoint = null
+                requestIdleLocationUpdates()
+                seedIdleScoutBaselineFromLastKnownLocation()
+                AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
+                AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(phase), reason)
+                updateNotification(
+                    title = "智能轨迹已开启",
+                    content = "正在后台低功耗待命，检测到移动后会自动开始。"
+                )
             }
 
-            isMovingActivity(activityType) &&
-                transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER -> {
-                handler.removeCallbacks(finalizeRunnable)
-                if (shouldUseConservativeMovementVerification()) {
-                    enterConservativeMovementVerification()
-                } else {
-                    beginActiveTracking()
-                }
+            TrackingPhase.SUSPECT_MOVING -> {
+                requestSuspectLocationUpdates()
+                AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
+                AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(phase), reason)
+                updateNotification(
+                    title = "正在确认是否开始出行",
+                    content = "检测到运动迹象，正在提升采样频率确认是否出行。"
+                )
             }
 
-            activityType == DetectedActivity.STILL &&
-                transitionType == ActivityTransition.ACTIVITY_TRANSITION_EXIT -> {
-                handler.removeCallbacks(finalizeRunnable)
-                when {
-                    currentSession != null -> {
-                        AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
-                        requestLocationUpdates(
-                            priority = Priority.PRIORITY_HIGH_ACCURACY,
-                            intervalMs = 5_000L,
-                            minDistanceMeters = 6f
-                        )
-                        updateNotification()
-                    }
+            TrackingPhase.ACTIVE -> {
+                motionConfidenceEngine.onActiveEntered()
+                requestActiveLocationUpdates(speedMetersPerSecond = null)
+                AutoTrackStorage.saveUiState(this, AutoTrackUiState.TRACKING)
+                AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(phase), reason)
+                updateNotification()
+            }
 
-                    shouldUseConservativeMovementVerification() -> {
-                        enterConservativeMovementVerification()
-                    }
-                }
+            TrackingPhase.SUSPECT_STOPPING -> {
+                requestStoppingLocationUpdates()
+                AutoTrackStorage.saveUiState(this, AutoTrackUiState.PAUSED_STILL)
+                AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(phase), reason)
+                updateNotification(
+                    title = "正在判断本次行程是否结束",
+                    content = "检测到你可能已经停止移动，若持续静止将自动保存。"
+                )
             }
         }
-    }
-
-    private fun shouldUseConservativeMovementVerification(): Boolean {
-        return currentSession == null && insideAnchorIds.isNotEmpty()
-    }
-
-    private fun startOrResumeSession(updateMotionTimestamp: Boolean = true) {
-        val now = System.currentTimeMillis()
-        val updatedSession = (currentSession ?: AutoTrackSession(
-            startTimestamp = now,
-            lastMotionTimestamp = now,
-            totalDistanceKm = 0.0
-        )).copy(
-            lastMotionTimestamp = if (updateMotionTimestamp) {
-                now
-            } else {
-                currentSession?.lastMotionTimestamp ?: now
-            }
-        )
-        currentSession = updatedSession
-        AutoTrackStorage.saveSession(this, updatedSession)
-    }
-
-    private fun beginActiveTracking() {
-        pendingMovementVerification = null
-        AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
-        startOrResumeSession()
-        requestLocationUpdates(
-            priority = Priority.PRIORITY_HIGH_ACCURACY,
-            intervalMs = 5_000L,
-            minDistanceMeters = 6f
-        )
-        updateNotification()
-    }
-
-    private fun enterConservativeMovementVerification() {
-        pendingMovementVerification = PendingMovementVerification(
-            startedAt = System.currentTimeMillis(),
-            anchorIds = insideAnchorIds.toSet()
-        )
-        AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
-        requestLocationUpdates(
-            priority = Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-            intervalMs = 15_000L,
-            minDistanceMeters = 18f
-        )
-        updateNotification(
-            title = "\u5e38\u9a7b\u5730\u9644\u8fd1\u4f4e\u529f\u8017\u89c2\u5bdf\u4e2d",
-            content = "\u68c0\u6d4b\u5230\u4f60\u53ef\u80fd\u8fd8\u5728\u5bb6\u6216\u516c\u53f8\u9644\u8fd1\uff0c\u4f1a\u5148\u7528\u66f4\u7701\u7535\u7684\u65b9\u5f0f\u786e\u8ba4\u662f\u5426\u771f\u6b63\u79bb\u5f00\u3002"
-        )
+        updateSensorRegistration()
     }
 
     @SuppressLint("MissingPermission")
-    private fun requestLocationUpdates(priority: Int, intervalMs: Long, minDistanceMeters: Float) {
+    private fun requestLocationUpdates(highAccuracy: Boolean, intervalMs: Long, minDistanceMeters: Float) {
         if (!hasLocationPermission()) return
         if (isLocationUpdatesActive &&
-            requestedPriority == priority &&
+            requestedHighAccuracy == highAccuracy &&
             requestedIntervalMs == intervalMs &&
             requestedMinDistanceMeters == minDistanceMeters
         ) {
             return
         }
 
-        val request = LocationRequest.Builder(priority, intervalMs)
-            .setMinUpdateIntervalMillis(max(1_500L, intervalMs / 2))
-            .setMinUpdateDistanceMeters(minDistanceMeters)
-            .setMaxUpdateDelayMillis(intervalMs * 3)
-            .build()
+        val providers = collectEnabledProviders(highAccuracy)
+        if (providers.isEmpty()) {
+            stopLocationUpdates()
+            AutoTrackStorage.saveUiState(this, AutoTrackUiState.WAITING_PERMISSION)
+            AutoTrackDiagnosticsStorage.markServiceStatus(this, "定位服务未开启", "请打开系统定位后继续后台记录")
+            updateNotification(
+                title = "后台记录等待定位服务",
+                content = "系统定位当前不可用，打开定位后会继续自动记录。"
+            )
+            return
+        }
 
-        fusedLocationClient.removeLocationUpdates(locationCallback)
-        fusedLocationClient.requestLocationUpdates(request, locationCallback, Looper.getMainLooper())
+        locationManager.removeUpdates(locationListener)
+        providers.forEach { provider ->
+            locationManager.requestLocationUpdates(
+                provider,
+                intervalMs,
+                minDistanceMeters,
+                locationListener,
+                Looper.getMainLooper()
+            )
+        }
         isLocationUpdatesActive = true
-        requestedPriority = priority
+        requestedHighAccuracy = highAccuracy
         requestedIntervalMs = intervalMs
         requestedMinDistanceMeters = minDistanceMeters
     }
 
     private fun stopLocationUpdates() {
         if (!isLocationUpdatesActive) return
-        fusedLocationClient.removeLocationUpdates(locationCallback)
+        locationManager.removeUpdates(locationListener)
         isLocationUpdatesActive = false
-        requestedPriority = -1
+        requestedHighAccuracy = false
         requestedIntervalMs = -1L
         requestedMinDistanceMeters = -1f
     }
 
-    private fun finalizeCurrentSession() {
-        val session = currentSession ?: return
-        currentSession = null
-        pendingMovementVerification = null
-        AutoTrackStorage.clearSession(this)
-        stopLocationUpdates()
-
-        val durationSeconds = ((System.currentTimeMillis() - session.startTimestamp) / 1000L).toInt()
-        if (durationSeconds < MIN_USEFUL_DURATION_SECONDS && session.totalDistanceKm < MIN_USEFUL_DISTANCE_KM) {
-            AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
-            updateNotification(
-                title = "\u667a\u80fd\u8f68\u8ff9\u5df2\u5f00\u542f",
-                content = "\u5f53\u524d\u5904\u4e8e\u5f85\u547d\u72b6\u6001\uff0c\u68c0\u6d4b\u5230\u51fa\u884c\u540e\u4f1a\u81ea\u52a8\u8bb0\u5f55\u3002"
-            )
-            return
-        }
-
-        val averageSpeed = if (durationSeconds > 0) {
-            session.totalDistanceKm / (durationSeconds / 3600.0)
-        } else {
-            0.0
-        }
-        val historyItems = HistoryStorage.load(this)
-        val nextId = (historyItems.maxOfOrNull { it.id } ?: 0L) + 1L
-        historyItems.add(
-            0,
-            HistoryItem(
-                id = nextId,
-                timestamp = session.startTimestamp,
-                distanceKm = session.totalDistanceKm,
-                durationSeconds = durationSeconds,
-                averageSpeedKmh = averageSpeed,
-                points = session.points
-            )
-        )
-        HistoryStorage.save(this, historyItems)
-        refreshFrequentPlaces(historyItems)
-        AutoTrackStorage.saveUiState(this, AutoTrackUiState.SAVED_RECENTLY)
-        updateNotification(
-            title = "\u884c\u7a0b\u5df2\u81ea\u52a8\u4fdd\u5b58",
-            content = "\u5df2\u4e3a\u4f60\u4fdd\u5b58\u6700\u65b0\u4e00\u6bb5\u51fa\u884c\uff0c\u5f53\u524d\u7ee7\u7eed\u5728\u540e\u53f0\u5b88\u5019\u3002"
+    private fun requestIdleLocationUpdates() {
+        val insideAnchor = insideAnchorIds.isNotEmpty()
+        requestLocationUpdates(
+            highAccuracy = false,
+            intervalMs = if (insideAnchor) IDLE_INTERVAL_ANCHOR_MS else IDLE_INTERVAL_MS,
+            minDistanceMeters = if (insideAnchor) IDLE_MIN_DISTANCE_ANCHOR_METERS else IDLE_MIN_DISTANCE_METERS
         )
     }
 
+    private fun requestSuspectLocationUpdates() {
+        val sameAnchorWifi = wifiStayContext.isSameAnchorWifi(currentWifiSnapshot, insideAnchorIds.isNotEmpty())
+        requestLocationUpdates(
+            highAccuracy = !sameAnchorWifi,
+            intervalMs = SUSPECT_INTERVAL_MS,
+            minDistanceMeters = SUSPECT_MIN_DISTANCE_METERS
+        )
+    }
+
+    private fun requestStoppingLocationUpdates() {
+        requestLocationUpdates(
+            highAccuracy = false,
+            intervalMs = STOPPING_INTERVAL_MS,
+            minDistanceMeters = STOPPING_MIN_DISTANCE_METERS
+        )
+    }
+
+    private fun requestActiveLocationUpdates(speedMetersPerSecond: Float?) {
+        when {
+            speedMetersPerSecond != null && speedMetersPerSecond >= 10f -> {
+                requestLocationUpdates(true, ACTIVE_FAST_INTERVAL_MS, 12f)
+            }
+
+            speedMetersPerSecond != null && speedMetersPerSecond >= 3f -> {
+                requestLocationUpdates(true, ACTIVE_NORMAL_INTERVAL_MS, 8f)
+            }
+
+            else -> {
+                requestLocationUpdates(true, ACTIVE_SLOW_INTERVAL_MS, 5f)
+            }
+        }
+    }
+
     private fun handleLocationUpdate(location: Location) {
-        if (pendingMovementVerification != null && currentSession == null) {
-            handleConservativeVerificationLocation(location)
+        updateInsideAnchorsFromLocation(location)
+        if (currentSession == null) {
+            handleIdleOrSuspectLocation(location)
+        } else {
+            handleActiveLocation(location)
+        }
+    }
+
+    private fun handleIdleOrSuspectLocation(location: Location) {
+        val now = System.currentTimeMillis()
+        if (isLocationTooOld(location)) {
+            AutoTrackDiagnosticsStorage.markLocationDecision(
+                this,
+                "低功耗探测忽略过旧缓存定位",
+                0,
+                location.accuracy.takeIf { location.hasAccuracy() }
+            )
+            return
+        }
+        if (location.hasAccuracy() && location.accuracy > MAX_IDLE_ACCURACY_METERS) {
+            AutoTrackDiagnosticsStorage.markLocationDecision(
+                this,
+                "低功耗探测忽略低质量定位",
+                0,
+                location.accuracy
+            )
             return
         }
 
-        startOrResumeSession(updateMotionTimestamp = false)
+        val scoutPoint = convertToGcj02TrackPoint(location)
+        val baselinePoint = lastIdleScoutPoint
+        val previousScoutPoint = lastIdleScoutSamplePoint
+
+        if (baselinePoint == null) {
+            lastIdleScoutPoint = scoutPoint
+            lastIdleScoutSamplePoint = scoutPoint
+            AutoTrackDiagnosticsStorage.markLocationDecision(
+                this,
+                "低功耗探测已建立起点",
+                0,
+                location.accuracy.takeIf { location.hasAccuracy() }
+            )
+            return
+        }
+
+        if (previousScoutPoint != null &&
+            scoutPoint.timestampMillis - previousScoutPoint.timestampMillis > IDLE_BASELINE_RESET_GAP_MS
+        ) {
+            lastIdleScoutPoint = scoutPoint
+            lastIdleScoutSamplePoint = scoutPoint
+            AutoTrackDiagnosticsStorage.markLocationDecision(
+                this,
+                "低功耗探测刷新了观察基准点",
+                0,
+                location.accuracy.takeIf { location.hasAccuracy() }
+            )
+            return
+        }
+
+        val movedDistanceMeters = distanceBetween(baselinePoint, scoutPoint)
+        val sampleDistanceMeters = previousScoutPoint?.let { distanceBetween(it, scoutPoint) } ?: movedDistanceMeters
+        val baselineAccuracy = baselinePoint.accuracyMeters ?: 0f
+        val scoutAccuracy = scoutPoint.accuracyMeters ?: 0f
+        val effectiveDistanceMeters = max(
+            0f,
+            movedDistanceMeters - ((baselineAccuracy + scoutAccuracy) * 0.5f)
+        )
+        val timeDeltaMillis = scoutPoint.timestampMillis - baselinePoint.timestampMillis
+        val inferredSpeedMetersPerSecond = if (timeDeltaMillis > 0L) {
+            movedDistanceMeters / (timeDeltaMillis / 1000f)
+        } else {
+            0f
+        }
+        val motionSnapshot = buildMotionSnapshot(
+            effectiveDistanceMeters = effectiveDistanceMeters,
+            reportedSpeedMetersPerSecond = location.speed.takeIf { it >= 0f } ?: 0f,
+            inferredSpeedMetersPerSecond = inferredSpeedMetersPerSecond,
+            poorAccuracy = location.accuracy > 35f,
+            timestampMillis = now
+        )
+        val sameAnchorWifi = wifiStayContext.isSameAnchorWifi(currentWifiSnapshot, insideAnchorIds.isNotEmpty())
+        val triggerDistanceMeters = if (insideAnchorIds.isNotEmpty()) {
+            if (sameAnchorWifi) IDLE_TRIGGER_DISTANCE_ANCHOR_METERS + 20f else IDLE_TRIGGER_DISTANCE_ANCHOR_METERS
+        } else {
+            IDLE_TRIGGER_DISTANCE_METERS
+        }
+        val assistedTriggerDistanceMeters = if (insideAnchorIds.isNotEmpty()) {
+            if (sameAnchorWifi) IDLE_ASSIST_DISTANCE_ANCHOR_METERS + 12f else IDLE_ASSIST_DISTANCE_ANCHOR_METERS
+        } else {
+            IDLE_ASSIST_DISTANCE_METERS
+        }
+        val maxObservedSpeed = max(location.speed.takeIf { it >= 0f } ?: 0f, inferredSpeedMetersPerSecond)
+        val movingConfirmed = motionSnapshot.stronglyMoving ||
+            effectiveDistanceMeters >= triggerDistanceMeters ||
+            maxObservedSpeed >= IDLE_TRIGGER_SPEED_METERS_PER_SECOND ||
+            (effectiveDistanceMeters >= assistedTriggerDistanceMeters &&
+                motionSnapshot.movingLikely &&
+                inferredSpeedMetersPerSecond >= IDLE_TRIGGER_INFERRED_SPEED_METERS_PER_SECOND)
+
+        if (currentPhase == TrackingPhase.IDLE && motionSnapshot.movingLikely) {
+            enterPhase(
+                TrackingPhase.SUSPECT_MOVING,
+                "检测到运动迹象，${motionSnapshot.summary}",
+                emitEvent = true
+            )
+        }
+
+        if (movingConfirmed) {
+            beginActiveTracking("已确认开始移动，${motionSnapshot.summary}", location)
+            return
+        }
+
+        if (sampleDistanceMeters <= IDLE_STATIONARY_RESET_DISTANCE_METERS &&
+            maxObservedSpeed < 0.8f &&
+            !motionSnapshot.movingLikely
+        ) {
+            lastIdleScoutPoint = scoutPoint
+        }
+        lastIdleScoutSamplePoint = scoutPoint
+
+        if (currentPhase == TrackingPhase.SUSPECT_MOVING &&
+            now - phaseEnteredAt >= SUSPECT_MOVING_TIMEOUT_MS &&
+            !motionSnapshot.movingLikely
+        ) {
+            enterPhase(TrackingPhase.IDLE, "本轮移动证据不足，恢复低功耗待命", emitEvent = true)
+            return
+        }
+
+        AutoTrackDiagnosticsStorage.markLocationDecision(
+            this,
+            "${phaseLabel(currentPhase)} / ${motionSnapshot.summary} / 有效位移 ${effectiveDistanceMeters.toInt()} 米",
+            0,
+            location.accuracy.takeIf { location.hasAccuracy() }
+        )
+    }
+
+    private fun beginActiveTracking(reason: String, firstLocation: Location?) {
+        val now = System.currentTimeMillis()
+        val session = currentSession ?: AutoTrackSession(
+            startTimestamp = now,
+            lastMotionTimestamp = now,
+            totalDistanceKm = 0.0
+        )
+        currentSession = session.copy(lastMotionTimestamp = now)
+        AutoTrackStorage.saveSession(this, currentSession!!)
+        enterPhase(TrackingPhase.ACTIVE, reason, emitEvent = true)
+        firstLocation?.let(::appendLocationToCurrentSession)
+    }
+
+    private fun handleActiveLocation(location: Location) {
+        val now = System.currentTimeMillis()
+        val motionSnapshot = buildMotionSnapshot(
+            effectiveDistanceMeters = 0f,
+            reportedSpeedMetersPerSecond = location.speed.takeIf { it >= 0f } ?: 0f,
+            inferredSpeedMetersPerSecond = 0f,
+            poorAccuracy = location.accuracy > 35f,
+            timestampMillis = now
+        )
+
+        if (currentPhase == TrackingPhase.SUSPECT_STOPPING && motionSnapshot.movingLikely) {
+            enterPhase(TrackingPhase.ACTIVE, "检测到再次移动，继续记录", emitEvent = true)
+        }
+
         appendLocationToCurrentSession(location)
+
+        val session = currentSession ?: return
+        val quietForMillis = now - session.lastMotionTimestamp
+        val sensorsQuiet = !motionConfidenceEngine.hasRecentAccelerationMotion(now) &&
+            !motionConfidenceEngine.hasRecentStepMovement(now) &&
+            !motionConfidenceEngine.hasRecentSignificantMotion(now)
+        val lowSpeed = (location.speed.takeIf { it >= 0f } ?: 0f) < 0.9f
+
+        when {
+            currentPhase == TrackingPhase.ACTIVE &&
+                quietForMillis >= STOPPING_CONFIRM_DELAY_MS &&
+                sensorsQuiet &&
+                lowSpeed -> {
+                enterPhase(TrackingPhase.SUSPECT_STOPPING, "速度和传感器都趋于静止，开始观察是否结束", emitEvent = true)
+            }
+
+            currentPhase == TrackingPhase.SUSPECT_STOPPING &&
+                quietForMillis < STOPPING_CONFIRM_DELAY_MS / 2 -> {
+                enterPhase(TrackingPhase.ACTIVE, "检测到新的运动证据，恢复正常记录", emitEvent = true)
+            }
+        }
     }
 
     private fun appendLocationToCurrentSession(location: Location) {
@@ -402,14 +589,25 @@ class BackgroundTrackingService : Service() {
             candidatePoint = trackPoint,
             location = location
         )
+        val smoothedPoint = noiseResult.acceptedPoint?.let { accepted ->
+            AdaptiveTrackSmoother.smooth(
+                previousPoint = previousSession.points.lastOrNull(),
+                candidatePoint = accepted,
+                speedMetersPerSecond = location.speed.takeIf { it >= 0f } ?: 0f,
+                accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
+            )
+        }
+        val addedDistanceMeters = when {
+            smoothedPoint == null -> 0f
+            previousSession.points.isEmpty() -> 0f
+            else -> distanceBetween(previousSession.points.last(), smoothedPoint)
+        }
         val points = when (noiseResult.action) {
-            TrackNoiseAction.ACCEPT -> previousSession.points + requireNotNull(noiseResult.acceptedPoint)
+            TrackNoiseAction.ACCEPT -> previousSession.points + requireNotNull(smoothedPoint)
             TrackNoiseAction.MERGE_STILL,
             TrackNoiseAction.DROP_DRIFT,
             TrackNoiseAction.DROP_JUMP -> previousSession.points
         }
-        val acceptedPoint = noiseResult.acceptedPoint
-        val totalDistance = previousSession.totalDistanceKm + (noiseResult.distanceMeters / 1000.0)
 
         val updatedSession = previousSession.copy(
             lastMotionTimestamp = if (noiseResult.action == TrackNoiseAction.ACCEPT) {
@@ -417,84 +615,76 @@ class BackgroundTrackingService : Service() {
             } else {
                 previousSession.lastMotionTimestamp
             },
-            totalDistanceKm = totalDistance,
-            lastLatitude = acceptedPoint?.latitude ?: previousSession.lastLatitude,
-            lastLongitude = acceptedPoint?.longitude ?: previousSession.lastLongitude,
+            totalDistanceKm = previousSession.totalDistanceKm + (addedDistanceMeters / 1000.0),
+            lastLatitude = smoothedPoint?.latitude ?: previousSession.lastLatitude,
+            lastLongitude = smoothedPoint?.longitude ?: previousSession.lastLongitude,
             points = points
         )
         currentSession = updatedSession
         AutoTrackStorage.saveSession(this, updatedSession)
         AutoTrackStorage.saveUiState(this, AutoTrackUiState.TRACKING)
-        adaptLocationRequestForSpeed(location.speed)
+        AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(currentPhase))
+        AutoTrackDiagnosticsStorage.markLocationDecision(
+            this,
+            "${phaseLabel(currentPhase)} / ${locationDecisionLabel(noiseResult.action)}",
+            updatedSession.points.size,
+            location.accuracy.takeIf { location.hasAccuracy() }
+        )
+
+        if (noiseResult.action == TrackNoiseAction.ACCEPT) {
+            scheduleFinalizeForCurrentSession()
+        }
+
+        requestActiveLocationUpdates(location.speed.takeIf { it >= 0f })
         updateNotification()
     }
 
-    private fun handleConservativeVerificationLocation(location: Location) {
-        val verification = pendingMovementVerification ?: return
-        val trackPoint = convertToGcj02TrackPoint(location)
-        val originPoint = verification.originPoint ?: trackPoint
-        val distanceFromOrigin = if (verification.originPoint == null) {
-            0f
-        } else {
-            distanceBetween(originPoint, trackPoint)
-        }
-        val escapedStayZone = hasEscapedStayZone(trackPoint, verification.anchorIds)
-        val confirmedMovingAway = escapedStayZone ||
-            distanceFromOrigin >= STAY_ZONE_VERIFY_DISTANCE_METERS ||
-            location.speed >= STAY_ZONE_VERIFY_MIN_SPEED_METERS_PER_SECOND
-
-        if (confirmedMovingAway) {
-            pendingMovementVerification = null
-            beginActiveTracking()
-            appendLocationToCurrentSession(location)
-            return
-        }
-
-        pendingMovementVerification = verification.copy(originPoint = originPoint)
-        val verificationDuration = System.currentTimeMillis() - verification.startedAt
-        if (verificationDuration >= STAY_ZONE_VERIFY_TIMEOUT_MS) {
-            pendingMovementVerification = null
-            stopLocationUpdates()
-            AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
-            updateNotification(
-                title = "\u667a\u80fd\u8f68\u8ff9\u5df2\u5f00\u542f",
-                content = "\u76ee\u524d\u4ecd\u5728\u5e38\u9a7b\u5730\u9644\u8fd1\uff0c\u7ee7\u7eed\u4fdd\u6301\u4f4e\u529f\u8017\u5f85\u547d\uff0c\u79bb\u5f00\u540e\u518d\u63d0\u9ad8\u7075\u654f\u5ea6\u3002"
-            )
-            return
-        }
-
-        requestLocationUpdates(
-            priority = Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-            intervalMs = 15_000L,
-            minDistanceMeters = 18f
-        )
-        updateNotification(
-            title = "\u5e38\u9a7b\u5730\u9644\u8fd1\u4f4e\u529f\u8017\u89c2\u5bdf\u4e2d",
-            content = "\u76ee\u524d\u8fd8\u50cf\u662f\u5e38\u9a7b\u5730\u9644\u8fd1\u7684\u6d3b\u52a8\uff0c\u4f1a\u7b49\u786e\u8ba4\u79bb\u5f00\u540e\u518d\u5f00\u542f\u9ad8\u7cbe\u5ea6\u8f68\u8ff9\u3002"
-        )
+    private fun scheduleFinalizeForCurrentSession() {
+        val session = currentSession ?: return
+        handler.removeCallbacks(finalizeRunnable)
+        val delayMs = max(15_000L, session.lastMotionTimestamp + STILL_STOP_DELAY_MS - System.currentTimeMillis())
+        handler.postDelayed(finalizeRunnable, delayMs)
     }
 
-    private fun adaptLocationRequestForSpeed(speedMetersPerSecond: Float) {
-        if (!isLocationUpdatesActive) return
-        when {
-            speedMetersPerSecond >= 10f -> requestLocationUpdates(
-                priority = Priority.PRIORITY_HIGH_ACCURACY,
-                intervalMs = 2_500L,
-                minDistanceMeters = 12f
-            )
+    private fun finalizeCurrentSession() {
+        val session = currentSession ?: return
+        handler.removeCallbacks(finalizeRunnable)
+        currentSession = null
+        AutoTrackStorage.clearSession(this)
+        stopLocationUpdates()
 
-            speedMetersPerSecond >= 3f -> requestLocationUpdates(
-                priority = Priority.PRIORITY_HIGH_ACCURACY,
-                intervalMs = 4_000L,
-                minDistanceMeters = 8f
+        val durationSeconds = currentSessionDurationSeconds(session)
+        if (durationSeconds < MIN_USEFUL_DURATION_SECONDS && session.totalDistanceKm < MIN_USEFUL_DISTANCE_KM) {
+            AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
+            AutoTrackDiagnosticsStorage.markSessionDiscarded(
+                this,
+                "本次行程未保存：时长 ${durationSeconds} 秒，距离 ${formatDistance(session.totalDistanceKm)}，低于保存阈值"
             )
-
-            else -> requestLocationUpdates(
-                priority = Priority.PRIORITY_BALANCED_POWER_ACCURACY,
-                intervalMs = 8_000L,
-                minDistanceMeters = 5f
-            )
+            enterPhase(TrackingPhase.IDLE, "本段行程过短，已恢复待命", emitEvent = true)
+            return
         }
+
+        val averageSpeedKmh = if (durationSeconds > 0) {
+            session.totalDistanceKm / (durationSeconds / 3600.0)
+        } else {
+            0.0
+        }
+        val historyItem = HistoryItem(
+            id = HistoryStorage.nextHistoryId(this),
+            timestamp = session.startTimestamp,
+            distanceKm = session.totalDistanceKm,
+            durationSeconds = durationSeconds,
+            averageSpeedKmh = averageSpeedKmh,
+            points = session.points
+        )
+        HistoryStorage.add(this, historyItem)
+        refreshFrequentPlaces()
+        AutoTrackStorage.saveUiState(this, AutoTrackUiState.SAVED_RECENTLY)
+        AutoTrackDiagnosticsStorage.markSessionSaved(
+            this,
+            "已保存 ${formatDistance(session.totalDistanceKm)} / ${durationSeconds / 60} 分钟"
+        )
+        enterPhase(TrackingPhase.IDLE, "本次行程已自动保存，继续后台待命", emitEvent = true)
     }
 
     private fun evaluateTrackPoint(
@@ -511,15 +701,12 @@ class BackgroundTrackingService : Service() {
             ) {
                 TrackNoiseResult(TrackNoiseAction.DROP_DRIFT)
             } else {
-                TrackNoiseResult(
-                    action = TrackNoiseAction.ACCEPT,
-                    acceptedPoint = candidatePoint
-                )
+                TrackNoiseResult(TrackNoiseAction.ACCEPT, acceptedPoint = candidatePoint)
             }
         }
 
         val distanceMeters = distanceBetween(lastPoint, candidatePoint)
-        val jitterThreshold = maxOf(
+        val jitterThreshold = max(
             MIN_ACCEPTED_POINT_DISTANCE_METERS,
             minOf(MAX_STATIONARY_JITTER_METERS, candidateAccuracy * 0.28f)
         )
@@ -527,7 +714,7 @@ class BackgroundTrackingService : Service() {
             return TrackNoiseResult(TrackNoiseAction.MERGE_STILL)
         }
 
-        val driftDistanceThreshold = maxOf(20f, candidateAccuracy * 0.7f)
+        val driftDistanceThreshold = max(20f, candidateAccuracy * 0.7f)
         if (candidateAccuracy >= MAX_POOR_ACCURACY_METERS &&
             candidateSpeed <= LOW_SPEED_METERS_PER_SECOND + 0.7f &&
             distanceMeters <= driftDistanceThreshold
@@ -538,8 +725,8 @@ class BackgroundTrackingService : Service() {
         val timeDeltaMillis = candidatePoint.timestampMillis - lastPoint.timestampMillis
         if (timeDeltaMillis in MIN_JUMP_TIME_DELTA_MS..MAX_JUMP_TIME_DELTA_MS) {
             val inferredSpeed = distanceMeters / (timeDeltaMillis / 1000f)
-            val reportedSpeedAllowance = maxOf(18f, candidateSpeed * 3.2f + 12f)
-            if (distanceMeters >= maxOf(MAX_JUMP_DISTANCE_METERS, candidateAccuracy * 2.5f) &&
+            val reportedSpeedAllowance = max(18f, candidateSpeed * 3.2f + 12f)
+            if (distanceMeters >= max(MAX_JUMP_DISTANCE_METERS, candidateAccuracy * 2.5f) &&
                 inferredSpeed >= MAX_JUMP_SPEED_METERS_PER_SECOND &&
                 inferredSpeed > reportedSpeedAllowance
             ) {
@@ -558,16 +745,242 @@ class BackgroundTrackingService : Service() {
         )
     }
 
-    private fun distanceBetween(first: TrackPoint, second: TrackPoint): Float {
-        val result = FloatArray(1)
-        Location.distanceBetween(
-            first.latitude,
-            first.longitude,
-            second.latitude,
-            second.longitude,
-            result
+    private fun buildMotionSnapshot(
+        effectiveDistanceMeters: Float,
+        reportedSpeedMetersPerSecond: Float,
+        inferredSpeedMetersPerSecond: Float,
+        poorAccuracy: Boolean,
+        timestampMillis: Long
+    ): MotionScoreSnapshot {
+        return motionConfidenceEngine.evaluate(
+            nowMillis = timestampMillis,
+            signals = MotionSignals(
+                stepDelta = motionConfidenceEngine.currentStepDelta(),
+                effectiveDistanceMeters = effectiveDistanceMeters,
+                reportedSpeedMetersPerSecond = reportedSpeedMetersPerSecond,
+                inferredSpeedMetersPerSecond = inferredSpeedMetersPerSecond,
+                insideAnchor = insideAnchorIds.isNotEmpty(),
+                sameAnchorWifi = wifiStayContext.isSameAnchorWifi(currentWifiSnapshot, insideAnchorIds.isNotEmpty()),
+                poorAccuracy = poorAccuracy
+            )
         )
-        return result[0]
+    }
+
+    private fun maybePromoteToSuspect(reason: String) {
+        val snapshot = buildMotionSnapshot(
+            effectiveDistanceMeters = 0f,
+            reportedSpeedMetersPerSecond = 0f,
+            inferredSpeedMetersPerSecond = 0f,
+            poorAccuracy = false,
+            timestampMillis = System.currentTimeMillis()
+        )
+        when {
+            currentSession != null && currentPhase == TrackingPhase.SUSPECT_STOPPING && snapshot.movingLikely -> {
+                enterPhase(TrackingPhase.ACTIVE, "$reason，恢复正常记录", emitEvent = true)
+            }
+
+            currentSession == null && currentPhase == TrackingPhase.IDLE && snapshot.movingLikely -> {
+                enterPhase(TrackingPhase.SUSPECT_MOVING, "$reason，${snapshot.summary}", emitEvent = true)
+            }
+        }
+    }
+
+    private fun updateSensorRegistration() {
+        val accelerometerDelay = when (currentPhase) {
+            TrackingPhase.SUSPECT_MOVING,
+            TrackingPhase.SUSPECT_STOPPING -> SensorManager.SENSOR_DELAY_UI
+            TrackingPhase.ACTIVE,
+            TrackingPhase.IDLE -> SensorManager.SENSOR_DELAY_NORMAL
+        }
+        registerAccelerometerIfNeeded(accelerometerDelay)
+        registerStepCounterIfNeeded(enable = hasActivityRecognitionPermission())
+        registerSignificantMotionSensor(enable = hasActivityRecognitionPermission())
+    }
+
+    private fun registerAccelerometerIfNeeded(delay: Int) {
+        val sensor = accelerometerSensor ?: return
+        if (accelerometerRegistered && currentAccelerometerDelay == delay) return
+        if (accelerometerRegistered) {
+            sensorManager.unregisterListener(sensorListener, sensor)
+        }
+        sensorManager.registerListener(sensorListener, sensor, delay)
+        accelerometerRegistered = true
+        currentAccelerometerDelay = delay
+    }
+
+    private fun registerStepCounterIfNeeded(enable: Boolean) {
+        val sensor = stepCounterSensor ?: return
+        if (enable && !stepCounterRegistered) {
+            sensorManager.registerListener(sensorListener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+            stepCounterRegistered = true
+        } else if (!enable && stepCounterRegistered) {
+            sensorManager.unregisterListener(sensorListener, sensor)
+            stepCounterRegistered = false
+        }
+    }
+
+    private fun registerSignificantMotionSensor(enable: Boolean) {
+        val sensor = significantMotionSensor ?: return
+        if (enable && !significantMotionRegistered) {
+            significantMotionRegistered = sensorManager.requestTriggerSensor(significantMotionListener, sensor)
+        } else if (!enable && significantMotionRegistered) {
+            sensorManager.cancelTriggerSensor(significantMotionListener, sensor)
+            significantMotionRegistered = false
+        }
+    }
+
+    private fun handleAccelerometerChanged(values: FloatArray) {
+        if (values.size < 3) return
+        val magnitude = sqrt(values[0] * values[0] + values[1] * values[1] + values[2] * values[2])
+        val linearAcceleration = abs(magnitude - SensorManager.GRAVITY_EARTH)
+        accelerationWindow.addLast(linearAcceleration)
+        if (accelerationWindow.size > ACCELERATION_WINDOW_SIZE) {
+            accelerationWindow.removeFirst()
+        }
+        if (accelerationWindow.size < ACCELERATION_WINDOW_SIZE) return
+
+        val average = accelerationWindow.average().toFloat()
+        val variance = accelerationWindow
+            .map { (it - average) * (it - average) }
+            .average()
+            .toFloat()
+        motionConfidenceEngine.noteAccelerationVariance(variance, System.currentTimeMillis())
+        if (variance >= 0.85f) {
+            maybePromoteToSuspect("加速度波动明显")
+        }
+    }
+
+    private fun handleStepCounterChanged(totalSteps: Float?) {
+        totalSteps ?: return
+        val delta = motionConfidenceEngine.noteStepCount(totalSteps, System.currentTimeMillis())
+        if (delta <= 0) return
+        when {
+            currentSession != null && currentPhase == TrackingPhase.SUSPECT_STOPPING -> {
+                enterPhase(TrackingPhase.ACTIVE, "步数再次增加，恢复轨迹记录", emitEvent = true)
+            }
+
+            currentSession == null -> {
+                maybePromoteToSuspect("检测到步数变化")
+            }
+        }
+    }
+
+    private fun refreshFrequentPlaces(historyItems: List<HistoryItem> = HistoryStorage.load(this)) {
+        stayAnchors = FrequentPlaceDetector.buildAnchors(historyItems)
+        FrequentPlaceStorage.saveAnchors(this, stayAnchors)
+        val retainedIds = insideAnchorIds.filterTo(mutableSetOf()) { currentId ->
+            stayAnchors.any { it.id == currentId }
+        }
+        persistInsideAnchorIdsIfChanged(retainedIds)
+    }
+
+    private fun refreshInsideAnchorsFromLastKnownLocation() {
+        loadBestLastKnownLocation()?.let(::updateInsideAnchorsFromLocation)
+    }
+
+    private fun updateInsideAnchorsFromLocation(location: Location) {
+        if (stayAnchors.isEmpty()) {
+            persistInsideAnchorIdsIfChanged(emptySet())
+            return
+        }
+        val point = convertToGcj02TrackPoint(location)
+        val updatedIds = stayAnchors.filter { anchor ->
+            distanceBetween(anchor.latitude, anchor.longitude, point.latitude, point.longitude) <= anchor.radiusMeters
+        }.map { it.id }.toSet()
+        persistInsideAnchorIdsIfChanged(updatedIds)
+        wifiStayContext.update(currentWifiSnapshot, insideAnchorIds.isNotEmpty())
+    }
+
+    private fun persistInsideAnchorIdsIfChanged(newIds: Set<String>) {
+        if (insideAnchorIds == newIds) return
+        insideAnchorIds = newIds.toMutableSet()
+        FrequentPlaceStorage.saveInsideAnchorIds(this, insideAnchorIds)
+    }
+
+    private fun seedIdleScoutBaselineFromLastKnownLocation() {
+        if (lastIdleScoutPoint != null) return
+        val lastKnownLocation = loadBestLastKnownLocation() ?: return
+        if (isLocationTooOld(lastKnownLocation)) return
+        if (lastKnownLocation.hasAccuracy() && lastKnownLocation.accuracy > MAX_IDLE_ACCURACY_METERS) return
+        val baseline = convertToGcj02TrackPoint(lastKnownLocation)
+        lastIdleScoutPoint = baseline
+        lastIdleScoutSamplePoint = baseline
+        AutoTrackDiagnosticsStorage.markLocationDecision(
+            this,
+            "低功耗探测已加载最近定位作为基准",
+            0,
+            lastKnownLocation.accuracy.takeIf { lastKnownLocation.hasAccuracy() }
+        )
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun loadBestLastKnownLocation(): Location? {
+        if (!hasLocationPermission()) return null
+        val hasFineLocation = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        return LocationSelectionUtils.loadBestLastKnownLocation(
+            locationManager = locationManager,
+            hasFineLocation = hasFineLocation,
+            maxAgeMs = MAX_LAST_KNOWN_LOCATION_AGE_MS
+        )
+    }
+
+    @Suppress("DEPRECATION")
+    private fun refreshWifiSnapshot() {
+        val info = runCatching { wifiManager.connectionInfo }.getOrNull()
+        val bssid = info?.bssid?.takeUnless { it.isNullOrBlank() || it == "02:00:00:00:00:00" }
+        val ssid = info?.ssid
+            ?.takeUnless { it.isNullOrBlank() || it == WifiManager.UNKNOWN_SSID }
+            ?.trim('"')
+        val connected = info?.networkId?.takeIf { it != -1 } != null && bssid != null
+        currentWifiSnapshot = WifiSnapshot(
+            isConnected = connected,
+            ssid = ssid,
+            bssid = bssid
+        )
+        wifiStayContext.update(currentWifiSnapshot, insideAnchorIds.isNotEmpty())
+    }
+
+    private fun registerNetworkCallback() {
+        if (networkCallbackRegistered) return
+        connectivityManager.registerDefaultNetworkCallback(networkCallback)
+        networkCallbackRegistered = true
+    }
+
+    private fun unregisterNetworkCallback() {
+        if (!networkCallbackRegistered) return
+        connectivityManager.unregisterNetworkCallback(networkCallback)
+        networkCallbackRegistered = false
+    }
+
+    private fun collectEnabledProviders(highAccuracy: Boolean): List<String> {
+        val providers = mutableListOf<String>()
+        val hasFineLocation = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!highAccuracy && isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+            providers += LocationManager.NETWORK_PROVIDER
+        }
+        if (hasFineLocation && isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+            providers += LocationManager.GPS_PROVIDER
+        }
+        if (highAccuracy &&
+            LocationManager.NETWORK_PROVIDER !in providers &&
+            isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+        ) {
+            providers += LocationManager.NETWORK_PROVIDER
+        }
+        if (providers.isEmpty() && isProviderEnabled(LocationManager.PASSIVE_PROVIDER)) {
+            providers += LocationManager.PASSIVE_PROVIDER
+        }
+        return providers
+    }
+
+    private fun isProviderEnabled(provider: String): Boolean {
+        return runCatching { locationManager.isProviderEnabled(provider) }.getOrDefault(false)
     }
 
     private fun convertToGcj02TrackPoint(location: Location): TrackPoint {
@@ -583,151 +996,67 @@ class BackgroundTrackingService : Service() {
         )
     }
 
-    private fun hasEscapedStayZone(trackPoint: TrackPoint, anchorIds: Set<String>): Boolean {
-        val relevantAnchors = stayAnchors.filter { it.id in anchorIds }
-        if (relevantAnchors.isEmpty()) return true
-        return relevantAnchors.none { anchor ->
-            distanceBetween(
-                anchor.latitude,
-                anchor.longitude,
-                trackPoint.latitude,
-                trackPoint.longitude
-            ) <= anchor.radiusMeters + STAY_ZONE_EXIT_MARGIN_METERS
+    private fun isLocationTooOld(location: Location): Boolean {
+        val locationTime = location.time.takeIf { it > 0L } ?: return false
+        return System.currentTimeMillis() - locationTime > MAX_IDLE_LOCATION_AGE_MS
+    }
+
+    private fun distanceBetween(first: TrackPoint, second: TrackPoint): Float {
+        return distanceBetween(first.latitude, first.longitude, second.latitude, second.longitude)
+    }
+
+    private fun distanceBetween(
+        firstLatitude: Double,
+        firstLongitude: Double,
+        secondLatitude: Double,
+        secondLongitude: Double
+    ): Float {
+        val result = FloatArray(1)
+        Location.distanceBetween(firstLatitude, firstLongitude, secondLatitude, secondLongitude, result)
+        return result[0]
+    }
+
+    private fun phaseLabel(phase: TrackingPhase): String {
+        return when (phase) {
+            TrackingPhase.IDLE -> "后台待命中"
+            TrackingPhase.SUSPECT_MOVING -> "疑似移动中"
+            TrackingPhase.ACTIVE -> "记录进行中"
+            TrackingPhase.SUSPECT_STOPPING -> "疑似停止中"
         }
     }
 
-    private fun handleGeofenceTransition(ids: List<String>, transition: Int) {
-        if (ids.isEmpty()) return
-        when (transition) {
-            Geofence.GEOFENCE_TRANSITION_ENTER -> insideAnchorIds.addAll(ids)
-            Geofence.GEOFENCE_TRANSITION_EXIT -> insideAnchorIds.removeAll(ids.toSet())
-            else -> return
-        }
-        insideAnchorIds.retainAll(stayAnchors.map { it.id }.toSet())
-        FrequentPlaceStorage.saveInsideAnchorIds(this, insideAnchorIds)
-
-        if (transition == Geofence.GEOFENCE_TRANSITION_ENTER && currentSession == null && pendingMovementVerification == null) {
-            stopLocationUpdates()
-            AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
-            updateNotification(
-                title = "\u667a\u80fd\u8f68\u8ff9\u5df2\u5f00\u542f",
-                content = "\u5df2\u8fdb\u5165\u5e38\u9a7b\u5730\u533a\u57df\uff0c\u5207\u6362\u4e3a\u66f4\u7701\u7535\u7684\u5f85\u547d\u7b56\u7565\u3002"
-            )
+    private fun locationDecisionLabel(action: TrackNoiseAction): String {
+        return when (action) {
+            TrackNoiseAction.ACCEPT -> "定位点已接收"
+            TrackNoiseAction.MERGE_STILL -> "静止抖动已合并"
+            TrackNoiseAction.DROP_DRIFT -> "漂移点已过滤"
+            TrackNoiseAction.DROP_JUMP -> "急跳点已过滤"
         }
     }
 
-    @SuppressLint("MissingPermission")
-    private fun registerActivityTransitionsIfPossible() {
-        if (activityTransitionsRegistered || !hasLocationPermission() || !hasActivityRecognitionPermission()) {
-            return
-        }
-        val transitions = listOf(
-            DetectedActivity.STILL,
-            DetectedActivity.WALKING,
-            DetectedActivity.RUNNING,
-            DetectedActivity.ON_FOOT,
-            DetectedActivity.ON_BICYCLE,
-            DetectedActivity.IN_VEHICLE
-        ).flatMap { activityType ->
-            listOf(
-                ActivityTransition.Builder()
-                    .setActivityType(activityType)
-                    .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
-                    .build(),
-                ActivityTransition.Builder()
-                    .setActivityType(activityType)
-                    .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_EXIT)
-                    .build()
-            )
-        }
-
-        activityRecognitionClient.requestActivityTransitionUpdates(
-            ActivityTransitionRequest(transitions),
-            transitionPendingIntent()
-        ).addOnSuccessListener {
-            activityTransitionsRegistered = true
-        }
+    private fun formatDistance(distanceKm: Double): String {
+        return String.format(Locale.getDefault(), "%.2f 公里", distanceKm)
     }
 
-    @SuppressLint("MissingPermission")
-    private fun registerStayGeofencesIfPossible() {
-        if (!hasLocationPermission()) return
-        geofencingClient.removeGeofences(geofencePendingIntent())
-        if (stayAnchors.isEmpty()) return
+    private fun defaultNotificationTitle(): String {
+        return if (currentSession != null) "正在智能记录行程" else "智能轨迹已开启"
+    }
 
-        val geofences = stayAnchors.map { anchor ->
-            Geofence.Builder()
-                .setRequestId(anchor.id)
-                .setCircularRegion(anchor.latitude, anchor.longitude, anchor.radiusMeters)
-                .setTransitionTypes(
-                    Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT
-                )
-                .setNotificationResponsiveness(2 * 60 * 1000)
-                .setExpirationDuration(Geofence.NEVER_EXPIRE)
-                .build()
-        }
-
-        val request = GeofencingRequest.Builder()
-            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
-            .addGeofences(geofences)
-            .build()
-
-        geofencingClient.addGeofences(request, geofencePendingIntent())
-            .addOnFailureListener { exception ->
-                val code = (exception as? com.google.android.gms.common.api.ApiException)?.statusCode
-                if (code == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE) {
-                    stopLocationUpdates()
-                }
+    private fun defaultNotificationContent(): String {
+        return when (currentPhase) {
+            TrackingPhase.IDLE -> "正在后台低功耗待命，检测到移动后会自动开始。"
+            TrackingPhase.SUSPECT_MOVING -> "检测到运动迹象，正在提升采样频率确认是否出行。"
+            TrackingPhase.ACTIVE -> {
+                val distance = currentSession?.totalDistanceKm ?: 0.0
+                "已记录 ${String.format(Locale.getDefault(), "%.2f", distance)} 公里，静止后会自动保存。"
             }
-    }
-
-    private fun unregisterActivityTransitions() {
-        if (!activityTransitionsRegistered) return
-        activityRecognitionClient.removeActivityTransitionUpdates(transitionPendingIntent())
-        activityTransitionsRegistered = false
-    }
-
-    private fun unregisterStayGeofences() {
-        geofencingClient.removeGeofences(geofencePendingIntent())
-    }
-
-    private fun transitionPendingIntent(): PendingIntent {
-        val intent = Intent(this, ActivityTransitionReceiver::class.java).apply {
-            action = ACTION_ACTIVITY_TRANSITION
+            TrackingPhase.SUSPECT_STOPPING -> "正在判断本次行程是否结束，若持续静止将自动保存。"
         }
-        return PendingIntent.getBroadcast(
-            this,
-            2201,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-    }
-
-    private fun geofencePendingIntent(): PendingIntent {
-        val intent = Intent(this, GeofenceTransitionReceiver::class.java).apply {
-            action = ACTION_GEOFENCE_TRANSITION
-        }
-        return PendingIntent.getBroadcast(
-            this,
-            2203,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
     }
 
     private fun buildNotification(
-        title: String = if (currentSession != null) {
-            "\u6b63\u5728\u667a\u80fd\u8bb0\u5f55\u884c\u7a0b"
-        } else {
-            "\u667a\u80fd\u8f68\u8ff9\u5df2\u5f00\u542f"
-        },
-        content: String = if (currentSession != null) {
-            val session = currentSession
-            val distance = session?.totalDistanceKm ?: 0.0
-            "\u5df2\u8bb0\u5f55 %.2f \u516c\u91cc\uff0c\u9759\u6b62\u4e00\u6bb5\u65f6\u95f4\u540e\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002".format(distance)
-        } else {
-            "\u6b63\u5728\u540e\u53f0\u5b88\u5019\u4f60\u7684\u51fa\u884c\uff0c\u68c0\u6d4b\u5230\u79fb\u52a8\u540e\u4f1a\u81ea\u52a8\u5f00\u59cb\u3002"
-        }
+        title: String = resolvedNotificationTitle(),
+        content: String = resolvedNotificationContent()
     ): Notification {
         val launchIntent = Intent(this, MainActivity::class.java)
         val launchPendingIntent = PendingIntent.getActivity(
@@ -738,9 +1067,11 @@ class BackgroundTrackingService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_tab_record)
-            .setContentTitle(title)
-            .setContentText(content)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setContentTitle(TrackingTextSanitizer.normalize(title))
+            .setContentText(TrackingTextSanitizer.normalize(content))
+            .setStyle(
+                NotificationCompat.BigTextStyle().bigText(TrackingTextSanitizer.normalize(content))
+            )
             .setContentIntent(launchPendingIntent)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
@@ -748,20 +1079,17 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun updateNotification(
-        title: String = if (currentSession != null) {
-            "\u6b63\u5728\u667a\u80fd\u8bb0\u5f55\u884c\u7a0b"
-        } else {
-            "\u667a\u80fd\u8f68\u8ff9\u5df2\u5f00\u542f"
-        },
-        content: String = if (currentSession != null) {
-            val distance = currentSession?.totalDistanceKm ?: 0.0
-            "\u5df2\u8bb0\u5f55 %.2f \u516c\u91cc\uff0c\u9759\u6b62\u4e00\u6bb5\u65f6\u95f4\u540e\u4f1a\u81ea\u52a8\u4fdd\u5b58\u3002".format(distance)
-        } else {
-            "\u6b63\u5728\u540e\u53f0\u5b88\u5019\u4f60\u7684\u51fa\u884c\uff0c\u68c0\u6d4b\u5230\u79fb\u52a8\u540e\u4f1a\u81ea\u52a8\u5f00\u59cb\u3002"
-        }
+        title: String = resolvedNotificationTitle(),
+        content: String = resolvedNotificationContent()
     ) {
         val manager = getSystemService(NotificationManager::class.java)
-        manager.notify(NOTIFICATION_ID, buildNotification(title, content))
+        manager.notify(
+            NOTIFICATION_ID,
+            buildNotification(
+                title = TrackingTextSanitizer.normalize(title),
+                content = TrackingTextSanitizer.normalize(content)
+            )
+        )
     }
 
     private fun createNotificationChannel() {
@@ -769,20 +1097,28 @@ class BackgroundTrackingService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "\u667a\u80fd\u8f68\u8ff9\u8bb0\u5f55",
+            "智能轨迹记录",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "\u7528\u4e8e\u5728\u540e\u53f0\u6301\u7eed\u5b88\u5019\u4f60\u7684\u51fa\u884c"
+            description = "用于在后台持续守候你的出行"
         }
         manager.createNotificationChannel(channel)
     }
 
     private fun stopAllTracking(clearSession: Boolean) {
         handler.removeCallbacks(finalizeRunnable)
-        pendingMovementVerification = null
         stopLocationUpdates()
-        unregisterActivityTransitions()
-        unregisterStayGeofences()
+        sensorManager.unregisterListener(sensorListener)
+        registerSignificantMotionSensor(false)
+        accelerometerRegistered = false
+        stepCounterRegistered = false
+        significantMotionRegistered = false
+        currentAccelerometerDelay = -1
+        accelerationWindow.clear()
+        wifiStayContext.clear()
+        motionConfidenceEngine.resetAll()
+        lastIdleScoutPoint = null
+        lastIdleScoutSamplePoint = null
         if (clearSession) {
             currentSession = null
             AutoTrackStorage.clearSession(this)
@@ -807,55 +1143,46 @@ class BackgroundTrackingService : Service() {
             ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun isMovingActivity(activityType: Int): Boolean {
-        return activityType == DetectedActivity.WALKING ||
-            activityType == DetectedActivity.RUNNING ||
-            activityType == DetectedActivity.ON_FOOT ||
-            activityType == DetectedActivity.ON_BICYCLE ||
-            activityType == DetectedActivity.IN_VEHICLE
-    }
-
-    private fun refreshFrequentPlaces(historyItems: List<HistoryItem> = HistoryStorage.load(this)) {
-        stayAnchors = FrequentPlaceDetector.buildAnchors(historyItems)
-        FrequentPlaceStorage.saveAnchors(this, stayAnchors)
-        insideAnchorIds.retainAll(stayAnchors.map { it.id }.toSet())
-        FrequentPlaceStorage.saveInsideAnchorIds(this, insideAnchorIds)
-        registerStayGeofencesIfPossible()
-    }
-
-    @SuppressLint("MissingPermission")
-    private fun refreshInsideAnchorsFromLastKnownLocation() {
-        if (!hasLocationPermission() || stayAnchors.isEmpty()) return
-        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
-            if (location == null) return@addOnSuccessListener
-            val trackPoint = convertToGcj02TrackPoint(location)
-            val currentInsideIds = stayAnchors.filter { anchor ->
-                distanceBetween(
-                    anchor.latitude,
-                    anchor.longitude,
-                    trackPoint.latitude,
-                    trackPoint.longitude
-                ) <= anchor.radiusMeters
-            }.map { it.id }.toMutableSet()
-            insideAnchorIds = currentInsideIds
-            FrequentPlaceStorage.saveInsideAnchorIds(this, insideAnchorIds)
+    private fun resolvedNotificationTitle(): String {
+        return if (currentSession != null) {
+            "正在智能记录行程"
+        } else {
+            "智能轨迹已开启"
         }
     }
 
-    private fun distanceBetween(
-        firstLatitude: Double,
-        firstLongitude: Double,
-        secondLatitude: Double,
-        secondLongitude: Double
-    ): Float {
-        val result = FloatArray(1)
-        Location.distanceBetween(
-            firstLatitude,
-            firstLongitude,
-            secondLatitude,
-            secondLongitude,
-            result
+    private fun resolvedNotificationContent(): String {
+        return when (currentPhase) {
+            TrackingPhase.IDLE -> "正在后台低功耗待命，检测到移动后会自动开始。"
+            TrackingPhase.SUSPECT_MOVING -> "检测到运动迹象，正在提升采样频率确认是否出行。"
+            TrackingPhase.ACTIVE -> {
+                val distance = currentSession?.totalDistanceKm ?: 0.0
+                "已记录 ${String.format(Locale.getDefault(), "%.2f", distance)} 公里，静止后会自动保存。"
+            }
+            TrackingPhase.SUSPECT_STOPPING -> "正在判断本次行程是否结束，若持续静止将自动保存。"
+        }
+    }
+
+    private fun currentSessionDurationSeconds(session: AutoTrackSession): Int {
+        val effectiveEndTimestamp = max(
+            session.lastMotionTimestamp,
+            session.points.lastOrNull()?.timestampMillis ?: session.lastMotionTimestamp
         )
-        return result[0]
+        return ((effectiveEndTimestamp - session.startTimestamp) / 1000L)
+            .toInt()
+            .coerceAtLeast(0)
+    }
+
+    private fun createNotificationChannelClean() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(NotificationManager::class.java)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "智能轨迹记录",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "用于在后台持续守候你的出行"
+        }
+        manager.createNotificationChannel(channel)
     }
 }
