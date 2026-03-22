@@ -10,17 +10,16 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryStorage
-import com.amap.api.maps.AMap
-import com.amap.api.maps.CameraUpdateFactory
-import com.amap.api.maps.MapView
-import com.amap.api.maps.MapsInitializer
-import com.amap.api.maps.model.BitmapDescriptorFactory
-import com.amap.api.maps.model.LatLng
-import com.amap.api.maps.model.LatLngBounds
-import com.amap.api.maps.model.Marker
-import com.amap.api.maps.model.MarkerOptions
-import com.amap.api.maps.model.Polyline
-import com.amap.api.maps.model.PolylineOptions
+import com.wenhao.record.map.MapMarkerIconFactory
+import com.baidu.mapapi.map.BaiduMap
+import com.baidu.mapapi.map.MapStatusUpdateFactory
+import com.baidu.mapapi.map.MapView
+import com.baidu.mapapi.map.Marker
+import com.baidu.mapapi.map.MarkerOptions
+import com.baidu.mapapi.map.Polyline
+import com.baidu.mapapi.map.PolylineOptions
+import com.baidu.mapapi.model.LatLng
+import com.baidu.mapapi.model.LatLngBounds
 import com.google.android.material.card.MaterialCardView
 
 class MapActivity : AppCompatActivity() {
@@ -34,7 +33,7 @@ class MapActivity : AppCompatActivity() {
     }
 
     private lateinit var mapView: MapView
-    private lateinit var aMap: AMap
+    private lateinit var aMap: BaiduMap
     private lateinit var historyInfoCard: MaterialCardView
     private lateinit var tvRouteTitle: TextView
     private lateinit var tvRouteTime: TextView
@@ -51,12 +50,9 @@ class MapActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        MapsInitializer.updatePrivacyShow(this, true, true)
-        MapsInitializer.updatePrivacyAgree(this, true)
         setContentView(R.layout.activity_map)
 
         mapView = findViewById(R.id.mapView)
-        mapView.onCreate(savedInstanceState)
         aMap = mapView.map
         historyInfoCard = findViewById(R.id.historyInfoCard)
         tvRouteTitle = findViewById(R.id.tvRouteTitle)
@@ -69,14 +65,11 @@ class MapActivity : AppCompatActivity() {
         findViewById<ImageView>(R.id.btnBack).setOnClickListener { finish() }
         findViewById<ImageView>(R.id.btnRefitRoute).setOnClickListener { refitRoute() }
 
-        aMap.uiSettings.apply {
-            isZoomControlsEnabled = false
-            isMyLocationButtonEnabled = false
-            isCompassEnabled = false
-            isScaleControlsEnabled = false
-            isRotateGesturesEnabled = false
-            isTiltGesturesEnabled = false
-        }
+        mapView.showZoomControls(false)
+        mapView.showScaleControl(false)
+        aMap.uiSettings.setCompassEnabled(false)
+        aMap.uiSettings.setRotateGesturesEnabled(false)
+        aMap.uiSettings.setOverlookingGesturesEnabled(false)
 
         renderHistory()
     }
@@ -101,7 +94,7 @@ class MapActivity : AppCompatActivity() {
         val points = item.points.map { it.toLatLng() }
         singlePoint = points.firstOrNull()
         routeBounds = if (points.size > 1) {
-            LatLngBounds.builder().apply { points.forEach(::include) }.build()
+            LatLngBounds.Builder().apply { points.forEach(::include) }.build()
         } else {
             null
         }
@@ -110,26 +103,26 @@ class MapActivity : AppCompatActivity() {
         startMarker?.remove()
         endMarker?.remove()
 
-        routePolyline = aMap.addPolyline(
+        routePolyline = aMap.addOverlay(
             PolylineOptions()
-                .addAll(points)
+                .points(points)
                 .color(Color.parseColor("#8B5CF6"))
-                .width(18f)
-        )
+                .width(14)
+        ) as Polyline
 
-        startMarker = aMap.addMarker(
+        startMarker = aMap.addOverlay(
             MarkerOptions()
                 .position(points.first())
                 .title(getString(R.string.history_map_start))
-                .icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_route_start_marker))
-        )
+                .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_start_marker))
+        ) as Marker
 
-        endMarker = aMap.addMarker(
+        endMarker = aMap.addOverlay(
             MarkerOptions()
                 .position(points.last())
                 .title(getString(R.string.history_map_end))
-                .icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_route_end_marker))
-        )
+                .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_end_marker))
+        ) as Marker
 
         historyInfoCard.post {
             refitRoute()
@@ -142,19 +135,17 @@ class MapActivity : AppCompatActivity() {
 
         when {
             point != null && bounds == null -> {
-                aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(point, 17f))
+                aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(point, 17f))
             }
 
             bounds != null -> {
-                aMap.animateCamera(
-                    CameraUpdateFactory.newLatLngBoundsRect(
-                        bounds,
-                        dpToPx(20),
-                        dpToPx(20),
-                        dpToPx(88),
-                        historyInfoCard.height + dpToPx(28)
-                    )
+                aMap.setViewPadding(
+                    dpToPx(20),
+                    dpToPx(20),
+                    dpToPx(20),
+                    historyInfoCard.height + dpToPx(28)
                 )
+                aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngBounds(bounds))
             }
         }
     }
@@ -171,7 +162,6 @@ class MapActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        mapView.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {

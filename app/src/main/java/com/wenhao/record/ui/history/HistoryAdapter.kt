@@ -66,13 +66,13 @@ class HistoryAdapter(
         holder.card.alpha = if (isSelected) 1f else 0.97f
 
         holder.itemView.setOnClickListener {
-            val adapterPosition = holder.adapterPosition
+            val adapterPosition = holder.bindingAdapterPosition
             if (adapterPosition != RecyclerView.NO_POSITION) {
                 onHistoryClick(historyList[adapterPosition], adapterPosition)
             }
         }
         holder.itemView.setOnLongClickListener {
-            val adapterPosition = holder.adapterPosition
+            val adapterPosition = holder.bindingAdapterPosition
             if (adapterPosition != RecyclerView.NO_POSITION) {
                 onHistoryLongClick(historyList[adapterPosition], adapterPosition)
                 true

@@ -1,6 +1,6 @@
 package com.wenhao.record.data.tracking
 
-import com.amap.api.maps.model.LatLng
+import com.baidu.mapapi.model.LatLng
 
 data class TrackPoint(
     val latitude: Double,

@@ -17,22 +17,22 @@ import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.map.MapMarkerIconFactory
+import com.wenhao.record.map.CoordinateTransformUtils
 import com.wenhao.record.permissions.PermissionHelper
 import com.wenhao.record.tracking.BackgroundTrackingService
 import com.wenhao.record.ui.dashboard.DashboardUiController
 import com.wenhao.record.ui.history.HistoryController
 import com.wenhao.record.ui.map.MapActivity
-import com.amap.api.maps.AMap
-import com.amap.api.maps.CameraUpdateFactory
-import com.amap.api.maps.CoordinateConverter
-import com.amap.api.maps.MapsInitializer
-import com.amap.api.maps.model.BitmapDescriptorFactory
-import com.amap.api.maps.model.LatLng
-import com.amap.api.maps.model.LatLngBounds
-import com.amap.api.maps.model.Marker
-import com.amap.api.maps.model.MarkerOptions
-import com.amap.api.maps.model.Polyline
-import com.amap.api.maps.model.PolylineOptions
+import com.baidu.mapapi.map.BaiduMap
+import com.baidu.mapapi.map.BitmapDescriptorFactory
+import com.baidu.mapapi.map.MapStatusUpdateFactory
+import com.baidu.mapapi.map.Marker
+import com.baidu.mapapi.map.MarkerOptions
+import com.baidu.mapapi.map.Polyline
+import com.baidu.mapapi.map.PolylineOptions
+import com.baidu.mapapi.model.LatLng
+import com.baidu.mapapi.model.LatLngBounds
 
 class MainActivity : AppCompatActivity() {
 
@@ -47,7 +47,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var dashboardUiController: DashboardUiController
     private lateinit var historyController: HistoryController
-    private lateinit var aMap: AMap
+    private lateinit var aMap: BaiduMap
 
     private val permissionHelper by lazy {
         PermissionHelper(
@@ -86,8 +86,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        MapsInitializer.updatePrivacyShow(this, true, true)
-        MapsInitializer.updatePrivacyAgree(this, true)
         setContentView(R.layout.activity_main)
 
         dashboardUiController = DashboardUiController(this)
@@ -97,7 +95,6 @@ class MainActivity : AppCompatActivity() {
         locationManager = getSystemService(LocationManager::class.java)
 
         historyController.reload()
-        mapView.onCreate(savedInstanceState)
         configureHomeMap()
         initGnssStatusCallback()
         bindNavigation()
@@ -127,19 +124,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun configureHomeMap() {
         aMap = mapView.map
-        aMap.uiSettings.apply {
-            isZoomControlsEnabled = false
-            isMyLocationButtonEnabled = false
-            isCompassEnabled = false
-            isScaleControlsEnabled = false
-            isRotateGesturesEnabled = false
-            isTiltGesturesEnabled = false
-        }
+        mapView.showZoomControls(false)
+        mapView.showScaleControl(false)
+        aMap.uiSettings.setCompassEnabled(false)
+        aMap.uiSettings.setRotateGesturesEnabled(false)
+        aMap.uiSettings.setOverlookingGesturesEnabled(false)
 
         val previewLocation = loadPreviewLocation() ?: defaultLatLng
         updateMarker(previewLocation)
-        aMap.moveCamera(
-            CameraUpdateFactory.newLatLngZoom(
+        aMap.setMapStatus(
+            MapStatusUpdateFactory.newLatLngZoom(
                 previewLocation,
                 if (permissionHelper.hasLocationPermission()) 16f else 15f
             )
@@ -275,7 +269,7 @@ class MainActivity : AppCompatActivity() {
 
         loadPreviewLocation()?.let {
             updateMarker(it)
-            aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(it, 17f))
+            aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(it, 17f))
         } ?: android.widget.Toast.makeText(this, R.string.location_unavailable, android.widget.Toast.LENGTH_SHORT).show()
     }
 
@@ -316,7 +310,7 @@ class MainActivity : AppCompatActivity() {
         updateMarker(gcj02LatLng)
         if (centerOnNextFix) {
             centerOnNextFix = false
-            aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(gcj02LatLng, 17f))
+            aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(gcj02LatLng, 17f))
         }
         stopLocationUpdates()
     }
@@ -326,12 +320,12 @@ class MainActivity : AppCompatActivity() {
             homeMarker?.remove()
             homeMarker = null
             if (liveCurrentMarker == null) {
-                liveCurrentMarker = aMap.addMarker(
+                liveCurrentMarker = aMap.addOverlay(
                     MarkerOptions()
                         .position(latLng)
                         .anchor(0.5f, 0.5f)
-                        .icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_route_end_marker))
-                )
+                        .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_end_marker))
+                ) as Marker
             } else {
                 liveCurrentMarker?.position = latLng
             }
@@ -344,12 +338,12 @@ class MainActivity : AppCompatActivity() {
         liveCurrentMarker = null
 
         if (homeMarker == null) {
-            homeMarker = aMap.addMarker(
+            homeMarker = aMap.addOverlay(
                 MarkerOptions()
                     .position(latLng)
                     .anchor(0.5f, 0.5f)
-                    .icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_location))
-            )
+                    .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_location))
+            ) as Marker
         } else {
             homeMarker?.position = latLng
         }
@@ -367,12 +361,12 @@ class MainActivity : AppCompatActivity() {
         }
 
         if (activeTrackPolyline == null) {
-            activeTrackPolyline = aMap.addPolyline(
+            activeTrackPolyline = aMap.addOverlay(
                 PolylineOptions()
-                    .addAll(latLngPoints)
+                    .points(latLngPoints)
                     .color(Color.parseColor("#8B5CF6"))
-                    .width(16f)
-            )
+                    .width(12)
+            ) as Polyline
         } else {
             activeTrackPolyline?.points = latLngPoints
         }
@@ -396,23 +390,23 @@ class MainActivity : AppCompatActivity() {
         val lastPoint = currentTrackPoints.lastOrNull()?.toLatLng() ?: return
 
         if (liveStartMarker == null) {
-            liveStartMarker = aMap.addMarker(
+            liveStartMarker = aMap.addOverlay(
                 MarkerOptions()
                     .position(firstPoint)
                     .anchor(0.5f, 0.5f)
-                    .icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_route_start_marker))
-            )
+                    .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_start_marker))
+            ) as Marker
         } else {
             liveStartMarker?.position = firstPoint
         }
 
         if (liveCurrentMarker == null) {
-            liveCurrentMarker = aMap.addMarker(
+            liveCurrentMarker = aMap.addOverlay(
                 MarkerOptions()
                     .position(lastPoint)
                     .anchor(0.5f, 0.5f)
-                    .icon(BitmapDescriptorFactory.fromResource(R.drawable.ic_route_end_marker))
-            )
+                    .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_end_marker))
+            ) as Marker
         } else {
             liveCurrentMarker?.position = lastPoint
         }
@@ -425,23 +419,16 @@ class MainActivity : AppCompatActivity() {
                 points.isEmpty() -> Unit
                 points.size == 1 -> {
                     if (forceSinglePointZoom || centerOnNextFix) {
-                        aMap.animateCamera(CameraUpdateFactory.newLatLngZoom(points.first(), 17f))
+                        aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(points.first(), 17f))
                     }
                 }
 
                 else -> {
-                    val bounds = LatLngBounds.builder().apply {
+                    val bounds = LatLngBounds.Builder().apply {
                         points.forEach(::include)
                     }.build()
-                    aMap.animateCamera(
-                        CameraUpdateFactory.newLatLngBoundsRect(
-                            bounds,
-                            dpToPx(20),
-                            dpToPx(28),
-                            dpToPx(20),
-                            dpToPx(82)
-                        )
-                    )
+                    aMap.setViewPadding(dpToPx(20), dpToPx(28), dpToPx(20), dpToPx(82))
+                    aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngBounds(bounds))
                 }
             }
         }
@@ -502,10 +489,11 @@ class MainActivity : AppCompatActivity() {
     private fun loadPreviewLocation(): LatLng? = loadLastKnownLocation()?.let(::convertToGcj02)
 
     private fun convertToGcj02(location: Location): LatLng {
-        val converter = CoordinateConverter(this)
-        converter.from(CoordinateConverter.CoordType.GPS)
-        converter.coord(LatLng(location.latitude, location.longitude))
-        return converter.convert()
+        val coordinate = CoordinateTransformUtils.wgs84ToGcj02(
+            latitude = location.latitude,
+            longitude = location.longitude
+        )
+        return LatLng(coordinate.latitude, coordinate.longitude)
     }
 
     @SuppressLint("MissingPermission")
@@ -545,7 +533,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
-        mapView.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {

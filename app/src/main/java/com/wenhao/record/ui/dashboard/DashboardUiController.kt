@@ -14,7 +14,7 @@ import androidx.core.view.isVisible
 import com.wenhao.record.R
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackUiState
-import com.amap.api.maps.MapView
+import com.baidu.mapapi.map.MapView
 import java.util.Locale
 
 class DashboardUiController(

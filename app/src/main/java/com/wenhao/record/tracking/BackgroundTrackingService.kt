@@ -17,18 +17,23 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.wenhao.record.map.CoordinateTransformUtils
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
+import com.wenhao.record.data.tracking.FrequentPlaceAnchor
+import com.wenhao.record.data.tracking.FrequentPlaceStorage
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.ui.main.MainActivity
-import com.amap.api.maps.CoordinateConverter
-import com.amap.api.maps.model.LatLng
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.location.ActivityRecognitionClient
+import com.google.android.gms.location.Geofence
+import com.google.android.gms.location.GeofenceStatusCodes
+import com.google.android.gms.location.GeofencingClient
+import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.ActivityTransition
 import com.google.android.gms.location.ActivityTransitionRequest
 import com.google.android.gms.location.DetectedActivity
@@ -55,16 +60,26 @@ class BackgroundTrackingService : Service() {
         val acceptedPoint: TrackPoint? = null
     )
 
+    private data class PendingMovementVerification(
+        val startedAt: Long,
+        val anchorIds: Set<String>,
+        val originPoint: TrackPoint? = null
+    )
+
     companion object {
         const val ACTION_START = "com.wenhao.record.action.START_BACKGROUND_TRACKING"
         const val ACTION_STOP = "com.wenhao.record.action.STOP_BACKGROUND_TRACKING"
         const val ACTION_ACTIVITY_TRANSITION = "com.wenhao.record.action.ACTIVITY_TRANSITION"
+        const val ACTION_GEOFENCE_TRANSITION = "com.wenhao.record.action.GEOFENCE_TRANSITION"
         const val EXTRA_ACTIVITY_TYPE = "extra_activity_type"
         const val EXTRA_TRANSITION_TYPE = "extra_transition_type"
+        const val EXTRA_GEOFENCE_TRANSITION = "extra_geofence_transition"
+        const val EXTRA_GEOFENCE_IDS = "extra_geofence_ids"
 
         private const val CHANNEL_ID = "smart_tracking"
         private const val NOTIFICATION_ID = 1107
         private const val STILL_STOP_DELAY_MS = 2 * 60 * 1000L
+        private const val STAY_ZONE_VERIFY_TIMEOUT_MS = 2 * 60 * 1000L
         private const val MIN_USEFUL_DURATION_SECONDS = 45
         private const val MIN_USEFUL_DISTANCE_KM = 0.08
         private const val MIN_ACCEPTED_POINT_DISTANCE_METERS = 5f
@@ -76,6 +91,9 @@ class BackgroundTrackingService : Service() {
         private const val MAX_JUMP_SPEED_METERS_PER_SECOND = 55f
         private const val MIN_JUMP_TIME_DELTA_MS = 2_000L
         private const val MAX_JUMP_TIME_DELTA_MS = 20_000L
+        private const val STAY_ZONE_EXIT_MARGIN_METERS = 60f
+        private const val STAY_ZONE_VERIFY_DISTANCE_METERS = 120f
+        private const val STAY_ZONE_VERIFY_MIN_SPEED_METERS_PER_SECOND = 3f
 
         fun start(context: Context) {
             val intent = Intent(context, BackgroundTrackingService::class.java).apply {
@@ -101,12 +119,16 @@ class BackgroundTrackingService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var activityRecognitionClient: ActivityRecognitionClient
+    private lateinit var geofencingClient: GeofencingClient
     private var currentSession: AutoTrackSession? = null
     private var activityTransitionsRegistered = false
     private var isLocationUpdatesActive = false
     private var requestedPriority = -1
     private var requestedIntervalMs = -1L
     private var requestedMinDistanceMeters = -1f
+    private var stayAnchors: List<FrequentPlaceAnchor> = emptyList()
+    private var insideAnchorIds: MutableSet<String> = mutableSetOf()
+    private var pendingMovementVerification: PendingMovementVerification? = null
 
     private val finalizeRunnable = Runnable {
         finalizeCurrentSession()
@@ -116,7 +138,10 @@ class BackgroundTrackingService : Service() {
         super.onCreate()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
         activityRecognitionClient = ActivityRecognition.getClient(this)
+        geofencingClient = LocationServices.getGeofencingClient(this)
         currentSession = AutoTrackStorage.loadSession(this)
+        stayAnchors = FrequentPlaceStorage.loadAnchors(this)
+        insideAnchorIds = FrequentPlaceStorage.loadInsideAnchorIds(this).toMutableSet()
         createNotificationChannel()
     }
 
@@ -129,6 +154,13 @@ class BackgroundTrackingService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
+            }
+
+            ACTION_GEOFENCE_TRANSITION -> {
+                ensureForeground()
+                val transition = intent.getIntExtra(EXTRA_GEOFENCE_TRANSITION, -1)
+                val ids = intent.getStringArrayListExtra(EXTRA_GEOFENCE_IDS).orEmpty()
+                handleGeofenceTransition(ids, transition)
             }
 
             ACTION_ACTIVITY_TRANSITION -> {
@@ -144,7 +176,10 @@ class BackgroundTrackingService : Service() {
             else -> {
                 ensureForeground()
                 AutoTrackStorage.setAutoTrackingEnabled(this, true)
+                refreshFrequentPlaces()
                 registerActivityTransitionsIfPossible()
+                registerStayGeofencesIfPossible()
+                refreshInsideAnchorsFromLastKnownLocation()
                 if (currentSession != null) {
                     AutoTrackStorage.saveUiState(this, AutoTrackUiState.TRACKING)
                     requestLocationUpdates(
@@ -176,6 +211,7 @@ class BackgroundTrackingService : Service() {
         when {
             activityType == DetectedActivity.STILL &&
                 transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER -> {
+                pendingMovementVerification = null
                 stopLocationUpdates()
                 if (currentSession != null) {
                     AutoTrackStorage.saveUiState(this, AutoTrackUiState.PAUSED_STILL)
@@ -191,30 +227,37 @@ class BackgroundTrackingService : Service() {
             isMovingActivity(activityType) &&
                 transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER -> {
                 handler.removeCallbacks(finalizeRunnable)
-                AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
-                startOrResumeSession()
-                requestLocationUpdates(
-                    priority = Priority.PRIORITY_HIGH_ACCURACY,
-                    intervalMs = 5_000L,
-                    minDistanceMeters = 6f
-                )
-                updateNotification()
+                if (shouldUseConservativeMovementVerification()) {
+                    enterConservativeMovementVerification()
+                } else {
+                    beginActiveTracking()
+                }
             }
 
             activityType == DetectedActivity.STILL &&
                 transitionType == ActivityTransition.ACTIVITY_TRANSITION_EXIT -> {
                 handler.removeCallbacks(finalizeRunnable)
-                if (currentSession != null) {
-                    AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
-                    requestLocationUpdates(
-                        priority = Priority.PRIORITY_HIGH_ACCURACY,
-                        intervalMs = 5_000L,
-                        minDistanceMeters = 6f
-                    )
-                    updateNotification()
+                when {
+                    currentSession != null -> {
+                        AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
+                        requestLocationUpdates(
+                            priority = Priority.PRIORITY_HIGH_ACCURACY,
+                            intervalMs = 5_000L,
+                            minDistanceMeters = 6f
+                        )
+                        updateNotification()
+                    }
+
+                    shouldUseConservativeMovementVerification() -> {
+                        enterConservativeMovementVerification()
+                    }
                 }
             }
         }
+    }
+
+    private fun shouldUseConservativeMovementVerification(): Boolean {
+        return currentSession == null && insideAnchorIds.isNotEmpty()
     }
 
     private fun startOrResumeSession(updateMotionTimestamp: Boolean = true) {
@@ -232,6 +275,35 @@ class BackgroundTrackingService : Service() {
         )
         currentSession = updatedSession
         AutoTrackStorage.saveSession(this, updatedSession)
+    }
+
+    private fun beginActiveTracking() {
+        pendingMovementVerification = null
+        AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
+        startOrResumeSession()
+        requestLocationUpdates(
+            priority = Priority.PRIORITY_HIGH_ACCURACY,
+            intervalMs = 5_000L,
+            minDistanceMeters = 6f
+        )
+        updateNotification()
+    }
+
+    private fun enterConservativeMovementVerification() {
+        pendingMovementVerification = PendingMovementVerification(
+            startedAt = System.currentTimeMillis(),
+            anchorIds = insideAnchorIds.toSet()
+        )
+        AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
+        requestLocationUpdates(
+            priority = Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            intervalMs = 15_000L,
+            minDistanceMeters = 18f
+        )
+        updateNotification(
+            title = "\u5e38\u9a7b\u5730\u9644\u8fd1\u4f4e\u529f\u8017\u89c2\u5bdf\u4e2d",
+            content = "\u68c0\u6d4b\u5230\u4f60\u53ef\u80fd\u8fd8\u5728\u5bb6\u6216\u516c\u53f8\u9644\u8fd1\uff0c\u4f1a\u5148\u7528\u66f4\u7701\u7535\u7684\u65b9\u5f0f\u786e\u8ba4\u662f\u5426\u771f\u6b63\u79bb\u5f00\u3002"
+        )
     }
 
     @SuppressLint("MissingPermission")
@@ -271,6 +343,7 @@ class BackgroundTrackingService : Service() {
     private fun finalizeCurrentSession() {
         val session = currentSession ?: return
         currentSession = null
+        pendingMovementVerification = null
         AutoTrackStorage.clearSession(this)
         stopLocationUpdates()
 
@@ -303,6 +376,7 @@ class BackgroundTrackingService : Service() {
             )
         )
         HistoryStorage.save(this, historyItems)
+        refreshFrequentPlaces(historyItems)
         AutoTrackStorage.saveUiState(this, AutoTrackUiState.SAVED_RECENTLY)
         updateNotification(
             title = "\u884c\u7a0b\u5df2\u81ea\u52a8\u4fdd\u5b58",
@@ -311,7 +385,16 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun handleLocationUpdate(location: Location) {
+        if (pendingMovementVerification != null && currentSession == null) {
+            handleConservativeVerificationLocation(location)
+            return
+        }
+
         startOrResumeSession(updateMotionTimestamp = false)
+        appendLocationToCurrentSession(location)
+    }
+
+    private fun appendLocationToCurrentSession(location: Location) {
         val previousSession = currentSession ?: return
         val trackPoint = convertToGcj02TrackPoint(location)
         val noiseResult = evaluateTrackPoint(
@@ -344,6 +427,51 @@ class BackgroundTrackingService : Service() {
         AutoTrackStorage.saveUiState(this, AutoTrackUiState.TRACKING)
         adaptLocationRequestForSpeed(location.speed)
         updateNotification()
+    }
+
+    private fun handleConservativeVerificationLocation(location: Location) {
+        val verification = pendingMovementVerification ?: return
+        val trackPoint = convertToGcj02TrackPoint(location)
+        val originPoint = verification.originPoint ?: trackPoint
+        val distanceFromOrigin = if (verification.originPoint == null) {
+            0f
+        } else {
+            distanceBetween(originPoint, trackPoint)
+        }
+        val escapedStayZone = hasEscapedStayZone(trackPoint, verification.anchorIds)
+        val confirmedMovingAway = escapedStayZone ||
+            distanceFromOrigin >= STAY_ZONE_VERIFY_DISTANCE_METERS ||
+            location.speed >= STAY_ZONE_VERIFY_MIN_SPEED_METERS_PER_SECOND
+
+        if (confirmedMovingAway) {
+            pendingMovementVerification = null
+            beginActiveTracking()
+            appendLocationToCurrentSession(location)
+            return
+        }
+
+        pendingMovementVerification = verification.copy(originPoint = originPoint)
+        val verificationDuration = System.currentTimeMillis() - verification.startedAt
+        if (verificationDuration >= STAY_ZONE_VERIFY_TIMEOUT_MS) {
+            pendingMovementVerification = null
+            stopLocationUpdates()
+            AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
+            updateNotification(
+                title = "\u667a\u80fd\u8f68\u8ff9\u5df2\u5f00\u542f",
+                content = "\u76ee\u524d\u4ecd\u5728\u5e38\u9a7b\u5730\u9644\u8fd1\uff0c\u7ee7\u7eed\u4fdd\u6301\u4f4e\u529f\u8017\u5f85\u547d\uff0c\u79bb\u5f00\u540e\u518d\u63d0\u9ad8\u7075\u654f\u5ea6\u3002"
+            )
+            return
+        }
+
+        requestLocationUpdates(
+            priority = Priority.PRIORITY_BALANCED_POWER_ACCURACY,
+            intervalMs = 15_000L,
+            minDistanceMeters = 18f
+        )
+        updateNotification(
+            title = "\u5e38\u9a7b\u5730\u9644\u8fd1\u4f4e\u529f\u8017\u89c2\u5bdf\u4e2d",
+            content = "\u76ee\u524d\u8fd8\u50cf\u662f\u5e38\u9a7b\u5730\u9644\u8fd1\u7684\u6d3b\u52a8\uff0c\u4f1a\u7b49\u786e\u8ba4\u79bb\u5f00\u540e\u518d\u5f00\u542f\u9ad8\u7cbe\u5ea6\u8f68\u8ff9\u3002"
+        )
     }
 
     private fun adaptLocationRequestForSpeed(speedMetersPerSecond: Float) {
@@ -443,16 +571,49 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun convertToGcj02TrackPoint(location: Location): TrackPoint {
-        val converter = CoordinateConverter(this)
-        converter.from(CoordinateConverter.CoordType.GPS)
-        converter.coord(LatLng(location.latitude, location.longitude))
-        val latLng = converter.convert()
+        val coordinate = CoordinateTransformUtils.wgs84ToGcj02(
+            latitude = location.latitude,
+            longitude = location.longitude
+        )
         return TrackPoint(
-            latitude = latLng.latitude,
-            longitude = latLng.longitude,
+            latitude = coordinate.latitude,
+            longitude = coordinate.longitude,
             timestampMillis = location.time.takeIf { it > 0L } ?: System.currentTimeMillis(),
             accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
         )
+    }
+
+    private fun hasEscapedStayZone(trackPoint: TrackPoint, anchorIds: Set<String>): Boolean {
+        val relevantAnchors = stayAnchors.filter { it.id in anchorIds }
+        if (relevantAnchors.isEmpty()) return true
+        return relevantAnchors.none { anchor ->
+            distanceBetween(
+                anchor.latitude,
+                anchor.longitude,
+                trackPoint.latitude,
+                trackPoint.longitude
+            ) <= anchor.radiusMeters + STAY_ZONE_EXIT_MARGIN_METERS
+        }
+    }
+
+    private fun handleGeofenceTransition(ids: List<String>, transition: Int) {
+        if (ids.isEmpty()) return
+        when (transition) {
+            Geofence.GEOFENCE_TRANSITION_ENTER -> insideAnchorIds.addAll(ids)
+            Geofence.GEOFENCE_TRANSITION_EXIT -> insideAnchorIds.removeAll(ids.toSet())
+            else -> return
+        }
+        insideAnchorIds.retainAll(stayAnchors.map { it.id }.toSet())
+        FrequentPlaceStorage.saveInsideAnchorIds(this, insideAnchorIds)
+
+        if (transition == Geofence.GEOFENCE_TRANSITION_ENTER && currentSession == null && pendingMovementVerification == null) {
+            stopLocationUpdates()
+            AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
+            updateNotification(
+                title = "\u667a\u80fd\u8f68\u8ff9\u5df2\u5f00\u542f",
+                content = "\u5df2\u8fdb\u5165\u5e38\u9a7b\u5730\u533a\u57df\uff0c\u5207\u6362\u4e3a\u66f4\u7701\u7535\u7684\u5f85\u547d\u7b56\u7565\u3002"
+            )
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -488,10 +649,46 @@ class BackgroundTrackingService : Service() {
         }
     }
 
+    @SuppressLint("MissingPermission")
+    private fun registerStayGeofencesIfPossible() {
+        if (!hasLocationPermission()) return
+        geofencingClient.removeGeofences(geofencePendingIntent())
+        if (stayAnchors.isEmpty()) return
+
+        val geofences = stayAnchors.map { anchor ->
+            Geofence.Builder()
+                .setRequestId(anchor.id)
+                .setCircularRegion(anchor.latitude, anchor.longitude, anchor.radiusMeters)
+                .setTransitionTypes(
+                    Geofence.GEOFENCE_TRANSITION_ENTER or Geofence.GEOFENCE_TRANSITION_EXIT
+                )
+                .setNotificationResponsiveness(2 * 60 * 1000)
+                .setExpirationDuration(Geofence.NEVER_EXPIRE)
+                .build()
+        }
+
+        val request = GeofencingRequest.Builder()
+            .setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
+            .addGeofences(geofences)
+            .build()
+
+        geofencingClient.addGeofences(request, geofencePendingIntent())
+            .addOnFailureListener { exception ->
+                val code = (exception as? com.google.android.gms.common.api.ApiException)?.statusCode
+                if (code == GeofenceStatusCodes.GEOFENCE_NOT_AVAILABLE) {
+                    stopLocationUpdates()
+                }
+            }
+    }
+
     private fun unregisterActivityTransitions() {
         if (!activityTransitionsRegistered) return
         activityRecognitionClient.removeActivityTransitionUpdates(transitionPendingIntent())
         activityTransitionsRegistered = false
+    }
+
+    private fun unregisterStayGeofences() {
+        geofencingClient.removeGeofences(geofencePendingIntent())
     }
 
     private fun transitionPendingIntent(): PendingIntent {
@@ -501,6 +698,18 @@ class BackgroundTrackingService : Service() {
         return PendingIntent.getBroadcast(
             this,
             2201,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    private fun geofencePendingIntent(): PendingIntent {
+        val intent = Intent(this, GeofenceTransitionReceiver::class.java).apply {
+            action = ACTION_GEOFENCE_TRANSITION
+        }
+        return PendingIntent.getBroadcast(
+            this,
+            2203,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -570,8 +779,10 @@ class BackgroundTrackingService : Service() {
 
     private fun stopAllTracking(clearSession: Boolean) {
         handler.removeCallbacks(finalizeRunnable)
+        pendingMovementVerification = null
         stopLocationUpdates()
         unregisterActivityTransitions()
+        unregisterStayGeofences()
         if (clearSession) {
             currentSession = null
             AutoTrackStorage.clearSession(this)
@@ -602,5 +813,49 @@ class BackgroundTrackingService : Service() {
             activityType == DetectedActivity.ON_FOOT ||
             activityType == DetectedActivity.ON_BICYCLE ||
             activityType == DetectedActivity.IN_VEHICLE
+    }
+
+    private fun refreshFrequentPlaces(historyItems: List<HistoryItem> = HistoryStorage.load(this)) {
+        stayAnchors = FrequentPlaceDetector.buildAnchors(historyItems)
+        FrequentPlaceStorage.saveAnchors(this, stayAnchors)
+        insideAnchorIds.retainAll(stayAnchors.map { it.id }.toSet())
+        FrequentPlaceStorage.saveInsideAnchorIds(this, insideAnchorIds)
+        registerStayGeofencesIfPossible()
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun refreshInsideAnchorsFromLastKnownLocation() {
+        if (!hasLocationPermission() || stayAnchors.isEmpty()) return
+        fusedLocationClient.lastLocation.addOnSuccessListener { location ->
+            if (location == null) return@addOnSuccessListener
+            val trackPoint = convertToGcj02TrackPoint(location)
+            val currentInsideIds = stayAnchors.filter { anchor ->
+                distanceBetween(
+                    anchor.latitude,
+                    anchor.longitude,
+                    trackPoint.latitude,
+                    trackPoint.longitude
+                ) <= anchor.radiusMeters
+            }.map { it.id }.toMutableSet()
+            insideAnchorIds = currentInsideIds
+            FrequentPlaceStorage.saveInsideAnchorIds(this, insideAnchorIds)
+        }
+    }
+
+    private fun distanceBetween(
+        firstLatitude: Double,
+        firstLongitude: Double,
+        secondLatitude: Double,
+        secondLongitude: Double
+    ): Float {
+        val result = FloatArray(1)
+        Location.distanceBetween(
+            firstLatitude,
+            firstLongitude,
+            secondLatitude,
+            secondLongitude,
+            result
+        )
+        return result[0]
     }
 }
