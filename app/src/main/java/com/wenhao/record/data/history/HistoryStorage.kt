@@ -1,7 +1,7 @@
-package com.example.helloworld.data.history
+package com.wenhao.record.data.history
 
 import android.content.Context
-import com.example.helloworld.data.tracking.TrackPoint
+import com.wenhao.record.data.tracking.TrackPoint
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -22,7 +22,11 @@ object HistoryStorage {
                 val point = pointsArray.getJSONObject(pointIndex)
                 points += TrackPoint(
                     latitude = point.getDouble("latitude"),
-                    longitude = point.getDouble("longitude")
+                    longitude = point.getDouble("longitude"),
+                    timestampMillis = point.optLong("timestampMillis"),
+                    accuracyMeters = point.optDouble("accuracyMeters")
+                        .takeUnless { point.isNull("accuracyMeters") }
+                        ?.toFloat()
                 )
             }
             items += HistoryItem(
@@ -47,6 +51,8 @@ object HistoryStorage {
                     JSONObject().apply {
                         put("latitude", point.latitude)
                         put("longitude", point.longitude)
+                        put("timestampMillis", point.timestampMillis)
+                        put("accuracyMeters", point.accuracyMeters)
                     }
                 )
             }

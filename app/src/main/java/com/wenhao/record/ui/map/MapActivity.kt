@@ -1,4 +1,4 @@
-package com.example.helloworld.ui.map
+package com.wenhao.record.ui.map
 
 import android.content.Context
 import android.content.Intent
@@ -8,8 +8,8 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import com.example.helloworld.R
-import com.example.helloworld.data.history.HistoryStorage
+import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryStorage
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.MapView

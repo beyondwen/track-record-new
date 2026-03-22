@@ -1,4 +1,4 @@
-package com.example.helloworld.tracking
+package com.wenhao.record.tracking
 
 import android.Manifest
 import android.content.BroadcastReceiver
@@ -7,7 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
-import com.example.helloworld.data.tracking.AutoTrackStorage
+import com.wenhao.record.data.tracking.AutoTrackStorage
 
 class BootCompletedReceiver : BroadcastReceiver() {
 

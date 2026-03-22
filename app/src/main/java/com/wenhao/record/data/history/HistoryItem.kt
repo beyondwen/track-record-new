@@ -1,6 +1,6 @@
-package com.example.helloworld.data.history
+package com.wenhao.record.data.history
 
-import com.example.helloworld.data.tracking.TrackPoint
+import com.wenhao.record.data.tracking.TrackPoint
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

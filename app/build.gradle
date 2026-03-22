@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace 'com.example.helloworld'
+    namespace 'com.wenhao.record'
     compileSdk 36
 
     defaultConfig {
-        applicationId "com.example.helloworld"
+        applicationId "com.wenhao.record"
         minSdk 24
         targetSdk 36
         versionCode 1

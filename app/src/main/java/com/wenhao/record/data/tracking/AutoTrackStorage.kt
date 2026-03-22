@@ -1,4 +1,4 @@
-package com.example.helloworld.data.tracking
+package com.wenhao.record.data.tracking
 
 import android.content.Context
 import org.json.JSONArray
@@ -39,7 +39,11 @@ object AutoTrackStorage {
                 add(
                     TrackPoint(
                         latitude = point.getDouble("latitude"),
-                        longitude = point.getDouble("longitude")
+                        longitude = point.getDouble("longitude"),
+                        timestampMillis = point.optLong("timestampMillis"),
+                        accuracyMeters = point.optDouble("accuracyMeters")
+                            .takeUnless { point.isNull("accuracyMeters") }
+                            ?.toFloat()
                     )
                 )
             }
@@ -61,6 +65,8 @@ object AutoTrackStorage {
                 JSONObject().apply {
                     put("latitude", point.latitude)
                     put("longitude", point.longitude)
+                    put("timestampMillis", point.timestampMillis)
+                    put("accuracyMeters", point.accuracyMeters)
                 }
             )
         }

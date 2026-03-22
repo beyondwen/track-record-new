@@ -115,7 +115,7 @@
             android:orientation="horizontal"
             android:padding="12dp">
 
-            <com.example.helloworld.ui.history.HistoryRoutePreviewView
+            <com.wenhao.record.ui.history.HistoryRoutePreviewView
                 android:id="@+id/historyRoutePreview"
                 android:layout_width="0dp"
                 android:layout_height="64dp"

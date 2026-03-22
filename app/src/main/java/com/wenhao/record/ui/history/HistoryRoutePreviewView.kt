@@ -1,4 +1,4 @@
-package com.example.helloworld.ui.history
+package com.wenhao.record.ui.history
 
 import android.content.Context
 import android.graphics.Canvas
@@ -7,7 +7,7 @@ import android.graphics.Path
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.View
-import com.example.helloworld.data.tracking.TrackPoint
+import com.wenhao.record.data.tracking.TrackPoint
 import kotlin.math.max
 import kotlin.math.min
 

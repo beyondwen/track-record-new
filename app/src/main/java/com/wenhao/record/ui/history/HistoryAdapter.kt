@@ -1,4 +1,4 @@
-package com.example.helloworld.ui.history
+package com.wenhao.record.ui.history
 
 import android.view.LayoutInflater
 import android.view.View
@@ -6,8 +6,8 @@ import android.view.ViewGroup
 import android.widget.TextView
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
-import com.example.helloworld.R
-import com.example.helloworld.data.history.HistoryItem
+import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryItem
 import com.google.android.material.card.MaterialCardView
 import java.util.Calendar
 

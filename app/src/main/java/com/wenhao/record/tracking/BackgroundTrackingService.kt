@@ -1,4 +1,4 @@
-package com.example.helloworld.tracking
+package com.wenhao.record.tracking
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -17,14 +17,14 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.example.helloworld.R
-import com.example.helloworld.data.history.HistoryItem
-import com.example.helloworld.data.history.HistoryStorage
-import com.example.helloworld.data.tracking.AutoTrackSession
-import com.example.helloworld.data.tracking.AutoTrackStorage
-import com.example.helloworld.data.tracking.AutoTrackUiState
-import com.example.helloworld.data.tracking.TrackPoint
-import com.example.helloworld.ui.main.MainActivity
+import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryItem
+import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.tracking.AutoTrackSession
+import com.wenhao.record.data.tracking.AutoTrackStorage
+import com.wenhao.record.data.tracking.AutoTrackUiState
+import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.ui.main.MainActivity
 import com.amap.api.maps.CoordinateConverter
 import com.amap.api.maps.model.LatLng
 import com.google.android.gms.location.ActivityRecognition
@@ -42,10 +42,23 @@ import kotlin.math.max
 
 class BackgroundTrackingService : Service() {
 
+    private enum class TrackNoiseAction {
+        ACCEPT,
+        MERGE_STILL,
+        DROP_DRIFT,
+        DROP_JUMP
+    }
+
+    private data class TrackNoiseResult(
+        val action: TrackNoiseAction,
+        val distanceMeters: Float = 0f,
+        val acceptedPoint: TrackPoint? = null
+    )
+
     companion object {
-        const val ACTION_START = "com.example.helloworld.action.START_BACKGROUND_TRACKING"
-        const val ACTION_STOP = "com.example.helloworld.action.STOP_BACKGROUND_TRACKING"
-        const val ACTION_ACTIVITY_TRANSITION = "com.example.helloworld.action.ACTIVITY_TRANSITION"
+        const val ACTION_START = "com.wenhao.record.action.START_BACKGROUND_TRACKING"
+        const val ACTION_STOP = "com.wenhao.record.action.STOP_BACKGROUND_TRACKING"
+        const val ACTION_ACTIVITY_TRANSITION = "com.wenhao.record.action.ACTIVITY_TRANSITION"
         const val EXTRA_ACTIVITY_TYPE = "extra_activity_type"
         const val EXTRA_TRANSITION_TYPE = "extra_transition_type"
 
@@ -54,6 +67,15 @@ class BackgroundTrackingService : Service() {
         private const val STILL_STOP_DELAY_MS = 2 * 60 * 1000L
         private const val MIN_USEFUL_DURATION_SECONDS = 45
         private const val MIN_USEFUL_DISTANCE_KM = 0.08
+        private const val MIN_ACCEPTED_POINT_DISTANCE_METERS = 5f
+        private const val MAX_STATIONARY_JITTER_METERS = 9f
+        private const val MAX_POOR_ACCURACY_METERS = 45f
+        private const val MAX_POOR_ACCURACY_INITIAL_METERS = 70f
+        private const val LOW_SPEED_METERS_PER_SECOND = 1.5f
+        private const val MAX_JUMP_DISTANCE_METERS = 180f
+        private const val MAX_JUMP_SPEED_METERS_PER_SECOND = 55f
+        private const val MIN_JUMP_TIME_DELTA_MS = 2_000L
+        private const val MAX_JUMP_TIME_DELTA_MS = 20_000L
 
         fun start(context: Context) {
             val intent = Intent(context, BackgroundTrackingService::class.java).apply {
@@ -195,13 +217,19 @@ class BackgroundTrackingService : Service() {
         }
     }
 
-    private fun startOrResumeSession() {
+    private fun startOrResumeSession(updateMotionTimestamp: Boolean = true) {
         val now = System.currentTimeMillis()
         val updatedSession = (currentSession ?: AutoTrackSession(
             startTimestamp = now,
             lastMotionTimestamp = now,
             totalDistanceKm = 0.0
-        )).copy(lastMotionTimestamp = now)
+        )).copy(
+            lastMotionTimestamp = if (updateMotionTimestamp) {
+                now
+            } else {
+                currentSession?.lastMotionTimestamp ?: now
+            }
+        )
         currentSession = updatedSession
         AutoTrackStorage.saveSession(this, updatedSession)
     }
@@ -283,32 +311,32 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun handleLocationUpdate(location: Location) {
-        startOrResumeSession()
+        startOrResumeSession(updateMotionTimestamp = false)
         val previousSession = currentSession ?: return
-
-        var totalDistance = previousSession.totalDistanceKm
-        val previousLat = previousSession.lastLatitude
-        val previousLng = previousSession.lastLongitude
-        if (previousLat != null && previousLng != null) {
-            val result = FloatArray(1)
-            Location.distanceBetween(previousLat, previousLng, location.latitude, location.longitude, result)
-            if (result[0] >= 3f) {
-                totalDistance += result[0] / 1000.0
-            }
-        }
-
         val trackPoint = convertToGcj02TrackPoint(location)
-        val points = if (shouldAppendTrackPoint(previousSession.points.lastOrNull(), trackPoint)) {
-            previousSession.points + trackPoint
-        } else {
-            previousSession.points
+        val noiseResult = evaluateTrackPoint(
+            lastPoint = previousSession.points.lastOrNull(),
+            candidatePoint = trackPoint,
+            location = location
+        )
+        val points = when (noiseResult.action) {
+            TrackNoiseAction.ACCEPT -> previousSession.points + requireNotNull(noiseResult.acceptedPoint)
+            TrackNoiseAction.MERGE_STILL,
+            TrackNoiseAction.DROP_DRIFT,
+            TrackNoiseAction.DROP_JUMP -> previousSession.points
         }
+        val acceptedPoint = noiseResult.acceptedPoint
+        val totalDistance = previousSession.totalDistanceKm + (noiseResult.distanceMeters / 1000.0)
 
         val updatedSession = previousSession.copy(
-            lastMotionTimestamp = System.currentTimeMillis(),
+            lastMotionTimestamp = if (noiseResult.action == TrackNoiseAction.ACCEPT) {
+                System.currentTimeMillis()
+            } else {
+                previousSession.lastMotionTimestamp
+            },
             totalDistanceKm = totalDistance,
-            lastLatitude = location.latitude,
-            lastLongitude = location.longitude,
+            lastLatitude = acceptedPoint?.latitude ?: previousSession.lastLatitude,
+            lastLongitude = acceptedPoint?.longitude ?: previousSession.lastLongitude,
             points = points
         )
         currentSession = updatedSession
@@ -341,17 +369,77 @@ class BackgroundTrackingService : Service() {
         }
     }
 
-    private fun shouldAppendTrackPoint(lastPoint: TrackPoint?, newPoint: TrackPoint): Boolean {
-        if (lastPoint == null) return true
+    private fun evaluateTrackPoint(
+        lastPoint: TrackPoint?,
+        candidatePoint: TrackPoint,
+        location: Location
+    ): TrackNoiseResult {
+        val candidateAccuracy = candidatePoint.accuracyMeters ?: Float.MAX_VALUE
+        val candidateSpeed = location.speed.takeIf { it >= 0f } ?: 0f
+
+        if (lastPoint == null) {
+            return if (candidateAccuracy > MAX_POOR_ACCURACY_INITIAL_METERS &&
+                candidateSpeed <= LOW_SPEED_METERS_PER_SECOND
+            ) {
+                TrackNoiseResult(TrackNoiseAction.DROP_DRIFT)
+            } else {
+                TrackNoiseResult(
+                    action = TrackNoiseAction.ACCEPT,
+                    acceptedPoint = candidatePoint
+                )
+            }
+        }
+
+        val distanceMeters = distanceBetween(lastPoint, candidatePoint)
+        val jitterThreshold = maxOf(
+            MIN_ACCEPTED_POINT_DISTANCE_METERS,
+            minOf(MAX_STATIONARY_JITTER_METERS, candidateAccuracy * 0.28f)
+        )
+        if (distanceMeters <= jitterThreshold && candidateSpeed <= LOW_SPEED_METERS_PER_SECOND) {
+            return TrackNoiseResult(TrackNoiseAction.MERGE_STILL)
+        }
+
+        val driftDistanceThreshold = maxOf(20f, candidateAccuracy * 0.7f)
+        if (candidateAccuracy >= MAX_POOR_ACCURACY_METERS &&
+            candidateSpeed <= LOW_SPEED_METERS_PER_SECOND + 0.7f &&
+            distanceMeters <= driftDistanceThreshold
+        ) {
+            return TrackNoiseResult(TrackNoiseAction.DROP_DRIFT)
+        }
+
+        val timeDeltaMillis = candidatePoint.timestampMillis - lastPoint.timestampMillis
+        if (timeDeltaMillis in MIN_JUMP_TIME_DELTA_MS..MAX_JUMP_TIME_DELTA_MS) {
+            val inferredSpeed = distanceMeters / (timeDeltaMillis / 1000f)
+            val reportedSpeedAllowance = maxOf(18f, candidateSpeed * 3.2f + 12f)
+            if (distanceMeters >= maxOf(MAX_JUMP_DISTANCE_METERS, candidateAccuracy * 2.5f) &&
+                inferredSpeed >= MAX_JUMP_SPEED_METERS_PER_SECOND &&
+                inferredSpeed > reportedSpeedAllowance
+            ) {
+                return TrackNoiseResult(TrackNoiseAction.DROP_JUMP)
+            }
+        }
+
+        if (distanceMeters < MIN_ACCEPTED_POINT_DISTANCE_METERS) {
+            return TrackNoiseResult(TrackNoiseAction.MERGE_STILL)
+        }
+
+        return TrackNoiseResult(
+            action = TrackNoiseAction.ACCEPT,
+            distanceMeters = distanceMeters,
+            acceptedPoint = candidatePoint
+        )
+    }
+
+    private fun distanceBetween(first: TrackPoint, second: TrackPoint): Float {
         val result = FloatArray(1)
         Location.distanceBetween(
-            lastPoint.latitude,
-            lastPoint.longitude,
-            newPoint.latitude,
-            newPoint.longitude,
+            first.latitude,
+            first.longitude,
+            second.latitude,
+            second.longitude,
             result
         )
-        return result[0] >= 5f
+        return result[0]
     }
 
     private fun convertToGcj02TrackPoint(location: Location): TrackPoint {
@@ -359,7 +447,12 @@ class BackgroundTrackingService : Service() {
         converter.from(CoordinateConverter.CoordType.GPS)
         converter.coord(LatLng(location.latitude, location.longitude))
         val latLng = converter.convert()
-        return TrackPoint(latLng.latitude, latLng.longitude)
+        return TrackPoint(
+            latitude = latLng.latitude,
+            longitude = latLng.longitude,
+            timestampMillis = location.time.takeIf { it > 0L } ?: System.currentTimeMillis(),
+            accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
+        )
     }
 
     @SuppressLint("MissingPermission")

@@ -1,4 +1,4 @@
-package com.example.helloworld.ui.dashboard
+package com.wenhao.record.ui.dashboard
 
 import android.animation.AnimatorSet
 import android.animation.ObjectAnimator
@@ -11,9 +11,9 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
-import com.example.helloworld.R
-import com.example.helloworld.data.tracking.AutoTrackSession
-import com.example.helloworld.data.tracking.AutoTrackUiState
+import com.wenhao.record.R
+import com.wenhao.record.data.tracking.AutoTrackSession
+import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.amap.api.maps.MapView
 import java.util.Locale
 

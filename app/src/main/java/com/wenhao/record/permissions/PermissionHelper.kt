@@ -1,4 +1,4 @@
-package com.example.helloworld.permissions
+package com.wenhao.record.permissions
 
 import android.Manifest
 import android.content.Intent
@@ -10,7 +10,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.example.helloworld.R
+import com.wenhao.record.R
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 
 class PermissionHelper(

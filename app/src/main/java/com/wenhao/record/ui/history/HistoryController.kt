@@ -1,4 +1,4 @@
-package com.example.helloworld.ui.history
+package com.wenhao.record.ui.history
 
 import android.view.View
 import android.widget.EditText
@@ -10,9 +10,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
-import com.example.helloworld.R
-import com.example.helloworld.data.history.HistoryItem
-import com.example.helloworld.data.history.HistoryStorage
+import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryItem
+import com.wenhao.record.data.history.HistoryStorage
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import java.util.Locale
 

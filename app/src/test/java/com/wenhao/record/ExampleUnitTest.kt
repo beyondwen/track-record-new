@@ -1,4 +1,4 @@
-package com.example.helloworld
+package com.wenhao.record
 
 import org.junit.Test
 import org.junit.Assert.*

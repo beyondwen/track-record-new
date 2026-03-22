@@ -1,4 +1,4 @@
-package com.example.helloworld.ui.main
+package com.wenhao.record.ui.main
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -12,16 +12,16 @@ import android.os.Handler
 import android.os.Looper
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import com.example.helloworld.R
-import com.example.helloworld.data.tracking.AutoTrackSession
-import com.example.helloworld.data.tracking.AutoTrackStorage
-import com.example.helloworld.data.tracking.AutoTrackUiState
-import com.example.helloworld.data.tracking.TrackPoint
-import com.example.helloworld.permissions.PermissionHelper
-import com.example.helloworld.tracking.BackgroundTrackingService
-import com.example.helloworld.ui.dashboard.DashboardUiController
-import com.example.helloworld.ui.history.HistoryController
-import com.example.helloworld.ui.map.MapActivity
+import com.wenhao.record.R
+import com.wenhao.record.data.tracking.AutoTrackSession
+import com.wenhao.record.data.tracking.AutoTrackStorage
+import com.wenhao.record.data.tracking.AutoTrackUiState
+import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.permissions.PermissionHelper
+import com.wenhao.record.tracking.BackgroundTrackingService
+import com.wenhao.record.ui.dashboard.DashboardUiController
+import com.wenhao.record.ui.history.HistoryController
+import com.wenhao.record.ui.map.MapActivity
 import com.amap.api.maps.AMap
 import com.amap.api.maps.CameraUpdateFactory
 import com.amap.api.maps.CoordinateConverter
