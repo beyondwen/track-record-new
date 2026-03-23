@@ -17,23 +17,27 @@ import com.wenhao.record.data.history.TrackQualityLevel
 
 class HistoryController(
     private val activity: AppCompatActivity,
+    rootView: View,
     private val onHistoryOpen: (HistoryDayItem) -> Unit
 ) {
-    private val historyScreen: View = activity.findViewById(R.id.historyScreen)
-    private val rvHistoryPage: RecyclerView = activity.findViewById(R.id.rvHistoryPage)
-    private val layoutHistoryEmptyPage: View = activity.findViewById(R.id.layoutHistoryEmptyPage)
-    private val tvHistoryPageCount: TextView = activity.findViewById(R.id.tvHistoryPageCount)
-    private val tvHistoryPageSubtitle: TextView = activity.findViewById(R.id.tvHistoryPageSubtitle)
-    private val tvHistoryTotalDistance: TextView = activity.findViewById(R.id.tvHistoryTotalDistance)
-    private val tvHistoryTotalDuration: TextView = activity.findViewById(R.id.tvHistoryTotalDuration)
-    private val ivHistoryPageTabRecord: ImageView = activity.findViewById(R.id.ivHistoryPageTabRecord)
-    private val ivHistoryPageTabHistory: ImageView = activity.findViewById(R.id.ivHistoryPageTabHistory)
-    private val tvHistoryPageTabRecord: TextView = activity.findViewById(R.id.tvHistoryPageTabRecord)
-    private val tvHistoryPageTabHistory: TextView = activity.findViewById(R.id.tvHistoryPageTabHistory)
-    private val historyPageTabRecord: View = activity.findViewById(R.id.historyPageTabRecord)
+    private val historyScreen: View = rootView.findViewById(R.id.historyScreen)
+    private val rvHistoryPage: RecyclerView = rootView.findViewById(R.id.rvHistoryPage)
+    private val layoutHistoryEmptyPage: View = rootView.findViewById(R.id.layoutHistoryEmptyPage)
+    private val tvHistoryPageCount: TextView = rootView.findViewById(R.id.tvHistoryPageCount)
+    private val tvHistoryPageSubtitle: TextView = rootView.findViewById(R.id.tvHistoryPageSubtitle)
+    private val tvHistoryTotalDistance: TextView = rootView.findViewById(R.id.tvHistoryTotalDistance)
+    private val tvHistoryTotalDuration: TextView = rootView.findViewById(R.id.tvHistoryTotalDuration)
+    private val tvHistoryExport: TextView = rootView.findViewById(R.id.tvHistoryExport)
+    private val tvHistoryImport: TextView = rootView.findViewById(R.id.tvHistoryImport)
+    private val ivHistoryPageTabRecord: ImageView = rootView.findViewById(R.id.ivHistoryPageTabRecord)
+    private val ivHistoryPageTabHistory: ImageView = rootView.findViewById(R.id.ivHistoryPageTabHistory)
+    private val tvHistoryPageTabRecord: TextView = rootView.findViewById(R.id.tvHistoryPageTabRecord)
+    private val tvHistoryPageTabHistory: TextView = rootView.findViewById(R.id.tvHistoryPageTabHistory)
+    private val historyPageTabRecord: View = rootView.findViewById(R.id.historyPageTabRecord)
 
     private var historyItems: List<HistoryDayItem> = emptyList()
     private var selectedDayStartMillis: Long? = null
+    private var transferBusy = false
 
     private val historyAdapter = HistoryAdapter(
         onHistoryClick = { item, _ -> handleHistoryClick(item) },
@@ -45,8 +49,14 @@ class HistoryController(
         rvHistoryPage.adapter = historyAdapter
     }
 
-    fun bindNavigation(onRecordClick: () -> Unit) {
+    fun bindNavigation(
+        onRecordClick: () -> Unit,
+        onExportClick: () -> Unit,
+        onImportClick: () -> Unit
+    ) {
         historyPageTabRecord.setOnClickListener { onRecordClick() }
+        tvHistoryExport.setOnClickListener { onExportClick() }
+        tvHistoryImport.setOnClickListener { onImportClick() }
     }
 
     fun setVisible(isVisible: Boolean) {
@@ -63,8 +73,13 @@ class HistoryController(
         tvHistoryPageTabHistory.setTextColor(if (isRecord) defaultColor else selectedColor)
     }
 
+    fun setTransferBusy(isBusy: Boolean) {
+        transferBusy = isBusy
+        updateTransferActionState(historyItems.isNotEmpty())
+    }
+
     fun reload() {
-        historyItems = HistoryStorage.loadDaily(activity)
+        historyItems = HistoryStorage.peekDaily(activity)
     }
 
     fun updateContent() {
@@ -91,6 +106,7 @@ class HistoryController(
             R.string.history_total_duration,
             formatHistoryTotalDuration(totalDurationSeconds)
         )
+        updateTransferActionState(hasItems)
         layoutHistoryEmptyPage.visibility = if (hasItems) View.GONE else View.VISIBLE
         rvHistoryPage.visibility = if (hasItems) View.VISIBLE else View.GONE
 
@@ -165,5 +181,12 @@ class HistoryController(
             totalMinutes > 0 -> "${totalMinutes}分钟"
             else -> "少于 1 分钟"
         }
+    }
+
+    private fun updateTransferActionState(hasItems: Boolean) {
+        tvHistoryExport.isEnabled = hasItems && !transferBusy
+        tvHistoryImport.isEnabled = !transferBusy
+        tvHistoryExport.alpha = if (tvHistoryExport.isEnabled) 1f else 0.45f
+        tvHistoryImport.alpha = if (tvHistoryImport.isEnabled) 1f else 0.45f
     }
 }

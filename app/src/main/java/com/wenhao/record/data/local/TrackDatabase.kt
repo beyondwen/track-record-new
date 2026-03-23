@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.wenhao.record.data.local.auto.AutoTrackDao
 import com.wenhao.record.data.local.auto.AutoTrackPointEntity
 import com.wenhao.record.data.local.auto.AutoTrackSessionEntity
@@ -18,8 +20,8 @@ import com.wenhao.record.data.local.history.HistoryRecordEntity
         HistoryRecordEntity::class,
         HistoryPointEntity::class
     ],
-    version = 1,
-    exportSchema = false
+    version = 2,
+    exportSchema = true
 )
 abstract class TrackDatabase : RoomDatabase() {
 
@@ -28,6 +30,12 @@ abstract class TrackDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
 
     companion object {
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Schema unchanged; this migration formalizes versioned upgrades so history is preserved.
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -37,7 +45,9 @@ abstract class TrackDatabase : RoomDatabase() {
                     context.applicationContext,
                     TrackDatabase::class.java,
                     "track_record.db"
-                ).build()
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
                     .also { instance = it }
             }
         }

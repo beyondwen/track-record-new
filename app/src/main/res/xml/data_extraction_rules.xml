@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<data-extraction-rules>
+    <cloud-backup>
+        <include domain="database" path="track_record.db" />
+        <include domain="database" path="track_record.db-wal" />
+        <include domain="database" path="track_record.db-shm" />
+        <include domain="sharedpref" path="track_record_auto.xml" />
+        <include domain="sharedpref" path="track_record_diagnostics.xml" />
+        <include domain="file" path="history_snapshot.json" />
+        <include domain="file" path="stability/last_crash.txt" />
+    </cloud-backup>
+    <device-transfer>
+        <include domain="database" path="track_record.db" />
+        <include domain="database" path="track_record.db-wal" />
+        <include domain="database" path="track_record.db-shm" />
+        <include domain="sharedpref" path="track_record_auto.xml" />
+        <include domain="sharedpref" path="track_record_diagnostics.xml" />
+        <include domain="file" path="history_snapshot.json" />
+        <include domain="file" path="stability/last_crash.txt" />
+    </device-transfer>
+</data-extraction-rules>

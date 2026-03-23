@@ -40,6 +40,7 @@ class HistoryRoutePreviewView @JvmOverloads constructor(
         strokeWidth = dp(1f)
     }
 
+    private val contentRect = RectF()
     private val routePath = Path()
     private var segments: List<List<TrackPoint>> = emptyList()
 
@@ -59,7 +60,9 @@ class HistoryRoutePreviewView @JvmOverloads constructor(
         val contentTop = paddingTop.toFloat() + dp(6f)
         val contentRight = width - paddingRight.toFloat() - dp(6f)
         val contentBottom = height - paddingBottom.toFloat() - dp(6f)
-        val rect = RectF(contentLeft, contentTop, contentRight, contentBottom)
+        val rect = contentRect.apply {
+            set(contentLeft, contentTop, contentRight, contentBottom)
+        }
         val centerY = rect.centerY()
         val points = segments.flatten()
 

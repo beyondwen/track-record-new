@@ -2,7 +2,6 @@ package com.wenhao.record.ui.map
 
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
@@ -10,6 +9,7 @@ import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.graphics.toColorInt
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -92,14 +92,31 @@ class MapActivity : AppCompatActivity() {
 
     private fun renderHistory() {
         val dayStartMillis = intent.getLongExtra(EXTRA_DAY_START, -1L).takeIf { it > 0L }
-        val item = dayStartMillis?.let(::loadDayItem)
-
-        if (item == null || item.points.isEmpty()) {
+        if (dayStartMillis == null) {
             Toast.makeText(this, R.string.dashboard_history_no_route, Toast.LENGTH_SHORT).show()
             finish()
             return
         }
 
+        val item = HistoryStorage.peekDailyByStart(this, dayStartMillis)
+        if (item != null && item.points.isNotEmpty()) {
+            renderHistoryItem(item)
+            return
+        }
+
+        HistoryStorage.whenReady(this) {
+            if (isFinishing || isDestroyed) return@whenReady
+            val readyItem = HistoryStorage.peekDailyByStart(this, dayStartMillis)
+            if (readyItem == null || readyItem.points.isEmpty()) {
+                Toast.makeText(this, R.string.dashboard_history_no_route, Toast.LENGTH_SHORT).show()
+                finish()
+            } else {
+                renderHistoryItem(readyItem)
+            }
+        }
+    }
+
+    private fun renderHistoryItem(item: HistoryDayItem) {
         tvRouteTitle.text = item.displayTitle
         tvRouteTime.text = item.formattedDateDetail
         tvRouteDistance.text = item.formattedDistance
@@ -126,7 +143,7 @@ class MapActivity : AppCompatActivity() {
             routePolylines += aMap.addOverlay(
                 PolylineOptions()
                     .points(segment.map { it.toLatLng() })
-                    .color(Color.parseColor("#8B5CF6"))
+                    .color("#8B5CF6".toColorInt())
                     .width(14)
             ) as Polyline
         }
@@ -151,10 +168,6 @@ class MapActivity : AppCompatActivity() {
         historyInfoCard.post {
             refitRoute()
         }
-    }
-
-    private fun loadDayItem(dayStartMillis: Long): HistoryDayItem? {
-        return HistoryStorage.loadDailyByStart(this, dayStartMillis)
     }
 
     private fun applyWindowInsets() {

@@ -1,19 +1,22 @@
 package com.wenhao.record.data.history
 
 import android.content.Context
+import androidx.core.content.edit
 import com.wenhao.record.data.local.TrackDatabase
 import com.wenhao.record.data.local.history.HistoryPointEntity
 import com.wenhao.record.data.local.history.HistoryRecordEntity
 import com.wenhao.record.data.local.history.HistoryRecordWithPoints
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrackPoint
-import org.json.JSONArray
+import com.wenhao.record.util.AppTaskExecutor
+import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 object HistoryStorage {
     private const val PREFS_NAME = "track_record_history"
     private const val KEY_ITEMS = "items"
+    private const val SNAPSHOT_FILE_NAME = "history_snapshot.json"
 
     private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val cacheLock = Any()
@@ -25,18 +28,34 @@ object HistoryStorage {
     private var historyCacheInitialized = false
 
     @Volatile
+    private var historyCacheLoading = false
+
+    @Volatile
     private var dailyCache: List<HistoryDayItem> = emptyList()
 
     @Volatile
     private var dailyCacheInitialized = false
+
+    private val readyCallbacks = mutableListOf<(List<HistoryItem>) -> Unit>()
 
     fun load(context: Context): MutableList<HistoryItem> {
         ensureHistoryCache(context)
         return copyHistoryList(historyCache)
     }
 
+    fun peek(context: Context): MutableList<HistoryItem> {
+        ensureHistoryCacheAsync(context)
+        return copyHistoryList(historyCache)
+    }
+
     fun loadDaily(context: Context): List<HistoryDayItem> {
         ensureHistoryCache(context)
+        ensureDailyCache()
+        return copyDailyList(dailyCache)
+    }
+
+    fun peekDaily(context: Context): List<HistoryDayItem> {
+        ensureHistoryCacheAsync(context)
         ensureDailyCache()
         return copyDailyList(dailyCache)
     }
@@ -52,6 +71,33 @@ object HistoryStorage {
         ensureDailyCache()
         return dailyCache.firstOrNull { item -> item.dayStartMillis == dayStartMillis }
             ?.let(::copyDailyItem)
+    }
+
+    fun peekDailyByStart(context: Context, dayStartMillis: Long): HistoryDayItem? {
+        ensureHistoryCacheAsync(context)
+        ensureDailyCache()
+        return dailyCache.firstOrNull { item -> item.dayStartMillis == dayStartMillis }
+            ?.let(::copyDailyItem)
+    }
+
+    fun isReady(): Boolean = historyCacheInitialized
+
+    fun whenReady(context: Context, callback: (List<HistoryItem>) -> Unit) {
+        val readySnapshot = synchronized(cacheLock) {
+            if (historyCacheInitialized) {
+                copyHistoryList(historyCache)
+            } else {
+                readyCallbacks += callback
+                null
+            }
+        }
+        if (readySnapshot != null) {
+            AppTaskExecutor.runOnMain {
+                callback(readySnapshot)
+            }
+            return
+        }
+        ensureHistoryCacheAsync(context)
     }
 
     fun save(context: Context, items: List<HistoryItem>) {
@@ -89,6 +135,7 @@ object HistoryStorage {
                     }
                 }
             )
+            persistSnapshot(context, normalizedItems)
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -115,6 +162,7 @@ object HistoryStorage {
                 record = normalizedItem.toRecordEntity(),
                 points = normalizedItem.toPointEntities()
             )
+            persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -140,6 +188,7 @@ object HistoryStorage {
 
         ioExecutor.execute {
             TrackDatabase.getInstance(context).historyDao().updateTitle(historyId, newTitle)
+            persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -160,6 +209,7 @@ object HistoryStorage {
 
         ioExecutor.execute {
             TrackDatabase.getInstance(context).historyDao().deleteHistory(historyId)
+            persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -182,6 +232,7 @@ object HistoryStorage {
 
         ioExecutor.execute {
             TrackDatabase.getInstance(context).historyDao().deleteHistoryList(historyIds)
+            persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -192,16 +243,52 @@ object HistoryStorage {
 
         synchronized(cacheLock) {
             if (historyCacheInitialized) return
-            migrateLegacyHistoryIfNeeded(context)
             val loadedHistory = ioExecutor.submit<List<HistoryItem>> {
-                TrackDatabase.getInstance(context)
-                    .historyDao()
-                    .getHistoryWithPoints()
-                    .map { it.toModel() }
+                loadHistoryFromDisk(context)
             }.get()
             historyCache = loadedHistory
             refreshDailyCacheLocked()
+            if (loadedHistory.isNotEmpty()) {
+                ioExecutor.execute {
+                    persistSnapshot(context, loadedHistory)
+                }
+            }
             historyCacheInitialized = true
+        }
+    }
+
+    fun warmUp(context: Context) {
+        ensureHistoryCacheAsync(context)
+    }
+
+    private fun ensureHistoryCacheAsync(context: Context) {
+        if (historyCacheInitialized || historyCacheLoading) return
+
+        synchronized(cacheLock) {
+            if (historyCacheInitialized || historyCacheLoading) return
+            historyCacheLoading = true
+        }
+
+        ioExecutor.execute {
+            val loadedHistory = loadHistoryFromDisk(context)
+            val callbacksToDispatch = synchronized(cacheLock) {
+                historyCache = loadedHistory
+                refreshDailyCacheLocked()
+                historyCacheInitialized = true
+                historyCacheLoading = false
+                readyCallbacks.toList().also { readyCallbacks.clear() }
+            }
+            if (loadedHistory.isNotEmpty()) {
+                persistSnapshot(context, loadedHistory)
+            }
+            TrackDataChangeNotifier.notifyHistoryChanged()
+            if (callbacksToDispatch.isNotEmpty()) {
+                callbacksToDispatch.forEach { callback ->
+                    AppTaskExecutor.runOnMain {
+                        callback(copyHistoryList(loadedHistory))
+                    }
+                }
+            }
         }
     }
 
@@ -214,88 +301,80 @@ object HistoryStorage {
         }
     }
 
+    private fun loadHistoryFromDisk(context: Context): List<HistoryItem> {
+        migrateLegacyHistoryIfNeeded(context)
+        restoreSnapshotIfNeeded(context)
+        return TrackDatabase.getInstance(context)
+            .historyDao()
+            .getHistoryWithPoints()
+            .map { it.toModel() }
+    }
+
     private fun migrateLegacyHistoryIfNeeded(context: Context) {
         val raw = prefs(context).getString(KEY_ITEMS, null) ?: return
         val dao = TrackDatabase.getInstance(context).historyDao()
-        val hasRoomData = ioExecutor.submit<Int> { dao.getHistoryCount() }.get() > 0
+        val hasRoomData = dao.getHistoryCount() > 0
         if (hasRoomData) {
-            prefs(context).edit().remove(KEY_ITEMS).apply()
+            prefs(context).edit {
+                remove(KEY_ITEMS)
+            }
             return
         }
 
         val legacyItems = parseLegacyHistory(raw)
         if (legacyItems.isEmpty()) {
-            prefs(context).edit().remove(KEY_ITEMS).apply()
+            prefs(context).edit {
+                remove(KEY_ITEMS)
+            }
             return
         }
 
-        ioExecutor.submit {
-            dao.replaceAll(
-                records = legacyItems.map { item ->
-                    HistoryRecordEntity(
+        dao.replaceAll(
+            records = legacyItems.map { item ->
+                HistoryRecordEntity(
+                    historyId = item.id,
+                    timestamp = item.timestamp,
+                    distanceKm = item.distanceKm,
+                    durationSeconds = item.durationSeconds,
+                    averageSpeedKmh = item.averageSpeedKmh,
+                    title = item.title
+                )
+            },
+            points = legacyItems.flatMap { item ->
+                item.points.mapIndexed { index, point ->
+                    HistoryPointEntity(
                         historyId = item.id,
-                        timestamp = item.timestamp,
-                        distanceKm = item.distanceKm,
-                        durationSeconds = item.durationSeconds,
-                        averageSpeedKmh = item.averageSpeedKmh,
-                        title = item.title
-                    )
-                },
-                points = legacyItems.flatMap { item ->
-                    item.points.mapIndexed { index, point ->
-                        HistoryPointEntity(
-                            historyId = item.id,
-                            pointOrder = index,
-                            latitude = point.latitude,
-                            longitude = point.longitude,
-                            timestampMillis = point.timestampMillis,
-                            accuracyMeters = point.accuracyMeters
-                        )
-                    }
-                }
-            )
-        }.get()
-        prefs(context).edit().remove(KEY_ITEMS).apply()
-    }
-
-    private fun parseLegacyHistory(raw: String): List<HistoryItem> {
-        return runCatching {
-            val jsonArray = JSONArray(raw)
-            buildList {
-                for (index in 0 until jsonArray.length()) {
-                    val obj = jsonArray.getJSONObject(index)
-                    val pointsArray = obj.optJSONArray("points") ?: JSONArray()
-                    val points = buildList {
-                        for (pointIndex in 0 until pointsArray.length()) {
-                            val point = pointsArray.getJSONObject(pointIndex)
-                            add(
-                                TrackPoint(
-                                    latitude = point.getDouble("latitude"),
-                                    longitude = point.getDouble("longitude"),
-                                    timestampMillis = point.optLong("timestampMillis"),
-                                    accuracyMeters = point.optDouble("accuracyMeters")
-                                        .takeUnless { point.isNull("accuracyMeters") }
-                                        ?.toFloat()
-                                )
-                            )
-                        }
-                    }
-                    add(
-                        HistoryItem(
-                            id = obj.getLong("id"),
-                            timestamp = obj.getLong("timestamp"),
-                            distanceKm = obj.getDouble("distanceKm"),
-                            durationSeconds = obj.getInt("durationSeconds"),
-                            averageSpeedKmh = obj.getDouble("averageSpeedKmh"),
-                            title = obj.optString("title").takeIf { it.isNotBlank() },
-                            points = points
-                        )
+                        pointOrder = index,
+                        latitude = point.latitude,
+                        longitude = point.longitude,
+                        timestampMillis = point.timestampMillis,
+                        accuracyMeters = point.accuracyMeters
                     )
                 }
             }
-        }.getOrDefault(emptyList()).sortedWith(
-            compareByDescending<HistoryItem> { it.timestamp }.thenByDescending { it.id }
         )
+        persistSnapshot(context, legacyItems)
+        prefs(context).edit {
+            remove(KEY_ITEMS)
+        }
+    }
+
+    private fun restoreSnapshotIfNeeded(context: Context) {
+        val dao = TrackDatabase.getInstance(context).historyDao()
+        val hasRoomData = dao.getHistoryCount() > 0
+        if (hasRoomData) return
+
+        val snapshotItems = loadSnapshot(context)
+        if (snapshotItems.isEmpty()) return
+
+        dao.replaceAll(
+            records = snapshotItems.map { item -> item.toRecordEntity() },
+            points = snapshotItems.flatMap { item -> item.toPointEntities() }
+        )
+    }
+
+    private fun parseLegacyHistory(raw: String): List<HistoryItem> {
+        return HistorySnapshotCodec.decode(raw)
     }
 
     private fun HistoryRecordWithPoints.toModel(): HistoryItem {
@@ -344,6 +423,30 @@ object HistoryStorage {
     private fun refreshDailyCacheLocked() {
         dailyCache = HistoryDayAggregator.aggregate(historyCache)
         dailyCacheInitialized = true
+    }
+
+    private fun persistSnapshot(context: Context, items: List<HistoryItem>) {
+        val normalizedItems = items.map { item -> item.copy(points = item.points.toList()) }
+        val snapshotFile = context.getFileStreamPath(SNAPSHOT_FILE_NAME)
+        val tempFile = File(snapshotFile.parentFile, "$SNAPSHOT_FILE_NAME.tmp")
+        tempFile.bufferedWriter().use { writer ->
+            writer.write(HistorySnapshotCodec.encode(normalizedItems))
+        }
+        if (snapshotFile.exists() && !snapshotFile.delete()) {
+            tempFile.delete()
+            return
+        }
+        if (!tempFile.renameTo(snapshotFile)) {
+            tempFile.delete()
+        }
+    }
+
+    private fun loadSnapshot(context: Context): List<HistoryItem> {
+        return runCatching {
+            context.openFileInput(SNAPSHOT_FILE_NAME).bufferedReader().use { reader ->
+                parseLegacyHistory(reader.readText())
+            }
+        }.getOrDefault(emptyList())
     }
 
     private fun copyHistoryList(items: List<HistoryItem>): MutableList<HistoryItem> {

@@ -1,6 +1,7 @@
 package com.wenhao.record.data.tracking
 
 import android.content.Context
+import androidx.core.content.edit
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -49,7 +50,9 @@ object FrequentPlaceStorage {
                 }
             )
         }
-        prefs(context).edit().putString(KEY_ANCHORS, array.toString()).apply()
+        prefs(context).edit {
+            putString(KEY_ANCHORS, array.toString())
+        }
     }
 
     fun loadInsideAnchorIds(context: Context): Set<String> {
@@ -65,7 +68,9 @@ object FrequentPlaceStorage {
     fun saveInsideAnchorIds(context: Context, ids: Set<String>) {
         val array = JSONArray()
         ids.forEach(array::put)
-        prefs(context).edit().putString(KEY_INSIDE_ANCHOR_IDS, array.toString()).apply()
+        prefs(context).edit {
+            putString(KEY_INSIDE_ANCHOR_IDS, array.toString())
+        }
     }
 
     private fun prefs(context: Context) =

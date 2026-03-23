@@ -1,7 +1,7 @@
 package com.wenhao.record.data.history
 
-import android.location.Location
 import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.map.GeoMath
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -47,7 +47,7 @@ object TrackQualityEvaluator {
                 level = TrackQualityLevel.LOW,
                 averageAccuracyMeters = points.firstOrNull()?.accuracyMeters?.roundToInt(),
                 pointCount = points.size,
-                detail = "定位点较少，轨迹可能还不够完整"
+                detail = "定位点较少，轨迹可能还不够完整。"
             )
         }
 
@@ -60,7 +60,7 @@ object TrackQualityEvaluator {
                     ?.average()
                     ?.roundToInt(),
                 pointCount = points.size,
-                detail = "有效轨迹段不足，暂时无法还原完整路线"
+                detail = "有效轨迹段不足，暂时无法还原完整路线。"
             )
         }
 
@@ -156,7 +156,7 @@ object TrackQualityEvaluator {
             }
             when {
                 abnormalJumpCount > 0 -> append("，检测到少量急跳风险")
-                longGapCount > 0 -> append("，中间存在短暂采样间隔")
+                longGapCount > 0 -> append("，中间存在较长采样间隔")
                 pointDensity >= 2.0 -> append("，采样密度比较稳定")
             }
         }
@@ -171,14 +171,6 @@ object TrackQualityEvaluator {
     }
 
     private fun distanceBetween(first: TrackPoint, second: TrackPoint): Float {
-        val result = FloatArray(1)
-        Location.distanceBetween(
-            first.latitude,
-            first.longitude,
-            second.latitude,
-            second.longitude,
-            result
-        )
-        return result[0]
+        return GeoMath.distanceMeters(first, second)
     }
 }

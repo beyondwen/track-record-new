@@ -1,10 +1,10 @@
 package com.wenhao.record.map
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.annotation.DrawableRes
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.graphics.createBitmap
 import com.baidu.mapapi.map.BitmapDescriptor
 import com.baidu.mapapi.map.BitmapDescriptorFactory
 
@@ -16,7 +16,7 @@ object MapMarkerIconFactory {
 
         val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 96
         val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 96
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(width, height)
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, canvas.width, canvas.height)
         drawable.draw(canvas)

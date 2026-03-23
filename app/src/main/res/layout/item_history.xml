@@ -54,7 +54,7 @@
                     android:layout_gravity="center"
                     android:contentDescription="@null"
                     android:src="@drawable/ic_history"
-                    android:tint="@color/md_theme_light_primary" />
+                    app:tint="@color/md_theme_light_primary" />
             </FrameLayout>
 
             <LinearLayout
@@ -190,7 +190,7 @@
                     android:layout_marginTop="4dp"
                     android:text="@string/history_preview_subtitle"
                     android:textColor="@color/md_theme_light_onSurfaceVariant"
-                    android:textSize="10sp" />
+                    android:textSize="11sp" />
             </LinearLayout>
         </LinearLayout>
 
@@ -198,6 +198,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
+            android:baselineAligned="false"
             android:orientation="horizontal">
 
             <LinearLayout
@@ -213,7 +214,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/history_metric_distance"
                     android:textColor="@color/md_theme_light_onSurfaceVariant"
-                    android:textSize="10sp"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -241,7 +242,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/history_metric_duration"
                     android:textColor="@color/md_theme_light_onSurfaceVariant"
-                    android:textSize="10sp"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
 
                 <TextView
@@ -269,7 +270,7 @@
                     android:layout_height="wrap_content"
                     android:text="@string/history_metric_speed"
                     android:textColor="@color/md_theme_light_onSurfaceVariant"
-                    android:textSize="10sp"
+                    android:textSize="11sp"
                     android:textStyle="bold" />
 
                 <TextView

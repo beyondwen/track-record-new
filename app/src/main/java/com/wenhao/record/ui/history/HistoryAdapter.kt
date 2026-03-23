@@ -47,15 +47,7 @@ class HistoryAdapter(
     }
 
     fun submitHistoryList(items: List<HistoryDayItem>) {
-        submitList(
-            items.map { item ->
-                item.copy(
-                    sourceIds = item.sourceIds.toList(),
-                    segments = item.segments.map { segment -> segment.toList() },
-                    points = item.points.toList()
-                )
-            }
-        )
+        submitList(items.toList())
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {

@@ -1,6 +1,7 @@
 package com.wenhao.record.data.tracking
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Handler
 import android.os.Looper
 import com.wenhao.record.tracking.TrackingTextSanitizer
@@ -44,7 +45,7 @@ object AutoTrackDiagnosticsStorage {
     private var lastPersistedAt = 0L
 
     @Volatile
-    private var pendingPersistContext: Context? = null
+    private var pendingPersistPreferences: SharedPreferences? = null
 
     @Volatile
     private var pendingPersistDiagnostics: AutoTrackDiagnostics? = null
@@ -158,9 +159,9 @@ object AutoTrackDiagnosticsStorage {
     }
 
     fun flush(context: Context? = null) {
-        val appContext = context?.applicationContext
+        val preferences = context?.applicationContext?.let(::prefs)
         synchronized(cacheLock) {
-            pendingPersistContext = appContext ?: pendingPersistContext
+            pendingPersistPreferences = preferences ?: pendingPersistPreferences
         }
         mainHandler.removeCallbacks(delayedFlushRunnable)
         flushPendingSnapshot()
@@ -180,16 +181,17 @@ object AutoTrackDiagnosticsStorage {
         diagnosticsCache = updated
 
         val appContext = context.applicationContext
+        val preferences = prefs(appContext)
         val shouldPersistImmediately = synchronized(cacheLock) {
             val now = System.currentTimeMillis()
             if (!throttleWrites || now - lastPersistedAt >= LOCATION_WRITE_INTERVAL_MS) {
-                pendingPersistContext = null
+                pendingPersistPreferences = null
                 pendingPersistDiagnostics = null
                 mainHandler.removeCallbacks(delayedFlushRunnable)
                 lastPersistedAt = now
                 true
             } else {
-                pendingPersistContext = appContext
+                pendingPersistPreferences = preferences
                 pendingPersistDiagnostics = updated
                 val delayMs = LOCATION_WRITE_INTERVAL_MS - (now - lastPersistedAt)
                 mainHandler.removeCallbacks(delayedFlushRunnable)
@@ -199,26 +201,26 @@ object AutoTrackDiagnosticsStorage {
         }
 
         if (shouldPersistImmediately) {
-            persist(appContext, updated)
+            persist(preferences, updated)
         }
         TrackDataChangeNotifier.notifyDashboardChanged()
     }
 
     private fun flushPendingSnapshot() {
-        val context: Context
+        val preferences: SharedPreferences
         val diagnostics: AutoTrackDiagnostics
         synchronized(cacheLock) {
-            context = pendingPersistContext ?: return
+            preferences = pendingPersistPreferences ?: return
             diagnostics = pendingPersistDiagnostics ?: diagnosticsCache ?: return
-            pendingPersistContext = null
+            pendingPersistPreferences = null
             pendingPersistDiagnostics = null
             lastPersistedAt = System.currentTimeMillis()
         }
-        persist(context, diagnostics)
+        persist(preferences, diagnostics)
     }
 
-    private fun persist(context: Context, diagnostics: AutoTrackDiagnostics) {
-        prefs(context).edit().apply {
+    private fun persist(preferences: SharedPreferences, diagnostics: AutoTrackDiagnostics) {
+        preferences.edit().apply {
             putString(KEY_SERVICE_STATUS, TrackingTextSanitizer.normalize(diagnostics.serviceStatus))
             putString(KEY_LAST_EVENT, TrackingTextSanitizer.normalize(diagnostics.lastEvent))
             putLong(KEY_LAST_EVENT_AT, diagnostics.lastEventAt)

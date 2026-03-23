@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import com.wenhao.record.R
 import com.wenhao.record.data.tracking.AutoTrackSession
+import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.baidu.mapapi.map.MapView
 import java.util.Locale
@@ -96,7 +97,18 @@ class DashboardUiController(
     }
 
     fun render(session: AutoTrackSession?, state: AutoTrackUiState, durationSeconds: Int) {
-        updateMetricViews(session?.totalDistanceKm ?: 0.0, durationSeconds)
+        val sanitizedTrack = session?.let { activeSession ->
+            TrackPathSanitizer.sanitize(activeSession.points, sortByTimestamp = false)
+        }
+        val displayDistanceKm = when {
+            sanitizedTrack == null -> 0.0
+            sanitizedTrack.points.size >= 2 -> sanitizedTrack.totalDistanceKm
+            else -> session.totalDistanceKm
+        }
+        updateMetricViews(
+            distanceKm = displayDistanceKm,
+            durationSeconds = durationSeconds
+        )
         renderState(session, state)
     }
 

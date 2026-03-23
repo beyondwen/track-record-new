@@ -19,14 +19,14 @@
     <string name="dashboard_history">历史</string>
     <string name="dashboard_history_title">我的行程</string>
     <string name="dashboard_history_subtitle">按天查看已经保存的轨迹</string>
-    <string name="dashboard_history_count_zero">0 条记录</string>
+    <string name="dashboard_history_count_zero">0 天记录</string>
     <string name="dashboard_history_count_value">%1$d 天记录</string>
     <string name="dashboard_history_empty_title">暂无记录</string>
     <string name="dashboard_history_empty_message">完成一次出行后，会自动出现在这里。</string>
     <string name="dashboard_history_latest">最近一次保存于 %1$s</string>
     <string name="dashboard_history_default_subtitle">按天查看已经保存的轨迹</string>
     <string name="dashboard_history_no_route">这条记录还没有可显示的轨迹点。</string>
-    <string name="dashboard_history_low_quality_hint">%1$s，另有 %2$d 天轨迹信号较弱</string>
+    <string name="dashboard_history_low_quality_hint">%1$s，另外有 %2$d 天轨迹信号较弱</string>
 
     <string name="dashboard_locate">定位到当前位置</string>
     <string name="dashboard_pause_recording">暂停记录</string>
@@ -42,6 +42,7 @@
     <string name="dashboard_diagnostics_saved_none">还没有自动保存过有效行程</string>
     <string name="dashboard_diagnostics_points_collected">已采集 %1$d 个点</string>
     <string name="dashboard_diagnostics_accuracy_estimate">精度约 %1$d 米</string>
+    <string name="dashboard_diagnostics_crash">最近异常</string>
 
     <string name="dashboard_auto_title_idle">智能记录待命中</string>
     <string name="dashboard_auto_title_tracking">自动记录中</string>
@@ -78,8 +79,7 @@
 
     <string name="dashboard_save_feedback_title">已保存到历史</string>
     <string name="dashboard_save_feedback_action">查看历史</string>
-    <string name="dashboard_save_feedback_summary">%1$s · %2$s</string>
-    <string name="dashboard_save_feedback_placeholder">0.00 公里 · 00:00</string>
+    <string name="dashboard_save_feedback_placeholder">0.00 公里 / 00:00</string>
     <string name="dashboard_record_button_description">智能记录状态</string>
 
     <string name="location_permission_denied">定位权限被拒绝</string>
@@ -88,7 +88,7 @@
     <string name="smart_tracking_permission_required">开启无感记录需要定位和活动识别权限。</string>
     <string name="background_location_permission_required">如需后台自动记录，请在系统设置里把定位权限改为“始终允许”。</string>
     <string name="background_location_settings_title">后台记录需要“始终允许”</string>
-    <string name="background_location_settings_message">为了让应用在后台无感地自动记录行程，请在接下来的系统设置页里把定位权限设为“始终允许”。</string>
+    <string name="background_location_settings_message">为了让应用在后台无感地自动记录行程，请在接下来的系统设置页面里把定位权限设为“始终允许”。</string>
     <string name="notification_permission_limited">后台记录已开启，但通知权限未开启，系统前台服务提醒可能不可见。</string>
     <string name="diagnostics_status_waiting_permissions">等待权限完整</string>
     <string name="diagnostics_event_boot_permissions_missing">系统重启后未恢复自动记录，请补齐定位、后台定位和活动识别权限。</string>
@@ -99,12 +99,10 @@
     <string name="permission_summary_notification_limited">通知权限未开启（后台提醒会受限）</string>
     <string name="permission_summary_ready">权限完整</string>
 
-    <string name="history_default_title">行程 #%1$02d</string>
     <string name="history_card_latest_label">最新</string>
     <string name="history_card_saved_label">已保存</string>
     <string name="history_map_back">返回历史列表</string>
     <string name="history_map_badge">历史轨迹</string>
-    <string name="history_map_markers_badge">轨迹质量</string>
     <string name="history_map_start">起点</string>
     <string name="history_map_end">终点</string>
     <string name="history_metric_distance">距离</string>
@@ -127,20 +125,19 @@
     <string name="history_preview_subtitle">点击查看详情</string>
 
     <string name="history_list_options_title">轨迹操作</string>
-    <string name="history_option_rename">重命名</string>
     <string name="history_option_delete">删除</string>
-    <string name="history_rename_title">重命名轨迹</string>
-    <string name="history_rename_hint">请输入轨迹名称</string>
-    <string name="history_delete_title">删除轨迹</string>
     <string name="history_delete_day_title">删除当天行程</string>
-    <string name="history_delete_message">删除后无法恢复，确定删除“%1$s”吗？</string>
     <string name="history_delete_day_message">删除后无法恢复，确定删除“%1$s”的全部行程吗？</string>
-    <string name="history_saved_name_updated">轨迹名称已更新</string>
-    <string name="history_saved_deleted">轨迹已删除</string>
     <string name="history_saved_day_deleted">当天行程已删除</string>
+    <string name="history_export">导出备份</string>
+    <string name="history_import">导入恢复</string>
+    <string name="history_export_empty">当前没有可导出的历史记录</string>
+    <string name="history_export_success">历史记录已导出</string>
+    <string name="history_export_failed">导出失败，请重试</string>
+    <string name="history_import_success">已导入 %1$d 条记录，当前共 %2$d 条</string>
+    <string name="history_import_failed">导入失败，请确认备份文件格式</string>
 
     <string name="action_cancel">取消</string>
-    <string name="action_save">保存</string>
     <string name="action_delete">删除</string>
     <string name="action_go_to_settings">去设置</string>
 </resources>

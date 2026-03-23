@@ -1,18 +1,21 @@
-﻿package com.wenhao.record.ui.main
+package com.wenhao.record.ui.main
 
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.graphics.Color
 import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationManager
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewStub
 import android.widget.FrameLayout
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
@@ -20,36 +23,30 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
+import com.baidu.mapapi.model.LatLng
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
+import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.history.HistoryTransferCodec
 import com.wenhao.record.data.tracking.AutoTrackDiagnostics
 import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
-import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
-import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.map.CoordinateTransformUtils
-import com.wenhao.record.map.MapMarkerIconFactory
 import com.wenhao.record.permissions.PermissionHelper
+import com.wenhao.record.stability.CrashLogStore
 import com.wenhao.record.tracking.BackgroundTrackingService
 import com.wenhao.record.tracking.LocationSelectionUtils
 import com.wenhao.record.ui.dashboard.DashboardUiController
 import com.wenhao.record.ui.history.HistoryController
 import com.wenhao.record.ui.map.MapActivity
-import com.baidu.mapapi.map.BaiduMap
-import com.baidu.mapapi.map.Gradient
-import com.baidu.mapapi.map.HeatMap
-import com.baidu.mapapi.map.MapStatusUpdateFactory
-import com.baidu.mapapi.map.Marker
-import com.baidu.mapapi.map.MarkerOptions
-import com.baidu.mapapi.map.Polyline
-import com.baidu.mapapi.map.PolylineOptions
-import com.baidu.mapapi.map.WeightedLatLng
-import com.baidu.mapapi.model.LatLng
-import com.baidu.mapapi.model.LatLngBounds
+import com.wenhao.record.util.AppTaskExecutor
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -59,8 +56,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var dashboardUiController: DashboardUiController
-    private lateinit var historyController: HistoryController
-    private lateinit var aMap: BaiduMap
+    private lateinit var homeMapController: HomeMapController
+    private var historyController: HistoryController? = null
 
     private val permissionHelper by lazy {
         PermissionHelper(
@@ -72,20 +69,42 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private val exportHistoryLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) {
+            setHistoryTransferBusy(false)
+        } else {
+            exportHistoryToUri(uri)
+        }
+    }
+
+    private val importHistoryLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) {
+            setHistoryTransferBusy(false)
+        } else {
+            importHistoryFromUri(uri)
+        }
+    }
+
     private var locationManager: LocationManager? = null
     private var gnssStatusCallback: GnssStatus.Callback? = null
-    private var homeMarker: Marker? = null
-    private var liveStartMarker: Marker? = null
-    private var liveCurrentMarker: Marker? = null
-    private var activeTrackPolyline: Polyline? = null
-    private val todayTrackPolylines = mutableListOf<Polyline>()
-    private var todayHeatMap: HeatMap? = null
     private var centerOnNextFix = false
     private var lastDashboardSessionStart: Long? = null
-    private var shouldRefitDashboardMap = true
+    private var previewLocationCache: LatLng? = null
+    private var previewLocationCachedAt = 0L
+    private var historyTransferBusy = false
+    private var currentTab = DashboardTab.RECORD
+    private var historyScreenStub: ViewStub? = null
+    private var historyScreen: View? = null
+    private var historyBottomNav: View? = null
+    private var historyScreenTopPadding = 0
+    private var historyBottomNavBottomPadding = 0
+    private var systemBarTopInset = 0
+    private var systemBarBottomInset = 0
 
-    private val currentTrackPoints = mutableListOf<TrackPoint>()
-    private val todayTrackPoints = mutableListOf<LatLng>()
     private val defaultLatLng = LatLng(39.9042, 116.4074)
     private val dataChangeListener = object : TrackDataChangeNotifier.Listener {
         override fun onDashboardDataChanged() {
@@ -93,16 +112,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onHistoryDataChanged() {
-            historyController.reload()
-            historyController.updateContent()
-            shouldRefitDashboardMap = true
+            historyController?.let { controller ->
+                controller.reload()
+                controller.updateContent()
+            }
+            homeMapController.shouldRefit = true
             refreshDashboardContent()
         }
     }
     private val freshLocationListener = android.location.LocationListener(::handleLocationUpdate)
-
-    private val mapView
-        get() = dashboardUiController.mapView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -110,17 +128,14 @@ class MainActivity : AppCompatActivity() {
         applyWindowInsets()
 
         dashboardUiController = DashboardUiController(this)
-        historyController = HistoryController(this) { item: HistoryDayItem ->
-            startActivity(MapActivity.createHistoryIntent(this, item.dayStartMillis))
-        }
+        homeMapController = HomeMapController(this, dashboardUiController.mapView)
+        historyScreenStub = findViewById(R.id.historyScreenStub)
         locationManager = getSystemService(LocationManager::class.java)
 
-        historyController.reload()
         configureHomeMap()
         initGnssStatusCallback()
         bindNavigation()
         refreshDashboardContent()
-        historyController.updateContent()
         showTab(DashboardTab.RECORD)
         refreshGpsStatus()
         permissionHelper.ensureSmartTrackingEnabled()
@@ -131,36 +146,26 @@ class MainActivity : AppCompatActivity() {
             onRecordClick = { showTab(DashboardTab.RECORD) },
             onHistoryClick = { showTab(DashboardTab.HISTORY) },
             onLocateClick = {
-                if (currentTrackPoints.isNotEmpty()) {
-                    fitActiveTrackToMap(forceSinglePointZoom = true)
-                } else if (todayTrackPoints.isNotEmpty()) {
-                    fitTodayTracksToMap(forceSinglePointZoom = true)
-                } else {
-                    centerOnCurrentLocation()
+                when {
+                    homeMapController.hasActiveTrack() -> {
+                        homeMapController.focusActiveTrackOnLatestPoint(forceZoom = true)
+                    }
+
+                    homeMapController.hasTodayTracks() -> {
+                        homeMapController.fitTodayTracksToMap(forceSinglePointZoom = true)
+                    }
+
+                    else -> centerOnCurrentLocation()
                 }
             }
         )
-        historyController.bindNavigation {
-            showTab(DashboardTab.RECORD)
-        }
     }
 
     private fun configureHomeMap() {
-        aMap = mapView.map
-        mapView.showZoomControls(false)
-        mapView.showScaleControl(false)
-        aMap.uiSettings.setCompassEnabled(false)
-        aMap.uiSettings.setRotateGesturesEnabled(false)
-        aMap.uiSettings.setOverlookingGesturesEnabled(false)
-        aMap.setBaiduHeatMapEnabled(aMap.isSupportBaiduHeatMap())
-
-        val previewLocation = loadPreviewLocation() ?: defaultLatLng
-        updateMarker(previewLocation)
-        aMap.setMapStatus(
-            MapStatusUpdateFactory.newLatLngZoom(
-                previewLocation,
-                if (permissionHelper.hasLocationPermission()) 16f else 15f
-            )
+        homeMapController.configure(
+            previewLocation = loadPreviewLocation(forceRefresh = true),
+            hasLocationPermission = permissionHelper.hasLocationPermission(),
+            defaultLatLng = defaultLatLng
         )
     }
 
@@ -214,7 +219,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshDashboardContent() {
-        val session = AutoTrackStorage.loadSession(this)
+        val session = AutoTrackStorage.peekSession(this)
+        val previewLocation = loadPreviewLocation()
+        val todayHistoryItems = HistoryStorage.peek(this)
         val previousSessionStart = lastDashboardSessionStart
         lastDashboardSessionStart = session?.startTimestamp
         val dashboardState = currentDashboardState(session)
@@ -223,13 +230,19 @@ class MainActivity : AppCompatActivity() {
         } ?: 0
 
         dashboardUiController.render(session, dashboardState, durationSeconds)
-        renderDashboardTrack(session)
+        homeMapController.render(
+            session = session,
+            previewLocation = previewLocation,
+            todayHistoryItems = todayHistoryItems
+        )
         renderDashboardDiagnosticsRefined()
 
         if (previousSessionStart != null && session == null) {
-            shouldRefitDashboardMap = true
-            historyController.reload()
-            historyController.updateContent()
+            homeMapController.shouldRefit = true
+            historyController?.let { controller ->
+                controller.reload()
+                controller.updateContent()
+            }
         }
     }
 
@@ -248,27 +261,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun renderDashboardTrack(session: AutoTrackSession?) {
-        currentTrackPoints.clear()
-        currentTrackPoints.addAll(session?.points.orEmpty())
-
-        if (currentTrackPoints.isEmpty()) {
-            clearActiveTrack()
-            renderTodayTracks()
-            loadPreviewLocation()?.let(::updateMarker)
-            return
-        }
-
-        clearTodayTrackOverlays()
-        removeTodayHeatMap()
-        renderTrackPolyline(shouldFitMap = false)
-        updateLiveTrackMarkers()
-        updateMarker(currentTrackPoints.last().toLatLng())
-        if (shouldRefitDashboardMap) {
-            fitActiveTrackToMap(forceSinglePointZoom = false)
-        }
-    }
-
     private fun renderDashboardDiagnosticsRefined() {
         val diagnostics = AutoTrackDiagnosticsStorage.load(this)
         val permissionSummary = buildPermissionSummarySafe()
@@ -277,6 +269,8 @@ class MainActivity : AppCompatActivity() {
         val saveSummary = diagnostics.lastSavedSummary?.let { summary ->
             buildTimedSummary(diagnostics.lastSavedAt, summary)
         } ?: getString(R.string.dashboard_diagnostics_saved_none)
+        val crashSummary = CrashLogStore.latestSummary(this)
+
         val fullBody = buildString {
             append(getString(R.string.dashboard_diagnostics_permissions))
             append("：")
@@ -297,6 +291,12 @@ class MainActivity : AppCompatActivity() {
             append(getString(R.string.dashboard_diagnostics_saved))
             append("：")
             append(saveSummary)
+            if (!crashSummary.isNullOrBlank()) {
+                append('\n')
+                append(getString(R.string.dashboard_diagnostics_crash))
+                append("：")
+                append(crashSummary)
+            }
         }
         val compactBody = buildString {
             append(diagnostics.serviceStatus)
@@ -310,6 +310,10 @@ class MainActivity : AppCompatActivity() {
                     getString(R.string.dashboard_diagnostics_waiting_signal)
                 }
             )
+            if (!crashSummary.isNullOrBlank()) {
+                append('\n')
+                append(crashSummary)
+            }
         }
         dashboardUiController.updateDiagnostics(
             title = getString(R.string.dashboard_diagnostics_title),
@@ -319,18 +323,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showTab(tab: DashboardTab) {
+        currentTab = tab
         val isRecord = tab == DashboardTab.RECORD
         dashboardUiController.setRecordContentVisible(isRecord)
-        historyController.setVisible(!isRecord)
         dashboardUiController.setRecordTabSelected(isRecord)
-        historyController.setTabSelected(isRecord)
+        historyController?.setVisible(!isRecord)
+        historyController?.setTabSelected(isRecord)
+
+        if (!isRecord) {
+            ensureHistoryController().apply {
+                reload()
+                updateContent()
+                setVisible(true)
+                setTabSelected(false)
+            }
+            return
+        }
 
         if (isRecord) {
-            shouldRefitDashboardMap = true
+            homeMapController.shouldRefit = true
             refreshDashboardContent()
-            if (currentTrackPoints.isEmpty()) {
-                loadPreviewLocation()?.let(::updateMarker)
-            }
+            homeMapController.showPreviewLocationIfIdle(loadPreviewLocation())
         }
     }
 
@@ -342,17 +355,108 @@ class MainActivity : AppCompatActivity() {
 
         if (!isLocationEnabled()) {
             refreshGpsStatus()
-            android.widget.Toast.makeText(this, R.string.location_service_disabled, android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.location_service_disabled, Toast.LENGTH_SHORT).show()
             return
         }
 
         centerOnNextFix = true
         requestFreshLocationUpdates()
 
-        loadPreviewLocation()?.let {
-            updateMarker(it)
-            aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(it, 17f))
-        } ?: android.widget.Toast.makeText(this, R.string.location_unavailable, android.widget.Toast.LENGTH_SHORT).show()
+        loadPreviewLocation(forceRefresh = true)?.let {
+            homeMapController.centerOnPreviewLocation(it)
+        } ?: Toast.makeText(this, R.string.location_unavailable, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun requestHistoryExport() {
+        if (historyTransferBusy) return
+        val items = HistoryStorage.peek(this)
+        if (items.isEmpty()) {
+            Toast.makeText(this, R.string.history_export_empty, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        setHistoryTransferBusy(true)
+        val filename = "track-record-history-${
+            SimpleDateFormat("yyyyMMdd-HHmmss", Locale.CHINA).format(Date())
+        }.json"
+        exportHistoryLauncher.launch(filename)
+    }
+
+    private fun exportHistoryToUri(uri: Uri) {
+        AppTaskExecutor.runOnIo {
+            val items = HistoryStorage.load(this)
+            if (items.isEmpty()) {
+                AppTaskExecutor.runOnMain {
+                    setHistoryTransferBusy(false)
+                    Toast.makeText(this, R.string.history_export_empty, Toast.LENGTH_SHORT).show()
+                }
+                return@runOnIo
+            }
+
+            val result = runCatching {
+                val payload = HistoryTransferCodec.encode(items)
+                contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                    writer.write(payload)
+                } ?: error("Unable to open export stream")
+            }
+            AppTaskExecutor.runOnMain {
+                setHistoryTransferBusy(false)
+                Toast.makeText(
+                    this,
+                    if (result.isSuccess) R.string.history_export_success else R.string.history_export_failed,
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun requestHistoryImport() {
+        if (historyTransferBusy) return
+        setHistoryTransferBusy(true)
+        importHistoryLauncher.launch(arrayOf("application/json", "text/plain", "text/*"))
+    }
+
+    private fun importHistoryFromUri(uri: Uri) {
+        AppTaskExecutor.runOnIo {
+            val importedItems = runCatching {
+                contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                    HistoryTransferCodec.decode(reader.readText())
+                } ?: emptyList()
+            }.getOrDefault(emptyList())
+
+            if (importedItems.isEmpty()) {
+                AppTaskExecutor.runOnMain {
+                    setHistoryTransferBusy(false)
+                    Toast.makeText(this, R.string.history_import_failed, Toast.LENGTH_SHORT).show()
+                }
+                return@runOnIo
+            }
+
+            val mergedItems = HistoryTransferCodec.merge(
+                existingItems = HistoryStorage.load(this),
+                importedItems = importedItems
+            )
+            HistoryStorage.save(this, mergedItems)
+            AppTaskExecutor.runOnMain {
+                setHistoryTransferBusy(false)
+                homeMapController.shouldRefit = true
+                historyController?.let { controller ->
+                    controller.reload()
+                    controller.updateContent()
+                }
+                refreshDashboardContent()
+                Toast.makeText(
+                    this,
+                    getString(R.string.history_import_success, importedItems.size, mergedItems.size),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    private fun setHistoryTransferBusy(isBusy: Boolean) {
+        historyTransferBusy = isBusy
+        historyController?.setTransferBusy(isBusy)
     }
 
     private fun refreshGpsStatus() {
@@ -396,8 +500,6 @@ class MainActivity : AppCompatActivity() {
         val locateButton = findViewById<View>(R.id.btnLocate)
         val dashboardPanel = findViewById<View>(R.id.dashboardPanel)
         val saveFeedbackCard = findViewById<View>(R.id.saveFeedbackCard)
-        val historyScreen = findViewById<View>(R.id.historyScreen)
-        val historyBottomNav = findViewById<View>(R.id.historyPageBottomNav)
 
         val gpsStatusLayout = gpsStatusBadge.layoutParams as FrameLayout.LayoutParams
         val gpsStatusStartMargin = gpsStatusLayout.marginStart
@@ -415,11 +517,11 @@ class MainActivity : AppCompatActivity() {
         val saveFeedbackBottomMargin = saveFeedbackLayout.bottomMargin
 
         val dashboardPanelBottomPadding = dashboardPanel.paddingBottom
-        val historyScreenTopPadding = historyScreen.paddingTop
-        val historyBottomNavBottomPadding = historyBottomNav.paddingBottom
 
         ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
             val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            systemBarTopInset = systemBars.top
+            systemBarBottomInset = systemBars.bottom
 
             gpsStatusBadge.updateLayoutParams<FrameLayout.LayoutParams> {
                 marginStart = gpsStatusStartMargin + systemBars.left
@@ -440,8 +542,7 @@ class MainActivity : AppCompatActivity() {
             saveFeedbackCard.updateLayoutParams<ViewGroup.MarginLayoutParams> {
                 bottomMargin = saveFeedbackBottomMargin + systemBars.bottom
             }
-            historyScreen.updatePadding(top = historyScreenTopPadding + systemBars.top)
-            historyBottomNav.updatePadding(bottom = historyBottomNavBottomPadding + systemBars.bottom)
+            applyHistoryWindowInsets()
 
             insets
         }
@@ -450,229 +551,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleLocationUpdate(location: Location) {
-        val gcj02LatLng = convertToGcj02(location)
-        updateMarker(gcj02LatLng)
-        if (centerOnNextFix) {
-            centerOnNextFix = false
-            aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(gcj02LatLng, 17f))
-        }
-        stopLocationUpdates()
-    }
-
-    private fun updateMarker(latLng: LatLng) {
-        if (currentTrackPoints.isNotEmpty()) {
-            homeMarker?.remove()
-            homeMarker = null
-            if (liveCurrentMarker == null) {
-                liveCurrentMarker = aMap.addOverlay(
-                    MarkerOptions()
-                        .position(latLng)
-                        .anchor(0.5f, 0.5f)
-                        .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_end_marker))
-                ) as Marker
-            } else {
-                liveCurrentMarker?.position = latLng
-            }
-            return
-        }
-
-        liveStartMarker?.remove()
-        liveStartMarker = null
-        liveCurrentMarker?.remove()
-        liveCurrentMarker = null
-
-        if (homeMarker == null) {
-            homeMarker = aMap.addOverlay(
-                MarkerOptions()
-                    .position(latLng)
-                    .anchor(0.5f, 0.5f)
-                    .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_location))
-            ) as Marker
-        } else {
-            homeMarker?.position = latLng
-        }
-    }
-
-    private fun renderTrackPolyline(shouldFitMap: Boolean) {
-        val latLngPoints = currentTrackPoints.map { it.toLatLng() }
-        if (latLngPoints.size < 2) {
-            activeTrackPolyline?.remove()
-            activeTrackPolyline = null
-            if (shouldFitMap) {
-                fitActiveTrackToMap(forceSinglePointZoom = false)
-            }
-            return
-        }
-
-        if (activeTrackPolyline == null) {
-            activeTrackPolyline = aMap.addOverlay(
-                PolylineOptions()
-                    .points(latLngPoints)
-                    .color(Color.parseColor("#8B5CF6"))
-                    .width(12)
-            ) as Polyline
-        } else {
-            activeTrackPolyline?.points = latLngPoints
-        }
-
-        if (shouldFitMap) {
-            fitActiveTrackToMap(forceSinglePointZoom = false)
-        }
-    }
-
-    private fun clearActiveTrack() {
-        activeTrackPolyline?.remove()
-        activeTrackPolyline = null
-        liveStartMarker?.remove()
-        liveStartMarker = null
-        liveCurrentMarker?.remove()
-        liveCurrentMarker = null
-    }
-
-    private fun clearTodayTrackOverlays() {
-        todayTrackPolylines.forEach { polyline -> polyline.remove() }
-        todayTrackPolylines.clear()
-        todayTrackPoints.clear()
-    }
-
-    private fun removeTodayHeatMap() {
-        todayHeatMap?.removeHeatMap()
-        todayHeatMap = null
-    }
-
-    private fun renderTodayTracks() {
-        clearTodayTrackOverlays()
-        removeTodayHeatMap()
-
-        val todayHistoryItems = HistoryStorage.load(this).filter { item ->
-            isSameDay(item.timestamp, System.currentTimeMillis())
-        }
-
-        todayHistoryItems.forEach { item ->
-            val points = item.points.map { point -> point.toLatLng() }
-            todayTrackPoints.addAll(points)
-            if (points.size > 1) {
-                val polyline = aMap.addOverlay(
-                    PolylineOptions()
-                        .points(points)
-                        .color(Color.parseColor("#7A8B5CF6"))
-                        .width(10)
-                ) as Polyline
-                todayTrackPolylines += polyline
-            }
-        }
-
-        renderTodayHeatMap(todayHistoryItems.flatMap { item -> item.points })
-
-        if (todayTrackPoints.isNotEmpty() && shouldRefitDashboardMap) {
-            fitTodayTracksToMap(forceSinglePointZoom = false)
-        }
-    }
-
-    private fun renderTodayHeatMap(points: List<TrackPoint>) {
-        if (!aMap.isSupportBaiduHeatMap() || points.size < 3) {
-            return
-        }
-
-        val weightedPoints = points.map { point ->
-            WeightedLatLng(point.toLatLng())
-        }
-        val gradient = Gradient(
-            intArrayOf(
-                Color.parseColor("#33D9CCFF"),
-                Color.parseColor("#8A8B5CF6"),
-                Color.parseColor("#F26E47D7")
-            ),
-            floatArrayOf(0.2f, 0.6f, 1f)
+        val previewLocation = convertToGcj02(location)
+        previewLocationCache = previewLocation
+        previewLocationCachedAt = System.currentTimeMillis()
+        homeMapController.updateCurrentLocation(
+            latLng = previewLocation,
+            shouldCenter = centerOnNextFix
         )
-        todayHeatMap = HeatMap.Builder()
-            .weightedData(weightedPoints)
-            .radius(32)
-            .opacity(0.72)
-            .gradient(gradient)
-            .build()
-        todayHeatMap?.let(aMap::addHeatMap)
-    }
-
-    private fun updateLiveTrackMarkers() {
-        val firstPoint = currentTrackPoints.firstOrNull()?.toLatLng() ?: return
-        val lastPoint = currentTrackPoints.lastOrNull()?.toLatLng() ?: return
-
-        if (liveStartMarker == null) {
-            liveStartMarker = aMap.addOverlay(
-                MarkerOptions()
-                    .position(firstPoint)
-                    .anchor(0.5f, 0.5f)
-                    .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_start_marker))
-            ) as Marker
-        } else {
-            liveStartMarker?.position = firstPoint
-        }
-
-        if (liveCurrentMarker == null) {
-            liveCurrentMarker = aMap.addOverlay(
-                MarkerOptions()
-                    .position(lastPoint)
-                    .anchor(0.5f, 0.5f)
-                    .icon(MapMarkerIconFactory.fromDrawableResource(this, R.drawable.ic_route_end_marker))
-            ) as Marker
-        } else {
-            liveCurrentMarker?.position = lastPoint
-        }
-    }
-
-    private fun fitActiveTrackToMap(forceSinglePointZoom: Boolean) {
-        mapView.post {
-            val points = currentTrackPoints.map { it.toLatLng() }
-            when {
-                points.isEmpty() -> Unit
-                points.size == 1 -> {
-                    if (forceSinglePointZoom || centerOnNextFix) {
-                        aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(points.first(), 17f))
-                    }
-                    shouldRefitDashboardMap = false
-                }
-
-                else -> {
-                    val bounds = LatLngBounds.Builder().apply {
-                        points.forEach(::include)
-                    }.build()
-                    aMap.setViewPadding(dpToPx(20), dpToPx(28), dpToPx(20), dpToPx(82))
-                    aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngBounds(bounds))
-                    shouldRefitDashboardMap = false
-                }
-            }
-        }
-    }
-
-    private fun fitTodayTracksToMap(forceSinglePointZoom: Boolean) {
-        mapView.post {
-            when {
-                todayTrackPoints.isEmpty() -> Unit
-                todayTrackPoints.size == 1 -> {
-                    if (forceSinglePointZoom || shouldRefitDashboardMap) {
-                        aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(todayTrackPoints.first(), 17f))
-                    }
-                    shouldRefitDashboardMap = false
-                }
-
-                else -> {
-                    val bounds = LatLngBounds.Builder().apply {
-                        todayTrackPoints.forEach(::include)
-                    }.build()
-                    aMap.setViewPadding(dpToPx(20), dpToPx(28), dpToPx(20), dpToPx(82))
-                    aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngBounds(bounds))
-                    shouldRefitDashboardMap = false
-                }
-            }
-        }
-    }
-
-    private fun isSameDay(firstTimestamp: Long, secondTimestamp: Long): Boolean {
-        val first = Calendar.getInstance().apply { timeInMillis = firstTimestamp }
-        val second = Calendar.getInstance().apply { timeInMillis = secondTimestamp }
-        return first.get(Calendar.YEAR) == second.get(Calendar.YEAR) &&
-            first.get(Calendar.DAY_OF_YEAR) == second.get(Calendar.DAY_OF_YEAR)
+        centerOnNextFix = false
+        stopLocationUpdates()
     }
 
     private fun buildPermissionSummarySafe(): String {
@@ -715,6 +602,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
     private fun buildTimedSummary(timestamp: Long, summary: String): String {
         if (timestamp <= 0L) return summary
         val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
@@ -735,7 +623,7 @@ class MainActivity : AppCompatActivity() {
         val providers = collectEnabledProviders(manager)
         if (providers.isEmpty()) {
             refreshGpsStatus()
-            android.widget.Toast.makeText(this, R.string.location_service_disabled, android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, R.string.location_service_disabled, Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -781,7 +669,16 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun loadPreviewLocation(): LatLng? = loadLastKnownLocation()?.let(::convertToGcj02)
+    private fun loadPreviewLocation(forceRefresh: Boolean = false): LatLng? {
+        val now = System.currentTimeMillis()
+        if (!forceRefresh && now - previewLocationCachedAt < 5_000L) {
+            return previewLocationCache
+        }
+        val previewLocation = loadLastKnownLocation()?.let(::convertToGcj02)
+        previewLocationCache = previewLocation
+        previewLocationCachedAt = now
+        return previewLocation
+    }
 
     private fun convertToGcj02(location: Location): LatLng {
         val coordinate = CoordinateTransformUtils.wgs84ToGcj02(
@@ -805,15 +702,48 @@ class MainActivity : AppCompatActivity() {
         manager.unregisterGnssStatusCallback(callback)
     }
 
+    private fun ensureHistoryController(): HistoryController {
+        historyController?.let { return it }
+
+        val rootView = historyScreen ?: historyScreenStub?.inflate() ?: findViewById(R.id.historyScreen)
+        historyScreen = rootView
+        historyScreenStub = null
+        historyBottomNav = rootView.findViewById(R.id.historyPageBottomNav)
+        historyScreenTopPadding = rootView.paddingTop
+        historyBottomNavBottomPadding = historyBottomNav?.paddingBottom ?: 0
+        applyHistoryWindowInsets()
+
+        return HistoryController(this, rootView) { item: HistoryDayItem ->
+            startActivity(MapActivity.createHistoryIntent(this, item.dayStartMillis))
+        }.also { controller ->
+            controller.bindNavigation(
+                onRecordClick = { showTab(DashboardTab.RECORD) },
+                onExportClick = ::requestHistoryExport,
+                onImportClick = ::requestHistoryImport
+            )
+            controller.setTransferBusy(historyTransferBusy)
+            controller.setVisible(currentTab == DashboardTab.HISTORY)
+            controller.setTabSelected(currentTab == DashboardTab.RECORD)
+            historyController = controller
+        }
+    }
+
+    private fun applyHistoryWindowInsets() {
+        historyScreen?.updatePadding(top = historyScreenTopPadding + systemBarTopInset)
+        historyBottomNav?.updatePadding(bottom = historyBottomNavBottomPadding + systemBarBottomInset)
+    }
+
     override fun onResume() {
         super.onResume()
-        mapView.onResume()
+        homeMapController.onResume()
         TrackDataChangeNotifier.addListener(dataChangeListener)
         registerGnssCallback()
         refreshGpsStatus()
-        historyController.reload()
-        historyController.updateContent()
-        shouldRefitDashboardMap = true
+        historyController?.let { controller ->
+            controller.reload()
+            controller.updateContent()
+        }
+        homeMapController.shouldRefit = true
         refreshDashboardContent()
         permissionHelper.startBackgroundTrackingServiceIfReady()
     }
@@ -822,28 +752,16 @@ class MainActivity : AppCompatActivity() {
         TrackDataChangeNotifier.removeListener(dataChangeListener)
         unregisterGnssCallback()
         stopLocationUpdates()
-        mapView.onPause()
+        homeMapController.onPause()
         super.onPause()
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {
         dashboardUiController.onDestroy()
         unregisterGnssCallback()
         stopLocationUpdates()
-        clearActiveTrack()
-        clearTodayTrackOverlays()
-        removeTodayHeatMap()
-        homeMarker?.remove()
         TrackDataChangeNotifier.removeListener(dataChangeListener)
-        mapView.onDestroy()
+        homeMapController.onDestroy()
         super.onDestroy()
-    }
-
-    private fun dpToPx(dp: Int): Int {
-        return (dp * resources.displayMetrics.density).toInt()
     }
 }

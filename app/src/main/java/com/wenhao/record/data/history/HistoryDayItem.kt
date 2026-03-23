@@ -1,5 +1,6 @@
 package com.wenhao.record.data.history
 
+import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.TrackPoint
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -33,7 +34,7 @@ data class HistoryDayItem(
         get() = formatDayDate("M月d日 EEEE", dayStartMillis)
 
     val formattedDateDetail: String
-        get() = "$displayTitle · 共 ${sessionCount} 段行程"
+        get() = "$displayTitle / 共 ${sessionCount} 段行程"
 
     val sessionCountLabel: String
         get() = "共 ${sessionCount} 段行程，最近 ${formattedLatestTime}"
@@ -74,7 +75,7 @@ data class HistoryDayItem(
         get() = "${formattedDistance} / ${formattedDuration} / 平均 ${formattedSpeed}"
 
     val pointCountLabel: String
-        get() = "共 ${sessionCount} 段行程 · ${points.size} 个定位点"
+        get() = "共 ${sessionCount} 段行程 / ${points.size} 个定位点"
 }
 
 object HistoryDayAggregator {
@@ -86,11 +87,16 @@ object HistoryDayAggregator {
             .groupBy { item -> startOfDay(item.timestamp) }
             .map { (dayStartMillis, dayItems) ->
                 val sortedItems = dayItems.sortedBy { it.timestamp }
-                val totalDistanceKm = sortedItems.sumOf { it.distanceKm }
+                val sanitizedTracks = sortedItems.map { item ->
+                    TrackPathSanitizer.sanitize(item.points, sortByTimestamp = true)
+                }
+                val totalDistanceKm = sanitizedTracks.sumOf { sanitized ->
+                    sanitized.totalDistanceKm
+                }
                 val totalDurationSeconds = sortedItems.sumOf { it.durationSeconds }
-                val segments = sortedItems
-                    .map { item -> item.points.toList() }
-                    .filter { segment -> segment.isNotEmpty() }
+                val segments = sanitizedTracks.flatMap { sanitized ->
+                    sanitized.segments.map { segment -> segment.toList() }
+                }
 
                 HistoryDayItem(
                     dayStartMillis = dayStartMillis,

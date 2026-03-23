@@ -34,6 +34,7 @@ import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
+import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.wenhao.record.data.tracking.FrequentPlaceAnchor
 import com.wenhao.record.data.tracking.FrequentPlaceStorage
@@ -46,23 +47,10 @@ import kotlin.math.max
 import kotlin.math.sqrt
 
 class BackgroundTrackingService : Service() {
-
-    private enum class TrackNoiseAction {
-        ACCEPT,
-        MERGE_STILL,
-        DROP_DRIFT,
-        DROP_JUMP
-    }
-
-    private data class TrackNoiseResult(
-        val action: TrackNoiseAction,
-        val distanceMeters: Float = 0f,
-        val acceptedPoint: TrackPoint? = null
-    )
-
     companion object {
         const val ACTION_START = "com.wenhao.record.action.START_BACKGROUND_TRACKING"
         const val ACTION_STOP = "com.wenhao.record.action.STOP_BACKGROUND_TRACKING"
+        private const val UNKNOWN_SSID_LITERAL = "<unknown ssid>"
 
         private const val CHANNEL_ID = "smart_tracking"
         private const val NOTIFICATION_ID = 1107
@@ -73,16 +61,6 @@ class BackgroundTrackingService : Service() {
         private const val MAX_LAST_KNOWN_LOCATION_AGE_MS = 10 * 60 * 1000L
         private const val MIN_USEFUL_DURATION_SECONDS = 45
         private const val MIN_USEFUL_DISTANCE_KM = 0.08
-
-        private const val MIN_ACCEPTED_POINT_DISTANCE_METERS = 5f
-        private const val MAX_STATIONARY_JITTER_METERS = 9f
-        private const val MAX_POOR_ACCURACY_METERS = 45f
-        private const val MAX_POOR_ACCURACY_INITIAL_METERS = 70f
-        private const val LOW_SPEED_METERS_PER_SECOND = 1.5f
-        private const val MAX_JUMP_DISTANCE_METERS = 180f
-        private const val MAX_JUMP_SPEED_METERS_PER_SECOND = 55f
-        private const val MIN_JUMP_TIME_DELTA_MS = 2_000L
-        private const val MAX_JUMP_TIME_DELTA_MS = 20_000L
 
         private const val IDLE_INTERVAL_MS = 45_000L
         private const val IDLE_INTERVAL_ANCHOR_MS = 90_000L
@@ -201,11 +179,21 @@ class BackgroundTrackingService : Service() {
         stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         significantMotionSensor = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
-        currentSession = AutoTrackStorage.loadSession(this)
+        currentSession = AutoTrackStorage.peekSession(this)
+        AutoTrackStorage.whenReady(this) { restoredSession ->
+            if (restoredSession == null || currentSession != null) return@whenReady
+            currentSession = restoredSession
+            if (AutoTrackStorage.isAutoTrackingEnabled(this)) {
+                motionConfidenceEngine.onActiveEntered()
+                enterPhase(TrackingPhase.ACTIVE, "异步恢复上一次未结束的行程", emitEvent = true)
+                scheduleFinalizeForCurrentSession()
+            }
+        }
         stayAnchors = FrequentPlaceStorage.loadAnchors(this)
         insideAnchorIds = FrequentPlaceStorage.loadInsideAnchorIds(this).toMutableSet()
+        scheduleFrequentPlacesRefresh()
         registerNetworkCallback()
-        createNotificationChannelClean()
+        createNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -223,7 +211,7 @@ class BackgroundTrackingService : Service() {
             else -> {
                 ensureForeground()
                 AutoTrackStorage.setAutoTrackingEnabled(this, true)
-                refreshFrequentPlaces()
+                scheduleFrequentPlacesRefresh()
                 refreshInsideAnchorsFromLastKnownLocation()
                 refreshWifiSnapshot()
                 if (currentSession != null) {
@@ -239,6 +227,7 @@ class BackgroundTrackingService : Service() {
     }
 
     override fun onDestroy() {
+        AutoTrackStorage.flush(this)
         stopAllTracking(clearSession = false)
         AutoTrackDiagnosticsStorage.flush(this)
         unregisterNetworkCallback()
@@ -584,10 +573,13 @@ class BackgroundTrackingService : Service() {
     private fun appendLocationToCurrentSession(location: Location) {
         val previousSession = currentSession ?: return
         val trackPoint = convertToGcj02TrackPoint(location)
-        val noiseResult = evaluateTrackPoint(
+        val noiseResult = TrackNoiseFilter.evaluate(
             lastPoint = previousSession.points.lastOrNull(),
-            candidatePoint = trackPoint,
-            location = location
+            sample = TrackNoiseSample(
+                point = trackPoint,
+                speedMetersPerSecond = location.speed.takeIf { it >= 0f } ?: 0f,
+                locationAgeMs = System.currentTimeMillis() - trackPoint.timestampMillis
+            )
         )
         val smoothedPoint = noiseResult.acceptedPoint?.let { accepted ->
             AdaptiveTrackSmoother.smooth(
@@ -597,17 +589,14 @@ class BackgroundTrackingService : Service() {
                 accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
             )
         }
-        val addedDistanceMeters = when {
-            smoothedPoint == null -> 0f
-            previousSession.points.isEmpty() -> 0f
-            else -> distanceBetween(previousSession.points.last(), smoothedPoint)
-        }
         val points = when (noiseResult.action) {
             TrackNoiseAction.ACCEPT -> previousSession.points + requireNotNull(smoothedPoint)
             TrackNoiseAction.MERGE_STILL,
             TrackNoiseAction.DROP_DRIFT,
             TrackNoiseAction.DROP_JUMP -> previousSession.points
         }
+        val sanitizedTrack = TrackPathSanitizer.sanitize(points, sortByTimestamp = false)
+        val sanitizedPoints = sanitizedTrack.points
 
         val updatedSession = previousSession.copy(
             lastMotionTimestamp = if (noiseResult.action == TrackNoiseAction.ACCEPT) {
@@ -615,10 +604,10 @@ class BackgroundTrackingService : Service() {
             } else {
                 previousSession.lastMotionTimestamp
             },
-            totalDistanceKm = previousSession.totalDistanceKm + (addedDistanceMeters / 1000.0),
-            lastLatitude = smoothedPoint?.latitude ?: previousSession.lastLatitude,
-            lastLongitude = smoothedPoint?.longitude ?: previousSession.lastLongitude,
-            points = points
+            totalDistanceKm = sanitizedTrack.totalDistanceKm,
+            lastLatitude = sanitizedPoints.lastOrNull()?.latitude ?: previousSession.lastLatitude,
+            lastLongitude = sanitizedPoints.lastOrNull()?.longitude ?: previousSession.lastLongitude,
+            points = sanitizedPoints
         )
         currentSession = updatedSession
         AutoTrackStorage.saveSession(this, updatedSession)
@@ -654,7 +643,9 @@ class BackgroundTrackingService : Service() {
         stopLocationUpdates()
 
         val durationSeconds = currentSessionDurationSeconds(session)
-        if (durationSeconds < MIN_USEFUL_DURATION_SECONDS && session.totalDistanceKm < MIN_USEFUL_DISTANCE_KM) {
+        val sanitizedTrack = TrackPathSanitizer.sanitize(session.points, sortByTimestamp = true)
+        val sanitizedDistanceKm = sanitizedTrack.totalDistanceKm
+        if (durationSeconds < MIN_USEFUL_DURATION_SECONDS && sanitizedDistanceKm < MIN_USEFUL_DISTANCE_KM) {
             AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
             AutoTrackDiagnosticsStorage.markSessionDiscarded(
                 this,
@@ -665,84 +656,26 @@ class BackgroundTrackingService : Service() {
         }
 
         val averageSpeedKmh = if (durationSeconds > 0) {
-            session.totalDistanceKm / (durationSeconds / 3600.0)
+            sanitizedDistanceKm / (durationSeconds / 3600.0)
         } else {
             0.0
         }
         val historyItem = HistoryItem(
             id = HistoryStorage.nextHistoryId(this),
             timestamp = session.startTimestamp,
-            distanceKm = session.totalDistanceKm,
+            distanceKm = sanitizedDistanceKm,
             durationSeconds = durationSeconds,
             averageSpeedKmh = averageSpeedKmh,
-            points = session.points
+            points = sanitizedTrack.points
         )
         HistoryStorage.add(this, historyItem)
-        refreshFrequentPlaces()
+        scheduleFrequentPlacesRefresh()
         AutoTrackStorage.saveUiState(this, AutoTrackUiState.SAVED_RECENTLY)
         AutoTrackDiagnosticsStorage.markSessionSaved(
             this,
             "已保存 ${formatDistance(session.totalDistanceKm)} / ${durationSeconds / 60} 分钟"
         )
         enterPhase(TrackingPhase.IDLE, "本次行程已自动保存，继续后台待命", emitEvent = true)
-    }
-
-    private fun evaluateTrackPoint(
-        lastPoint: TrackPoint?,
-        candidatePoint: TrackPoint,
-        location: Location
-    ): TrackNoiseResult {
-        val candidateAccuracy = candidatePoint.accuracyMeters ?: Float.MAX_VALUE
-        val candidateSpeed = location.speed.takeIf { it >= 0f } ?: 0f
-
-        if (lastPoint == null) {
-            return if (candidateAccuracy > MAX_POOR_ACCURACY_INITIAL_METERS &&
-                candidateSpeed <= LOW_SPEED_METERS_PER_SECOND
-            ) {
-                TrackNoiseResult(TrackNoiseAction.DROP_DRIFT)
-            } else {
-                TrackNoiseResult(TrackNoiseAction.ACCEPT, acceptedPoint = candidatePoint)
-            }
-        }
-
-        val distanceMeters = distanceBetween(lastPoint, candidatePoint)
-        val jitterThreshold = max(
-            MIN_ACCEPTED_POINT_DISTANCE_METERS,
-            minOf(MAX_STATIONARY_JITTER_METERS, candidateAccuracy * 0.28f)
-        )
-        if (distanceMeters <= jitterThreshold && candidateSpeed <= LOW_SPEED_METERS_PER_SECOND) {
-            return TrackNoiseResult(TrackNoiseAction.MERGE_STILL)
-        }
-
-        val driftDistanceThreshold = max(20f, candidateAccuracy * 0.7f)
-        if (candidateAccuracy >= MAX_POOR_ACCURACY_METERS &&
-            candidateSpeed <= LOW_SPEED_METERS_PER_SECOND + 0.7f &&
-            distanceMeters <= driftDistanceThreshold
-        ) {
-            return TrackNoiseResult(TrackNoiseAction.DROP_DRIFT)
-        }
-
-        val timeDeltaMillis = candidatePoint.timestampMillis - lastPoint.timestampMillis
-        if (timeDeltaMillis in MIN_JUMP_TIME_DELTA_MS..MAX_JUMP_TIME_DELTA_MS) {
-            val inferredSpeed = distanceMeters / (timeDeltaMillis / 1000f)
-            val reportedSpeedAllowance = max(18f, candidateSpeed * 3.2f + 12f)
-            if (distanceMeters >= max(MAX_JUMP_DISTANCE_METERS, candidateAccuracy * 2.5f) &&
-                inferredSpeed >= MAX_JUMP_SPEED_METERS_PER_SECOND &&
-                inferredSpeed > reportedSpeedAllowance
-            ) {
-                return TrackNoiseResult(TrackNoiseAction.DROP_JUMP)
-            }
-        }
-
-        if (distanceMeters < MIN_ACCEPTED_POINT_DISTANCE_METERS) {
-            return TrackNoiseResult(TrackNoiseAction.MERGE_STILL)
-        }
-
-        return TrackNoiseResult(
-            action = TrackNoiseAction.ACCEPT,
-            distanceMeters = distanceMeters,
-            acceptedPoint = candidatePoint
-        )
     }
 
     private fun buildMotionSnapshot(
@@ -865,7 +798,17 @@ class BackgroundTrackingService : Service() {
         }
     }
 
-    private fun refreshFrequentPlaces(historyItems: List<HistoryItem> = HistoryStorage.load(this)) {
+    private fun scheduleFrequentPlacesRefresh() {
+        val cachedHistory = HistoryStorage.peek(this)
+        if (cachedHistory.isNotEmpty()) {
+            refreshFrequentPlaces(cachedHistory)
+        }
+        HistoryStorage.whenReady(this) { items ->
+            refreshFrequentPlaces(items)
+        }
+    }
+
+    private fun refreshFrequentPlaces(historyItems: List<HistoryItem>) {
         stayAnchors = FrequentPlaceDetector.buildAnchors(historyItems)
         FrequentPlaceStorage.saveAnchors(this, stayAnchors)
         val retainedIds = insideAnchorIds.filterTo(mutableSetOf()) { currentId ->
@@ -932,7 +875,7 @@ class BackgroundTrackingService : Service() {
         val info = runCatching { wifiManager.connectionInfo }.getOrNull()
         val bssid = info?.bssid?.takeUnless { it.isNullOrBlank() || it == "02:00:00:00:00:00" }
         val ssid = info?.ssid
-            ?.takeUnless { it.isNullOrBlank() || it == WifiManager.UNKNOWN_SSID }
+            ?.takeUnless { it.isNullOrBlank() || it == UNKNOWN_SSID_LITERAL }
             ?.trim('"')
         val connected = info?.networkId?.takeIf { it != -1 } != null && bssid != null
         currentWifiSnapshot = WifiSnapshot(
@@ -1036,22 +979,6 @@ class BackgroundTrackingService : Service() {
 
     private fun formatDistance(distanceKm: Double): String {
         return String.format(Locale.getDefault(), "%.2f 公里", distanceKm)
-    }
-
-    private fun defaultNotificationTitle(): String {
-        return if (currentSession != null) "正在智能记录行程" else "智能轨迹已开启"
-    }
-
-    private fun defaultNotificationContent(): String {
-        return when (currentPhase) {
-            TrackingPhase.IDLE -> "正在后台低功耗待命，检测到移动后会自动开始。"
-            TrackingPhase.SUSPECT_MOVING -> "检测到运动迹象，正在提升采样频率确认是否出行。"
-            TrackingPhase.ACTIVE -> {
-                val distance = currentSession?.totalDistanceKm ?: 0.0
-                "已记录 ${String.format(Locale.getDefault(), "%.2f", distance)} 公里，静止后会自动保存。"
-            }
-            TrackingPhase.SUSPECT_STOPPING -> "正在判断本次行程是否结束，若持续静止将自动保存。"
-        }
     }
 
     private fun buildNotification(
@@ -1173,16 +1100,4 @@ class BackgroundTrackingService : Service() {
             .coerceAtLeast(0)
     }
 
-    private fun createNotificationChannelClean() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(NotificationManager::class.java)
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            "智能轨迹记录",
-            NotificationManager.IMPORTANCE_LOW
-        ).apply {
-            description = "用于在后台持续守候你的出行"
-        }
-        manager.createNotificationChannel(channel)
-    }
 }
