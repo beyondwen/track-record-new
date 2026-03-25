@@ -1,0 +1,16 @@
+# environment: Windows desktop, Compose-first Android UI, Mapbox token deferred by user
+# metric_direction: lower
+# mode: loop
+# parallel: serial
+# web_search: disabled
+iteration	commit	metric	delta	guard	status	description
+0	HEAD	2	0	-	baseline	homepage still lacks a draggable bottom sheet and the map stack is still Baidu-specific
+1	HEAD	1	-1	pass	keep	Homepage switched from a fixed bottom panel to a draggable bottom-sheet scaffold, preparing the app for the Mapbox migration and a more natural map-first interaction model.
+2	HEAD	2	+1	fail	crash	Bottom-sheet iteration failed during Gradle configuration because BuildConfig fields were added for future Mapbox token support without enabling buildFeatures.buildConfig.
+3	HEAD	1	0	pass	refine	BuildConfig support enabled and the homepage now uses a draggable bottom-sheet scaffold, keeping the app structurally ready for Mapbox token wiring in the next pass.
+4	HEAD	2	+1	fail	crash	Homepage bottom-sheet iteration still failed verification because MainComposeScreen retained the unresolved MyLocation vector icon reference.
+5	HEAD	1	0	pass	refine	Homepage now uses a draggable bottom-sheet scaffold and the project is structurally prepared for deferred Mapbox token wiring; this pass changes interaction structure rather than reducing the polish gap yet.
+6	HEAD	1	0	pass	refine	Introduced a map provider abstraction and stopped Activities from constructing Baidu MapView directly, reducing the coupling before the actual Mapbox swap.
+7	HEAD	1	0	fail	crash	Map provider abstraction pass failed verification because MainActivity still typed dashboardMapView as MapView after the direct import cleanup.
+8	HEAD	1	0	pass	refine	Map provider abstraction now compiles: Activities no longer construct Baidu MapView directly, which clears the first structural blocker before the actual Mapbox SDK swap.
+9	HEAD	1	0	pass	refine	Fixed the BuildConfig token wiring so deferred Mapbox token support is now structurally safe and no longer breaks Java compilation.

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compose_map_back">返回</string>
+    <string name="compose_map_refit">重新聚焦路线</string>
+    <string name="compose_map_badge">历史轨迹</string>
+    <string name="compose_map_distance">距离</string>
+    <string name="compose_map_duration">时长</string>
+    <string name="compose_map_speed">均速</string>
+    <string name="compose_map_start">起点</string>
+    <string name="compose_map_end">终点</string>
+</resources>

@@ -1,0 +1,51 @@
+{
+  "config": {
+    "direction": "lower",
+    "goal": "Replace Baidu Map with a Mapbox-ready Compose scaffold and convert the homepage panel into a draggable bottom sheet",
+    "guard": "./gradlew.bat assembleDebug --no-daemon",
+    "iterations": null,
+    "metric": "remaining core tasks for bottom-sheet homepage and Mapbox-ready scaffold",
+    "parallel_mode": "serial",
+    "repos": [
+      {
+        "path": "D:\\data\\AndroidWork\\TrackRecord",
+        "role": "primary",
+        "scope": "build.gradle,app/build.gradle,settings.gradle,app/src/main/java/com/wenhao/record/ui/main/**/*.kt,app/src/main/java/com/wenhao/record/ui/dashboard/**/*.kt,app/src/main/java/com/wenhao/record/ui/map/**/*.kt,app/src/main/java/com/wenhao/record/ui/designsystem/**/*.kt,app/src/main/res/values/**/*.xml,docs/**/*.md"
+      }
+    ],
+    "rollback_policy": null,
+    "scope": "build.gradle,app/build.gradle,settings.gradle,app/src/main/java/com/wenhao/record/ui/main/**/*.kt,app/src/main/java/com/wenhao/record/ui/dashboard/**/*.kt,app/src/main/java/com/wenhao/record/ui/map/**/*.kt,app/src/main/java/com/wenhao/record/ui/designsystem/**/*.kt,app/src/main/res/values/**/*.xml,docs/**/*.md",
+    "session_mode": "foreground",
+    "stop_condition": null,
+    "verify": "./gradlew.bat assembleDebug --no-daemon",
+    "web_search": "disabled"
+  },
+  "mode": "loop",
+  "run_tag": "",
+  "state": {
+    "baseline_metric": 2,
+    "best_iteration": 1,
+    "best_metric": 1,
+    "blocked": 0,
+    "consecutive_discards": 3,
+    "crashes": 3,
+    "current_metric": 1,
+    "discards": 0,
+    "iteration": 9,
+    "keeps": 1,
+    "last_commit": "HEAD",
+    "last_repo_commits": {
+      "D:\\data\\AndroidWork\\TrackRecord": "HEAD"
+    },
+    "last_status": "refine",
+    "last_trial_commit": "HEAD",
+    "last_trial_metric": 1,
+    "last_trial_repo_commits": {
+      "D:\\data\\AndroidWork\\TrackRecord": "HEAD"
+    },
+    "no_ops": 0,
+    "pivot_count": 0
+  },
+  "updated_at": "2026-03-25T15:55:51Z",
+  "version": 1
+}
