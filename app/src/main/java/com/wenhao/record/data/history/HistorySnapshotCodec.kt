@@ -27,6 +27,8 @@ object HistorySnapshotCodec {
                                             put("longitude", point.longitude)
                                             put("timestampMillis", point.timestampMillis)
                                             put("accuracyMeters", point.accuracyMeters)
+                                            point.wgs84Latitude?.let { put("wgs84Latitude", it) }
+                                            point.wgs84Longitude?.let { put("wgs84Longitude", it) }
                                         }
                                     )
                                 }
@@ -55,7 +57,11 @@ object HistorySnapshotCodec {
                                     timestampMillis = point.optLong("timestampMillis"),
                                     accuracyMeters = point.optDouble("accuracyMeters")
                                         .takeUnless { point.isNull("accuracyMeters") }
-                                        ?.toFloat()
+                                        ?.toFloat(),
+                                    wgs84Latitude = point.optDouble("wgs84Latitude")
+                                        .takeUnless { point.isNull("wgs84Latitude") || !point.has("wgs84Latitude") },
+                                    wgs84Longitude = point.optDouble("wgs84Longitude")
+                                        .takeUnless { point.isNull("wgs84Longitude") || !point.has("wgs84Longitude") }
                                 )
                             )
                         }

@@ -24,5 +24,7 @@ data class HistoryPointEntity(
     val latitude: Double,
     val longitude: Double,
     val timestampMillis: Long,
-    val accuracyMeters: Float?
+    val accuracyMeters: Float?,
+    val wgs84Latitude: Double? = null,
+    val wgs84Longitude: Double? = null
 )

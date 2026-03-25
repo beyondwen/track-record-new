@@ -927,15 +927,19 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun convertToGcj02TrackPoint(location: Location): TrackPoint {
+        val wgs84Latitude = location.latitude
+        val wgs84Longitude = location.longitude
         val coordinate = CoordinateTransformUtils.wgs84ToGcj02(
-            latitude = location.latitude,
-            longitude = location.longitude
+            latitude = wgs84Latitude,
+            longitude = wgs84Longitude
         )
         return TrackPoint(
             latitude = coordinate.latitude,
             longitude = coordinate.longitude,
             timestampMillis = location.time.takeIf { it > 0L } ?: System.currentTimeMillis(),
-            accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
+            accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
+            wgs84Latitude = wgs84Latitude,
+            wgs84Longitude = wgs84Longitude
         )
     }
 

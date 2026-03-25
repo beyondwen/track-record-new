@@ -77,6 +77,10 @@ object TrackPathSanitizer {
     }
 
     private fun classifyPoint(previous: TrackPoint, candidate: TrackPoint): SanitizerAction {
+        // Check if both points have WGS-84 coordinates for accurate distance calculation
+        val hasWgs84Coords = previous.wgs84Latitude != null && previous.wgs84Longitude != null &&
+            candidate.wgs84Latitude != null && candidate.wgs84Longitude != null
+
         val distanceMeters = distanceBetween(previous, candidate)
         val maxAccuracyMeters = max(
             previous.accuracyMeters ?: 0f,
@@ -106,6 +110,20 @@ object TrackPathSanitizer {
         }
 
         val inferredSpeedMetersPerSecond = distanceMeters / max(timeDeltaMillis / 1000f, 1f)
+
+        // For old data without WGS-84 coordinates, use more lenient thresholds
+        // because GCJ-02 coordinates can cause artificial distance inflation
+        val effectiveMaxJumpDistance = if (hasWgs84Coords) {
+            MAX_JUMP_DISTANCE_METERS
+        } else {
+            MAX_JUMP_DISTANCE_METERS * 3  // More lenient for old data
+        }
+        val effectiveMaxJumpSpeed = if (hasWgs84Coords) {
+            MAX_JUMP_SPEED_METERS_PER_SECOND
+        } else {
+            MAX_JUMP_SPEED_METERS_PER_SECOND * 3  // More lenient for old data
+        }
+
         if (poorAccuracy &&
             inferredSpeedMetersPerSecond <= 2.5f &&
             distanceMeters <= max(35f, maxAccuracyMeters * 0.9f)
@@ -113,8 +131,8 @@ object TrackPathSanitizer {
             return SanitizerAction.DROP
         }
 
-        if (distanceMeters >= max(MAX_JUMP_DISTANCE_METERS, maxAccuracyMeters * 2.8f) &&
-            inferredSpeedMetersPerSecond >= MAX_JUMP_SPEED_METERS_PER_SECOND
+        if (distanceMeters >= max(effectiveMaxJumpDistance, maxAccuracyMeters * 2.8f) &&
+            inferredSpeedMetersPerSecond >= effectiveMaxJumpSpeed
         ) {
             return SanitizerAction.START_NEW_SEGMENT
         }
@@ -138,7 +156,22 @@ object TrackPathSanitizer {
     }
 
     private fun TrackPoint.hasValidCoordinate(): Boolean {
-        return latitude in -90.0..90.0 && longitude in -180.0..180.0
+        // Basic range check
+        if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) {
+            return false
+        }
+        // Check for zero coordinates (likely invalid)
+        if (latitude == 0.0 && longitude == 0.0) {
+            return false
+        }
+        // Check for WGS-84 coordinates if available
+        wgs84Latitude?.let {
+            if (it !in -90.0..90.0) return false
+        }
+        wgs84Longitude?.let {
+            if (it !in -180.0..180.0) return false
+        }
+        return true
     }
 
     private enum class SanitizerAction {

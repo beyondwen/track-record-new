@@ -390,7 +390,9 @@ object HistoryStorage {
                     latitude = point.latitude,
                     longitude = point.longitude,
                     timestampMillis = point.timestampMillis,
-                    accuracyMeters = point.accuracyMeters
+                    accuracyMeters = point.accuracyMeters,
+                    wgs84Latitude = point.wgs84Latitude,
+                    wgs84Longitude = point.wgs84Longitude
                 )
             }
         )
@@ -415,7 +417,9 @@ object HistoryStorage {
                 latitude = point.latitude,
                 longitude = point.longitude,
                 timestampMillis = point.timestampMillis,
-                accuracyMeters = point.accuracyMeters
+                accuracyMeters = point.accuracyMeters,
+                wgs84Latitude = point.wgs84Latitude,
+                wgs84Longitude = point.wgs84Longitude
             )
         }
     }

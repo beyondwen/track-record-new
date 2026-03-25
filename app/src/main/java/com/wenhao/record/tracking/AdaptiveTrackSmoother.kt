@@ -26,11 +26,23 @@ object AdaptiveTrackSmoother {
             else -> 0.48
         }
         val alpha = ((accuracyFactor + speedFactor) / 2.0).coerceIn(0.35, 0.9)
+        val smoothedWgs84Latitude = candidatePoint.wgs84Latitude?.let { wgs84Lat ->
+            previousPoint.wgs84Latitude?.let { prevWgs84Lat ->
+                prevWgs84Lat + (wgs84Lat - prevWgs84Lat) * alpha
+            }
+        }
+        val smoothedWgs84Longitude = candidatePoint.wgs84Longitude?.let { wgs84Lon ->
+            previousPoint.wgs84Longitude?.let { prevWgs84Lon ->
+                prevWgs84Lon + (wgs84Lon - prevWgs84Lon) * alpha
+            }
+        }
         return TrackPoint(
             latitude = previousPoint.latitude + (candidatePoint.latitude - previousPoint.latitude) * alpha,
             longitude = previousPoint.longitude + (candidatePoint.longitude - previousPoint.longitude) * alpha,
             timestampMillis = candidatePoint.timestampMillis,
-            accuracyMeters = candidatePoint.accuracyMeters
+            accuracyMeters = candidatePoint.accuracyMeters,
+            wgs84Latitude = smoothedWgs84Latitude ?: candidatePoint.wgs84Latitude,
+            wgs84Longitude = smoothedWgs84Longitude ?: candidatePoint.wgs84Longitude
         )
     }
 }

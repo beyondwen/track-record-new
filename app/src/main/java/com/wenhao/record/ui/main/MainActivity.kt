@@ -10,20 +10,18 @@ import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.view.View
-import android.view.ViewGroup
-import android.view.ViewStub
-import android.widget.FrameLayout
 import android.widget.Toast
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
-import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.updateLayoutParams
-import androidx.core.view.updatePadding
+import com.baidu.mapapi.map.MapView
 import com.baidu.mapapi.model.LatLng
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryStorage
@@ -40,8 +38,10 @@ import com.wenhao.record.stability.CrashLogStore
 import com.wenhao.record.tracking.BackgroundTrackingService
 import com.wenhao.record.tracking.LocationSelectionUtils
 import com.wenhao.record.ui.dashboard.DashboardUiController
+import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.history.HistoryController
 import com.wenhao.record.ui.map.MapActivity
+import com.wenhao.record.ui.map.BaiduMapProvider
 import com.wenhao.record.util.AppTaskExecutor
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -50,14 +50,10 @@ import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
-    private enum class DashboardTab {
-        RECORD,
-        HISTORY
-    }
-
     private lateinit var dashboardUiController: DashboardUiController
     private lateinit var homeMapController: HomeMapController
-    private var historyController: HistoryController? = null
+    private lateinit var historyController: HistoryController
+    private lateinit var dashboardMapView: MapView
 
     private val permissionHelper by lazy {
         PermissionHelper(
@@ -65,7 +61,7 @@ class MainActivity : AppCompatActivity() {
             onRefreshGpsStatus = ::refreshGpsStatus,
             onLocateGranted = ::centerOnCurrentLocation,
             onRefreshDashboard = ::refreshDashboardContent,
-            onStartBackgroundTracking = { BackgroundTrackingService.start(this) }
+            onStartBackgroundTracking = { BackgroundTrackingService.start(this) },
         )
     }
 
@@ -96,14 +92,7 @@ class MainActivity : AppCompatActivity() {
     private var previewLocationCache: LatLng? = null
     private var previewLocationCachedAt = 0L
     private var historyTransferBusy = false
-    private var currentTab = DashboardTab.RECORD
-    private var historyScreenStub: ViewStub? = null
-    private var historyScreen: View? = null
-    private var historyBottomNav: View? = null
-    private var historyScreenTopPadding = 0
-    private var historyBottomNavBottomPadding = 0
-    private var systemBarTopInset = 0
-    private var systemBarBottomInset = 0
+    private var currentTab by mutableStateOf(MainTab.RECORD)
 
     private val defaultLatLng = LatLng(39.9042, 116.4074)
     private val dataChangeListener = object : TrackDataChangeNotifier.Listener {
@@ -112,10 +101,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onHistoryDataChanged() {
-            historyController?.let { controller ->
-                controller.reload()
-                controller.updateContent()
-            }
+            historyController.reload()
+            historyController.updateContent()
             homeMapController.shouldRefit = true
             refreshDashboardContent()
         }
@@ -124,48 +111,81 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
-        applyWindowInsets()
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
+        dashboardMapView = BaiduMapProvider.createMapView(this)
         dashboardUiController = DashboardUiController(this)
-        homeMapController = HomeMapController(this, dashboardUiController.mapView)
-        historyScreenStub = findViewById(R.id.historyScreenStub)
+        homeMapController = HomeMapController(this, dashboardMapView)
+        historyController = HistoryController(this)
         locationManager = getSystemService(LocationManager::class.java)
+
+        setContent {
+            TrackRecordTheme {
+                MainComposeScreen(
+                    currentTab = currentTab,
+                    dashboardState = dashboardUiController.panelState,
+                    dashboardOverlayState = dashboardUiController.overlayState,
+                    historyState = historyController.uiState,
+                    dashboardMapView = dashboardMapView,
+                    onRecordTabClick = { showTab(MainTab.RECORD) },
+                    onHistoryTabClick = { showTab(MainTab.HISTORY) },
+                    onLocateClick = ::handleLocateAction,
+                    onHistoryOpen = { dayStartMillis ->
+                        startActivity(MapActivity.createHistoryIntent(this, dayStartMillis))
+                    },
+                    onHistoryDelete = ::confirmDeleteHistoryDay,
+                    onHistoryExport = ::requestHistoryExport,
+                    onHistoryImport = ::requestHistoryImport,
+                )
+            }
+        }
 
         configureHomeMap()
         initGnssStatusCallback()
-        bindNavigation()
+        historyController.reload()
+        historyController.updateContent()
         refreshDashboardContent()
-        showTab(DashboardTab.RECORD)
+        showTab(MainTab.RECORD)
         refreshGpsStatus()
         permissionHelper.ensureSmartTrackingEnabled()
     }
 
-    private fun bindNavigation() {
-        dashboardUiController.bindNavigation(
-            onRecordClick = { showTab(DashboardTab.RECORD) },
-            onHistoryClick = { showTab(DashboardTab.HISTORY) },
-            onLocateClick = {
-                when {
-                    homeMapController.hasActiveTrack() -> {
-                        homeMapController.focusActiveTrackOnLatestPoint(forceZoom = true)
-                    }
+    private fun showTab(tab: MainTab) {
+        currentTab = tab
+        val isRecord = tab == MainTab.RECORD
+        dashboardUiController.setRecordTabSelected(isRecord)
+        historyController.setTabSelected(isRecord)
 
-                    homeMapController.hasTodayTracks() -> {
-                        homeMapController.fitTodayTracksToMap(forceSinglePointZoom = true)
-                    }
+        if (!isRecord) {
+            historyController.reload()
+            historyController.updateContent()
+            return
+        }
 
-                    else -> centerOnCurrentLocation()
-                }
+        homeMapController.shouldRefit = true
+        refreshDashboardContent()
+        homeMapController.showPreviewLocationIfIdle(loadPreviewLocation())
+    }
+
+    private fun handleLocateAction() {
+        when {
+            homeMapController.hasActiveTrack() -> {
+                homeMapController.focusActiveTrackOnLatestPoint(forceZoom = true)
             }
-        )
+
+            homeMapController.hasTodayTracks() -> {
+                homeMapController.fitTodayTracksToMap(forceSinglePointZoom = true)
+            }
+
+            else -> centerOnCurrentLocation()
+        }
     }
 
     private fun configureHomeMap() {
         homeMapController.configure(
             previewLocation = loadPreviewLocation(forceRefresh = true),
             hasLocationPermission = permissionHelper.hasLocationPermission(),
-            defaultLatLng = defaultLatLng
+            defaultLatLng = defaultLatLng,
         )
     }
 
@@ -173,8 +193,8 @@ class MainActivity : AppCompatActivity() {
         gnssStatusCallback = object : GnssStatus.Callback() {
             override fun onStarted() {
                 dashboardUiController.updateGpsStatusBadge(
-                    getString(R.string.dashboard_gps_searching),
-                    R.color.dashboard_badge_yellow
+                    label = "正在搜索 GPS",
+                    dotColorRes = R.color.dashboard_badge_yellow,
                 )
             }
 
@@ -193,26 +213,20 @@ class MainActivity : AppCompatActivity() {
                 }
                 val averageCn0 = if (usedInFixCount > 0) totalCn0DbHz / usedInFixCount else 0f
                 when {
-                    usedInFixCount == 0 -> {
-                        dashboardUiController.updateGpsStatusBadge(
-                            getString(R.string.dashboard_gps_searching),
-                            R.color.dashboard_badge_yellow
-                        )
-                    }
+                    usedInFixCount == 0 -> dashboardUiController.updateGpsStatusBadge(
+                        "正在搜索 GPS",
+                        R.color.dashboard_badge_yellow,
+                    )
 
-                    averageCn0 >= 20f -> {
-                        dashboardUiController.updateGpsStatusBadge(
-                            getString(R.string.dashboard_gps_ready),
-                            R.color.dashboard_badge_green
-                        )
-                    }
+                    averageCn0 >= 20f -> dashboardUiController.updateGpsStatusBadge(
+                        "GPS 已就绪",
+                        R.color.dashboard_badge_green,
+                    )
 
-                    else -> {
-                        dashboardUiController.updateGpsStatusBadge(
-                            getString(R.string.dashboard_gps_weak),
-                            R.color.dashboard_badge_red
-                        )
-                    }
+                    else -> dashboardUiController.updateGpsStatusBadge(
+                        "信号较弱",
+                        R.color.dashboard_badge_red,
+                    )
                 }
             }
         }
@@ -233,16 +247,14 @@ class MainActivity : AppCompatActivity() {
         homeMapController.render(
             session = session,
             previewLocation = previewLocation,
-            todayHistoryItems = todayHistoryItems
+            todayHistoryItems = todayHistoryItems,
         )
         renderDashboardDiagnosticsRefined()
 
         if (previousSessionStart != null && session == null) {
             homeMapController.shouldRefit = true
-            historyController?.let { controller ->
-                controller.reload()
-                controller.updateContent()
-            }
+            historyController.reload()
+            historyController.updateContent()
         }
     }
 
@@ -268,110 +280,95 @@ class MainActivity : AppCompatActivity() {
         val locationSummary = buildLocationSummary(diagnostics)
         val saveSummary = diagnostics.lastSavedSummary?.let { summary ->
             buildTimedSummary(diagnostics.lastSavedAt, summary)
-        } ?: getString(R.string.dashboard_diagnostics_saved_none)
+        } ?: "还没有自动保存过有效行程"
         val crashSummary = CrashLogStore.latestSummary(this)
 
-        val fullBody = buildString {
-            append(getString(R.string.dashboard_diagnostics_permissions))
-            append("：")
-            append(permissionSummary)
-            append('\n')
-            append(getString(R.string.dashboard_diagnostics_service))
-            append("：")
-            append(diagnostics.serviceStatus)
-            append('\n')
-            append(getString(R.string.dashboard_diagnostics_event))
-            append("：")
-            append(eventSummary)
-            append('\n')
-            append(getString(R.string.dashboard_diagnostics_location))
-            append("：")
-            append(locationSummary)
-            append('\n')
-            append(getString(R.string.dashboard_diagnostics_saved))
-            append("：")
-            append(saveSummary)
+        val body = buildString {
+            append("权限：").append(permissionSummary).append('\n')
+            append("服务：").append(diagnostics.serviceStatus).append('\n')
+            append("最近事件：").append(eventSummary).append('\n')
+            append("最近定位：").append(locationSummary).append('\n')
+            append("最近保存：").append(saveSummary)
             if (!crashSummary.isNullOrBlank()) {
-                append('\n')
-                append(getString(R.string.dashboard_diagnostics_crash))
-                append("：")
-                append(crashSummary)
+                append('\n').append("最近异常：").append(crashSummary)
             }
         }
         val compactBody = buildString {
-            append(diagnostics.serviceStatus)
-            append('\n')
-            append(eventSummary)
-            append('\n')
+            append(diagnostics.serviceStatus).append('\n')
+            append(eventSummary).append('\n')
             append(
                 if (diagnostics.lastLocationAt > 0L) {
                     buildTimedSummary(diagnostics.lastLocationAt, diagnostics.lastLocationDecision)
                 } else {
-                    getString(R.string.dashboard_diagnostics_waiting_signal)
+                    "等待定位信号"
                 }
             )
             if (!crashSummary.isNullOrBlank()) {
-                append('\n')
-                append(crashSummary)
+                append('\n').append(crashSummary)
             }
         }
         dashboardUiController.updateDiagnostics(
-            title = getString(R.string.dashboard_diagnostics_title),
-            body = fullBody,
-            compactBody = compactBody
+            title = "记录诊断",
+            body = body,
+            compactBody = compactBody,
         )
     }
 
-    private fun showTab(tab: DashboardTab) {
-        currentTab = tab
-        val isRecord = tab == DashboardTab.RECORD
-        dashboardUiController.setRecordContentVisible(isRecord)
-        dashboardUiController.setRecordTabSelected(isRecord)
-        historyController?.setVisible(!isRecord)
-        historyController?.setTabSelected(isRecord)
+    private fun buildPermissionSummarySafe(): String = when {
+        !permissionHelper.hasLocationPermission() -> "缺少定位权限"
+        !permissionHelper.hasActivityRecognitionPermission() -> "缺少活动识别权限"
+        permissionHelper.needsBackgroundLocationPermission() -> "缺少“始终允许定位”"
+        permissionHelper.needsNotificationPermission() -> "通知权限未开启"
+        else -> "权限完整"
+    }
 
-        if (!isRecord) {
-            ensureHistoryController().apply {
-                reload()
-                updateContent()
-                setVisible(true)
-                setTabSelected(false)
-            }
-            return
+    private fun buildLocationSummary(diagnostics: AutoTrackDiagnostics): String {
+        if (diagnostics.lastLocationAt <= 0L) {
+            return "暂未收到定位点"
         }
 
-        if (isRecord) {
-            homeMapController.shouldRefit = true
-            refreshDashboardContent()
-            homeMapController.showPreviewLocationIfIdle(loadPreviewLocation())
+        return buildString {
+            append(buildTimedSummary(diagnostics.lastLocationAt, diagnostics.lastLocationDecision))
+            append("，已采集 ").append(diagnostics.acceptedPointCount).append(" 个点")
+            diagnostics.lastLocationAccuracyMeters?.let { accuracy ->
+                append("，精度约 ").append(accuracy.toInt()).append(" 米")
+            }
         }
     }
 
-    private fun centerOnCurrentLocation() {
-        if (!permissionHelper.hasLocationPermission()) {
-            permissionHelper.requestLocatePermissionOrRun()
-            return
+    private fun buildTimedSummary(timestamp: Long, summary: String): String {
+        if (timestamp <= 0L) return summary
+        val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
+        val hour = calendar.get(Calendar.HOUR_OF_DAY).toString().padStart(2, '0')
+        val minute = calendar.get(Calendar.MINUTE).toString().padStart(2, '0')
+        return "${hour}:${minute} $summary"
+    }
+
+    private fun refreshGpsStatus() {
+        when {
+            !permissionHelper.hasLocationPermission() -> {
+                dashboardUiController.updateGpsStatusBadge("未授予定位权限", R.color.dashboard_badge_gray)
+            }
+
+            !isLocationEnabled() -> {
+                dashboardUiController.updateGpsStatusBadge("定位服务未开启", R.color.dashboard_badge_red)
+            }
+
+            loadPreviewLocation() != null -> {
+                dashboardUiController.updateGpsStatusBadge("GPS 已就绪", R.color.dashboard_badge_green)
+            }
+
+            else -> {
+                dashboardUiController.updateGpsStatusBadge("正在搜索 GPS", R.color.dashboard_badge_yellow)
+            }
         }
-
-        if (!isLocationEnabled()) {
-            refreshGpsStatus()
-            Toast.makeText(this, R.string.location_service_disabled, Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        centerOnNextFix = true
-        requestFreshLocationUpdates()
-
-        loadPreviewLocation(forceRefresh = true)?.let {
-            homeMapController.centerOnPreviewLocation(it)
-        } ?: Toast.makeText(this, R.string.location_unavailable, Toast.LENGTH_SHORT).show()
     }
 
     private fun requestHistoryExport() {
         if (historyTransferBusy) return
         val items = HistoryStorage.peek(this)
         if (items.isEmpty()) {
-            Toast.makeText(this, R.string.history_export_empty, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "当前没有可导出的历史记录", Toast.LENGTH_SHORT).show()
             return
         }
 
@@ -388,7 +385,7 @@ class MainActivity : AppCompatActivity() {
             if (items.isEmpty()) {
                 AppTaskExecutor.runOnMain {
                     setHistoryTransferBusy(false)
-                    Toast.makeText(this, R.string.history_export_empty, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "当前没有可导出的历史记录", Toast.LENGTH_SHORT).show()
                 }
                 return@runOnIo
             }
@@ -403,8 +400,8 @@ class MainActivity : AppCompatActivity() {
                 setHistoryTransferBusy(false)
                 Toast.makeText(
                     this,
-                    if (result.isSuccess) R.string.history_export_success else R.string.history_export_failed,
-                    Toast.LENGTH_SHORT
+                    if (result.isSuccess) "历史记录已导出" else "导出失败，请重试",
+                    Toast.LENGTH_SHORT,
                 ).show()
             }
         }
@@ -427,28 +424,26 @@ class MainActivity : AppCompatActivity() {
             if (importedItems.isEmpty()) {
                 AppTaskExecutor.runOnMain {
                     setHistoryTransferBusy(false)
-                    Toast.makeText(this, R.string.history_import_failed, Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "导入失败，请确认备份文件格式", Toast.LENGTH_SHORT).show()
                 }
                 return@runOnIo
             }
 
             val mergedItems = HistoryTransferCodec.merge(
                 existingItems = HistoryStorage.load(this),
-                importedItems = importedItems
+                importedItems = importedItems,
             )
             HistoryStorage.save(this, mergedItems)
             AppTaskExecutor.runOnMain {
                 setHistoryTransferBusy(false)
                 homeMapController.shouldRefit = true
-                historyController?.let { controller ->
-                    controller.reload()
-                    controller.updateContent()
-                }
+                historyController.reload()
+                historyController.updateContent()
                 refreshDashboardContent()
                 Toast.makeText(
                     this,
-                    getString(R.string.history_import_success, importedItems.size, mergedItems.size),
-                    Toast.LENGTH_SHORT
+                    "已导入 ${importedItems.size} 条记录，当前共 ${mergedItems.size} 条",
+                    Toast.LENGTH_SHORT,
                 ).show()
             }
         }
@@ -456,159 +451,41 @@ class MainActivity : AppCompatActivity() {
 
     private fun setHistoryTransferBusy(isBusy: Boolean) {
         historyTransferBusy = isBusy
-        historyController?.setTransferBusy(isBusy)
+        historyController.setTransferBusy(isBusy)
     }
 
-    private fun refreshGpsStatus() {
-        when {
-            !permissionHelper.hasLocationPermission() -> {
-                dashboardUiController.updateGpsStatusBadge(
-                    getString(R.string.dashboard_gps_no_permission),
-                    R.color.dashboard_badge_gray
-                )
+    private fun confirmDeleteHistoryDay(dayStartMillis: Long) {
+        val item = historyController.uiState.items.firstOrNull { it.dayStartMillis == dayStartMillis } ?: return
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.compose_history_delete_title)
+            .setMessage(getString(R.string.compose_history_delete_message, item.displayTitle))
+            .setNegativeButton(R.string.compose_history_delete_cancel, null)
+            .setPositiveButton(R.string.compose_history_delete_confirm) { _, _ ->
+                historyController.deleteHistory(item)
+                refreshDashboardContent()
+                Toast.makeText(this, R.string.compose_history_delete_success, Toast.LENGTH_SHORT).show()
             }
-
-            !isLocationEnabled() -> {
-                dashboardUiController.updateGpsStatusBadge(
-                    getString(R.string.dashboard_gps_disabled),
-                    R.color.dashboard_badge_red
-                )
-            }
-
-            loadPreviewLocation() != null -> {
-                dashboardUiController.updateGpsStatusBadge(
-                    getString(R.string.dashboard_gps_ready),
-                    R.color.dashboard_badge_green
-                )
-            }
-
-            else -> {
-                dashboardUiController.updateGpsStatusBadge(
-                    getString(R.string.dashboard_gps_searching),
-                    R.color.dashboard_badge_yellow
-                )
-            }
-        }
+            .show()
     }
 
-    private fun applyWindowInsets() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-
-        val root = findViewById<View>(android.R.id.content)
-        val gpsStatusBadge = findViewById<View>(R.id.gpsStatusBadge)
-        val diagnosticsCompact = findViewById<View>(R.id.layoutRecordDiagnosticsCompact)
-        val locateButton = findViewById<View>(R.id.btnLocate)
-        val dashboardPanel = findViewById<View>(R.id.dashboardPanel)
-        val saveFeedbackCard = findViewById<View>(R.id.saveFeedbackCard)
-
-        val gpsStatusLayout = gpsStatusBadge.layoutParams as FrameLayout.LayoutParams
-        val gpsStatusStartMargin = gpsStatusLayout.marginStart
-        val gpsStatusTopMargin = gpsStatusLayout.topMargin
-
-        val diagnosticsCompactLayout = diagnosticsCompact.layoutParams as FrameLayout.LayoutParams
-        val diagnosticsCompactStartMargin = diagnosticsCompactLayout.marginStart
-        val diagnosticsCompactTopMargin = diagnosticsCompactLayout.topMargin
-
-        val locateLayout = locateButton.layoutParams as FrameLayout.LayoutParams
-        val locateEndMargin = locateLayout.marginEnd
-        val locateBottomMargin = locateLayout.bottomMargin
-
-        val saveFeedbackLayout = saveFeedbackCard.layoutParams as ViewGroup.MarginLayoutParams
-        val saveFeedbackBottomMargin = saveFeedbackLayout.bottomMargin
-
-        val dashboardPanelBottomPadding = dashboardPanel.paddingBottom
-
-        ViewCompat.setOnApplyWindowInsetsListener(root) { _, insets ->
-            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-            systemBarTopInset = systemBars.top
-            systemBarBottomInset = systemBars.bottom
-
-            gpsStatusBadge.updateLayoutParams<FrameLayout.LayoutParams> {
-                marginStart = gpsStatusStartMargin + systemBars.left
-                topMargin = gpsStatusTopMargin + systemBars.top
-            }
-
-            diagnosticsCompact.updateLayoutParams<FrameLayout.LayoutParams> {
-                marginStart = diagnosticsCompactStartMargin + systemBars.left
-                topMargin = diagnosticsCompactTopMargin + systemBars.top
-            }
-
-            locateButton.updateLayoutParams<FrameLayout.LayoutParams> {
-                marginEnd = locateEndMargin + systemBars.right
-                bottomMargin = locateBottomMargin + systemBars.bottom
-            }
-
-            dashboardPanel.updatePadding(bottom = dashboardPanelBottomPadding + systemBars.bottom)
-            saveFeedbackCard.updateLayoutParams<ViewGroup.MarginLayoutParams> {
-                bottomMargin = saveFeedbackBottomMargin + systemBars.bottom
-            }
-            applyHistoryWindowInsets()
-
-            insets
+    private fun centerOnCurrentLocation() {
+        if (!permissionHelper.hasLocationPermission()) {
+            permissionHelper.requestLocatePermissionOrRun()
+            return
         }
 
-        ViewCompat.requestApplyInsets(root)
-    }
-
-    private fun handleLocationUpdate(location: Location) {
-        val previewLocation = convertToGcj02(location)
-        previewLocationCache = previewLocation
-        previewLocationCachedAt = System.currentTimeMillis()
-        homeMapController.updateCurrentLocation(
-            latLng = previewLocation,
-            shouldCenter = centerOnNextFix
-        )
-        centerOnNextFix = false
-        stopLocationUpdates()
-    }
-
-    private fun buildPermissionSummarySafe(): String {
-        return when {
-            !permissionHelper.hasLocationPermission() ->
-                getString(R.string.permission_summary_location_missing)
-            !permissionHelper.hasActivityRecognitionPermission() ->
-                getString(R.string.permission_summary_activity_missing)
-            permissionHelper.needsBackgroundLocationPermission() ->
-                getString(R.string.permission_summary_background_missing)
-            permissionHelper.needsNotificationPermission() ->
-                getString(R.string.permission_summary_notification_limited)
-            else ->
-                getString(R.string.permission_summary_ready)
-        }
-    }
-
-    private fun buildLocationSummary(diagnostics: AutoTrackDiagnostics): String {
-        if (diagnostics.lastLocationAt <= 0L) {
-            return getString(R.string.dashboard_diagnostics_no_fix)
+        if (!isLocationEnabled()) {
+            refreshGpsStatus()
+            Toast.makeText(this, R.string.location_service_disabled, Toast.LENGTH_SHORT).show()
+            return
         }
 
-        return buildString {
-            append(buildTimedSummary(diagnostics.lastLocationAt, diagnostics.lastLocationDecision))
-            append("，")
-            append(
-                getString(
-                    R.string.dashboard_diagnostics_points_collected,
-                    diagnostics.acceptedPointCount
-                )
-            )
-            diagnostics.lastLocationAccuracyMeters?.let { accuracy ->
-                append("，")
-                append(
-                    getString(
-                        R.string.dashboard_diagnostics_accuracy_estimate,
-                        accuracy.toInt()
-                    )
-                )
-            }
-        }
-    }
+        centerOnNextFix = true
+        requestFreshLocationUpdates()
 
-    private fun buildTimedSummary(timestamp: Long, summary: String): String {
-        if (timestamp <= 0L) return summary
-        val calendar = Calendar.getInstance().apply { timeInMillis = timestamp }
-        val hour = calendar.get(Calendar.HOUR_OF_DAY).toString().padStart(2, '0')
-        val minute = calendar.get(Calendar.MINUTE).toString().padStart(2, '0')
-        return "${hour}:${minute} $summary"
+        loadPreviewLocation(forceRefresh = true)?.let {
+            homeMapController.centerOnPreviewLocation(it)
+        } ?: Toast.makeText(this, R.string.location_unavailable, Toast.LENGTH_SHORT).show()
     }
 
     private fun isLocationEnabled(): Boolean {
@@ -637,7 +514,7 @@ class MainActivity : AppCompatActivity() {
         val providers = mutableListOf<String>()
         val hasFineLocation = ContextCompat.checkSelfPermission(
             this,
-            Manifest.permission.ACCESS_FINE_LOCATION
+            Manifest.permission.ACCESS_FINE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
         if (hasFineLocation && manager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             providers += LocationManager.GPS_PROVIDER
@@ -655,6 +532,18 @@ class MainActivity : AppCompatActivity() {
         locationManager?.removeUpdates(freshLocationListener)
     }
 
+    private fun handleLocationUpdate(location: Location) {
+        val previewLocation = convertToGcj02(location)
+        previewLocationCache = previewLocation
+        previewLocationCachedAt = System.currentTimeMillis()
+        homeMapController.updateCurrentLocation(
+            latLng = previewLocation,
+            shouldCenter = centerOnNextFix,
+        )
+        centerOnNextFix = false
+        stopLocationUpdates()
+    }
+
     @SuppressLint("MissingPermission")
     private fun loadLastKnownLocation(): Location? {
         if (!permissionHelper.hasLocationPermission()) return null
@@ -663,9 +552,9 @@ class MainActivity : AppCompatActivity() {
             locationManager = manager,
             hasFineLocation = ContextCompat.checkSelfPermission(
                 this,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                Manifest.permission.ACCESS_FINE_LOCATION,
             ) == PackageManager.PERMISSION_GRANTED,
-            maxAgeMs = 15 * 60 * 1000L
+            maxAgeMs = 15 * 60 * 1000L,
         )
     }
 
@@ -683,7 +572,7 @@ class MainActivity : AppCompatActivity() {
     private fun convertToGcj02(location: Location): LatLng {
         val coordinate = CoordinateTransformUtils.wgs84ToGcj02(
             latitude = location.latitude,
-            longitude = location.longitude
+            longitude = location.longitude,
         )
         return LatLng(coordinate.latitude, coordinate.longitude)
     }
@@ -702,47 +591,14 @@ class MainActivity : AppCompatActivity() {
         manager.unregisterGnssStatusCallback(callback)
     }
 
-    private fun ensureHistoryController(): HistoryController {
-        historyController?.let { return it }
-
-        val rootView = historyScreen ?: historyScreenStub?.inflate() ?: findViewById(R.id.historyScreen)
-        historyScreen = rootView
-        historyScreenStub = null
-        historyBottomNav = rootView.findViewById(R.id.historyPageBottomNav)
-        historyScreenTopPadding = rootView.paddingTop
-        historyBottomNavBottomPadding = historyBottomNav?.paddingBottom ?: 0
-        applyHistoryWindowInsets()
-
-        return HistoryController(this, rootView) { item: HistoryDayItem ->
-            startActivity(MapActivity.createHistoryIntent(this, item.dayStartMillis))
-        }.also { controller ->
-            controller.bindNavigation(
-                onRecordClick = { showTab(DashboardTab.RECORD) },
-                onExportClick = ::requestHistoryExport,
-                onImportClick = ::requestHistoryImport
-            )
-            controller.setTransferBusy(historyTransferBusy)
-            controller.setVisible(currentTab == DashboardTab.HISTORY)
-            controller.setTabSelected(currentTab == DashboardTab.RECORD)
-            historyController = controller
-        }
-    }
-
-    private fun applyHistoryWindowInsets() {
-        historyScreen?.updatePadding(top = historyScreenTopPadding + systemBarTopInset)
-        historyBottomNav?.updatePadding(bottom = historyBottomNavBottomPadding + systemBarBottomInset)
-    }
-
     override fun onResume() {
         super.onResume()
         homeMapController.onResume()
         TrackDataChangeNotifier.addListener(dataChangeListener)
         registerGnssCallback()
         refreshGpsStatus()
-        historyController?.let { controller ->
-            controller.reload()
-            controller.updateContent()
-        }
+        historyController.reload()
+        historyController.updateContent()
         homeMapController.shouldRefit = true
         refreshDashboardContent()
         permissionHelper.startBackgroundTrackingServiceIfReady()
@@ -757,7 +613,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        dashboardUiController.onDestroy()
         unregisterGnssCallback()
         stopLocationUpdates()
         TrackDataChangeNotifier.removeListener(dataChangeListener)

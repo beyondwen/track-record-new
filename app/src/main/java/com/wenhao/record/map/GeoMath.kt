@@ -12,10 +12,10 @@ object GeoMath {
 
     fun distanceMeters(first: TrackPoint, second: TrackPoint): Float {
         return distanceMeters(
-            first.latitude,
-            first.longitude,
-            second.latitude,
-            second.longitude
+            first.getLatitudeForDistance(),
+            first.getLongitudeForDistance(),
+            second.getLatitudeForDistance(),
+            second.getLongitudeForDistance()
         )
     }
 

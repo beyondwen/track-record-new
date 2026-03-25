@@ -20,7 +20,7 @@ import com.wenhao.record.data.local.history.HistoryRecordEntity
         HistoryRecordEntity::class,
         HistoryPointEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class TrackDatabase : RoomDatabase() {
@@ -36,6 +36,16 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Add WGS-84 coordinate columns for accurate distance calculation
+                database.execSQL("ALTER TABLE auto_track_point ADD COLUMN wgs84Latitude REAL")
+                database.execSQL("ALTER TABLE auto_track_point ADD COLUMN wgs84Longitude REAL")
+                database.execSQL("ALTER TABLE history_point ADD COLUMN wgs84Latitude REAL")
+                database.execSQL("ALTER TABLE history_point ADD COLUMN wgs84Longitude REAL")
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -46,7 +56,7 @@ abstract class TrackDatabase : RoomDatabase() {
                     TrackDatabase::class.java,
                     "track_record.db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }

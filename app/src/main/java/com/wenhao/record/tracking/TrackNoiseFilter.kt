@@ -37,8 +37,20 @@ internal object TrackNoiseFilter {
     private const val MAX_JUMP_TIME_DELTA_MS = 20_000L
     private const val MAX_ACTIVE_LOCATION_AGE_MS = 20_000L
 
+    private fun TrackPoint.hasValidCoordinate(): Boolean {
+        if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) return false
+        if (latitude == 0.0 && longitude == 0.0) return false
+        return true
+    }
+
     fun evaluate(lastPoint: TrackPoint?, sample: TrackNoiseSample): TrackNoiseResult {
         val candidatePoint = sample.point
+
+        // Validate candidate point coordinates
+        if (!candidatePoint.hasValidCoordinate()) {
+            return TrackNoiseResult(TrackNoiseAction.DROP_DRIFT)
+        }
+
         val candidateAccuracy = candidatePoint.accuracyMeters ?: Float.MAX_VALUE
         val candidateSpeed = sample.speedMetersPerSecond
 

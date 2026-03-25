@@ -404,7 +404,9 @@ object AutoTrackStorage {
                     latitude = point.latitude,
                     longitude = point.longitude,
                     timestampMillis = point.timestampMillis,
-                    accuracyMeters = point.accuracyMeters
+                    accuracyMeters = point.accuracyMeters,
+                    wgs84Latitude = point.wgs84Latitude,
+                    wgs84Longitude = point.wgs84Longitude
                 )
             }
         )
@@ -416,7 +418,9 @@ object AutoTrackStorage {
             latitude = latitude,
             longitude = longitude,
             timestampMillis = timestampMillis,
-            accuracyMeters = accuracyMeters
+            accuracyMeters = accuracyMeters,
+            wgs84Latitude = wgs84Latitude,
+            wgs84Longitude = wgs84Longitude
         )
     }
 

@@ -1,9 +1,7 @@
 package com.wenhao.record.ui.main
 
-import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.toColorInt
-import androidx.core.view.isVisible
 import com.baidu.mapapi.map.BaiduMap
 import com.baidu.mapapi.map.Gradient
 import com.baidu.mapapi.map.HeatMap
@@ -29,8 +27,6 @@ class HomeMapController(
     val mapView: MapView
 ) {
     private val aMap: BaiduMap = mapView.map
-    private val gpsStatusBadge: View = activity.findViewById(R.id.gpsStatusBadge)
-    private val diagnosticsCompact: View = activity.findViewById(R.id.layoutRecordDiagnosticsCompact)
 
     private val activeTrackPolylines = mutableListOf<Polyline>()
     private val todayTrackPolylines = mutableListOf<Polyline>()
@@ -324,13 +320,9 @@ class HomeMapController(
     }
 
     private fun applyViewportPadding() {
-        val topOccupied = maxOf(
-            gpsStatusBadge.bottom,
-            diagnosticsCompact.takeIf { it.isVisible }?.bottom ?: 0
-        )
         aMap.setViewPadding(
             dpToPx(20),
-            topOccupied + dpToPx(16),
+            dpToPx(132),
             dpToPx(20),
             dpToPx(24)
         )
