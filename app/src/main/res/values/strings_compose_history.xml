@@ -31,4 +31,9 @@
     <string name="compose_history_day_month">%1$d 月</string>
     <string name="compose_history_day_year_month">%1$d 年 %2$d 月</string>
     <string name="compose_history_card_accessibility">历史记录 %1$s，%2$s，双击查看详情，长按删除。</string>
+    <string name="compose_history_card_open_action">打开轨迹详情</string>
+    <string name="compose_history_card_delete_action">删除当天行程</string>
+    <string name="compose_history_log_title">行程日志</string>
+    <string name="compose_history_view_all">查看全部</string>
+    <string name="compose_history_card_meta">共 %1$d 段行程 · 最近 %2$s</string>
 </resources>

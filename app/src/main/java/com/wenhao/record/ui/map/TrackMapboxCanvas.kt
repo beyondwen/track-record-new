@@ -1,0 +1,228 @@
+package com.wenhao.record.ui.map
+
+import android.os.Handler
+import android.os.Looper
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.ContentScale
+import com.mapbox.maps.EdgeInsets
+import com.mapbox.maps.dsl.cameraOptions
+import com.mapbox.maps.extension.compose.MapboxMap
+import com.mapbox.maps.extension.compose.MapEffect
+import com.mapbox.maps.extension.compose.rememberMapState
+import com.mapbox.maps.extension.compose.animation.viewport.rememberMapViewportState
+import com.mapbox.maps.extension.compose.annotation.generated.PointAnnotation
+import com.mapbox.maps.extension.compose.annotation.generated.PolylineAnnotation
+import com.mapbox.maps.extension.compose.annotation.IconImage
+import com.mapbox.maps.extension.style.layers.properties.generated.IconAnchor
+import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
+import com.mapbox.maps.plugin.gestures.generated.GesturesSettings
+import com.wenhao.record.R
+import com.wenhao.record.map.MapMarkerIconFactory
+import kotlinx.coroutines.flow.first
+
+@Composable
+fun TrackMapboxCanvas(
+    state: TrackMapSceneState,
+    modifier: Modifier = Modifier,
+    viewportPadding: TrackMapViewportPadding = TrackMapViewportPadding(),
+    interactive: Boolean = true,
+    snapshotCacheKey: String? = null,
+    onSnapshotCached: (() -> Unit)? = null,
+) {
+    if (LocalInspectionMode.current) {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "Map Preview",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.titleMedium,
+            )
+        }
+        return
+    }
+
+    var snapshotBitmap by remember(snapshotCacheKey) {
+        mutableStateOf(snapshotCacheKey?.let(TrackMapSnapshotCache::get))
+    }
+    var snapshotRequested by remember(snapshotCacheKey) { mutableStateOf(false) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val shouldCaptureSnapshot = !interactive && !snapshotCacheKey.isNullOrBlank()
+    if (snapshotBitmap != null) {
+        Image(
+            bitmap = snapshotBitmap!!.asImageBitmap(),
+            contentDescription = null,
+            modifier = modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop,
+        )
+        return
+    }
+
+    val context = LocalContext.current
+    val mapViewportState = rememberMapViewportState()
+    val mapState = rememberMapState(
+        key = buildString {
+            append(if (interactive) "interactive" else "static-preview")
+            if (!snapshotCacheKey.isNullOrBlank()) append("-").append(snapshotCacheKey)
+        }
+    ) {
+        gesturesSettings = GesturesSettings {
+            rotateEnabled = interactive
+            pinchToZoomEnabled = interactive
+            scrollEnabled = interactive
+            simultaneousRotateAndPinchToZoomEnabled = interactive
+            pitchEnabled = interactive
+            doubleTapToZoomInEnabled = interactive
+            doubleTouchToZoomOutEnabled = interactive
+            quickZoomEnabled = interactive
+            pinchToZoomDecelerationEnabled = interactive
+            rotateDecelerationEnabled = interactive
+            scrollDecelerationEnabled = interactive
+            increaseRotateThresholdWhenPinchingToZoom = interactive
+            increasePinchToZoomThresholdWhenRotating = interactive
+            pinchScrollEnabled = interactive
+        }
+    }
+    val density = LocalDensity.current
+    val resolvedPadding = remember(viewportPadding, density) {
+        with(density) {
+            EdgeInsets(
+                viewportPadding.top.toPx().toDouble(),
+                viewportPadding.start.toPx().toDouble(),
+                viewportPadding.bottom.toPx().toDouble(),
+                viewportPadding.end.toPx().toDouble(),
+            )
+        }
+    }
+    val homeIcon = remember(context) {
+        IconImage(MapMarkerIconFactory.bitmapFromDrawableResource(context, R.drawable.ic_location))
+    }
+    val startIcon = remember(context) {
+        IconImage(MapMarkerIconFactory.bitmapFromDrawableResource(context, R.drawable.ic_route_start_marker))
+    }
+    val endIcon = remember(context) {
+        IconImage(MapMarkerIconFactory.bitmapFromDrawableResource(context, R.drawable.ic_route_end_marker))
+    }
+
+    MapboxMap(
+        modifier = modifier,
+        mapViewportState = mapViewportState,
+        mapState = mapState,
+        compass = {},
+        scaleBar = {},
+    ) {
+        state.polylines.forEach { polyline ->
+            key(polyline.id) {
+                PolylineAnnotation(points = polyline.points.map { it.toMapboxPoint() }) {
+                    lineColor = Color(polyline.colorArgb)
+                    lineWidth = polyline.width
+                    lineJoin = LineJoin.ROUND
+                    lineOpacity = 0.96
+                }
+            }
+        }
+
+        state.markers.forEach { marker ->
+            val icon = when (marker.kind) {
+                TrackMapMarkerKind.HOME -> homeIcon
+                TrackMapMarkerKind.START -> startIcon
+                TrackMapMarkerKind.END -> endIcon
+            }
+            key(marker.id) {
+                PointAnnotation(point = marker.coordinate.toMapboxPoint()) {
+                    iconImage = icon
+                    iconAnchor = IconAnchor.CENTER
+                    iconSize = when (marker.kind) {
+                        TrackMapMarkerKind.HOME -> 1.0
+                        TrackMapMarkerKind.START,
+                        TrackMapMarkerKind.END,
+                        -> 0.92
+                    }
+                }
+            }
+        }
+
+        if (shouldCaptureSnapshot && snapshotRequested) {
+            MapEffect(snapshotCacheKey, snapshotRequested) { mapView ->
+                mapView.snapshot { bitmap ->
+                    if (bitmap != null && !snapshotCacheKey.isNullOrBlank()) {
+                        mainHandler.post {
+                            TrackMapSnapshotCache.put(snapshotCacheKey, bitmap)
+                            snapshotBitmap = bitmap
+                            onSnapshotCached?.invoke()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(state.viewportRequest?.sequence) {
+        when (val request = state.viewportRequest) {
+            null -> Unit
+            is TrackMapViewportRequest.Center -> {
+                mapViewportState.easeTo(
+                    cameraOptions {
+                        center(request.coordinate.toMapboxPoint())
+                        zoom(request.zoom)
+                        padding(resolvedPadding)
+                    }
+                )
+            }
+
+            is TrackMapViewportRequest.Fit -> {
+                val coordinates = request.coordinates
+                when (coordinates.size) {
+                    0 -> Unit
+                    1 -> {
+                        mapViewportState.easeTo(
+                            cameraOptions {
+                                center(coordinates.first().toMapboxPoint())
+                                zoom(request.singlePointZoom)
+                                padding(resolvedPadding)
+                            }
+                        )
+                    }
+
+                    else -> {
+                        val camera = mapViewportState.cameraForCoordinates(
+                            coordinates = coordinates.map { it.toMapboxPoint() },
+                            camera = cameraOptions { padding(resolvedPadding) },
+                            maxZoom = request.maxZoom,
+                        )
+                        mapViewportState.easeTo(camera)
+                    }
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(shouldCaptureSnapshot, state.viewportRequest?.sequence) {
+        if (shouldCaptureSnapshot && snapshotBitmap == null && !snapshotRequested) {
+            mapState.mapIdleEvents.first()
+            snapshotRequested = true
+        }
+    }
+}

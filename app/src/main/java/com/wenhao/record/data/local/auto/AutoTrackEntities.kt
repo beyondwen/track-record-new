@@ -25,6 +25,7 @@ data class AutoTrackPointEntity(
     val longitude: Double,
     val timestampMillis: Long,
     val accuracyMeters: Float?,
+    val altitudeMeters: Double? = null,
     val wgs84Latitude: Double? = null,
     val wgs84Longitude: Double? = null
 )

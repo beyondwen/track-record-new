@@ -1,15 +1,14 @@
 package com.wenhao.record.map
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.annotation.DrawableRes
 import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.graphics.createBitmap
-import com.baidu.mapapi.map.BitmapDescriptor
-import com.baidu.mapapi.map.BitmapDescriptorFactory
 
 object MapMarkerIconFactory {
-    fun fromDrawableResource(context: Context, @DrawableRes drawableRes: Int): BitmapDescriptor {
+    fun bitmapFromDrawableResource(context: Context, @DrawableRes drawableRes: Int): Bitmap {
         val drawable = requireNotNull(AppCompatResources.getDrawable(context, drawableRes)) {
             "Drawable resource not found: $drawableRes"
         }.mutate()
@@ -20,6 +19,6 @@ object MapMarkerIconFactory {
         val canvas = Canvas(bitmap)
         drawable.setBounds(0, 0, canvas.width, canvas.height)
         drawable.draw(canvas)
-        return BitmapDescriptorFactory.fromBitmap(bitmap)
+        return bitmap
     }
 }

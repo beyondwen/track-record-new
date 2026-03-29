@@ -24,11 +24,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.HelloWorld">
 
-        <!-- 高德地图API Key -->
-        <meta-data
-            android:name="com.baidu.lbsapi.API_KEY"
-            android:value="@string/baidu_map_api_key" />
-
         <activity
             android:name=".ui.main.MainActivity"
             android:exported="true">

@@ -41,4 +41,8 @@
     <string name="compose_dashboard_status_label">当前状态</string>
     <string name="compose_dashboard_primary_metric_label">今日里程</string>
     <string name="compose_dashboard_accessibility_summary">当前距离 %1$s 公里，时长 %2$s，速度 %3$s。</string>
+    <string name="compose_dashboard_panel_expand_title">展开行程面板</string>
+    <string name="compose_dashboard_panel_expand_body">查看今日里程、行程摘要和记录状态</string>
+    <string name="compose_dashboard_panel_collapse_title">收起行程面板</string>
+    <string name="compose_dashboard_panel_collapse_body">让地图更聚焦，保持对当前位置的清晰查看</string>
 </resources>

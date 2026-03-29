@@ -366,7 +366,9 @@ object AutoTrackStorage {
                             timestampMillis = point.optLong("timestampMillis"),
                             accuracyMeters = point.optDouble("accuracyMeters")
                                 .takeUnless { point.isNull("accuracyMeters") }
-                                ?.toFloat()
+                                ?.toFloat(),
+                            altitudeMeters = point.optDouble("altitudeMeters")
+                                .takeUnless { point.isNull("altitudeMeters") || !point.has("altitudeMeters") }
                         )
                     )
                 }
@@ -405,6 +407,7 @@ object AutoTrackStorage {
                     longitude = point.longitude,
                     timestampMillis = point.timestampMillis,
                     accuracyMeters = point.accuracyMeters,
+                    altitudeMeters = point.altitudeMeters,
                     wgs84Latitude = point.wgs84Latitude,
                     wgs84Longitude = point.wgs84Longitude
                 )
@@ -419,6 +422,7 @@ object AutoTrackStorage {
             longitude = longitude,
             timestampMillis = timestampMillis,
             accuracyMeters = accuracyMeters,
+            altitudeMeters = altitudeMeters,
             wgs84Latitude = wgs84Latitude,
             wgs84Longitude = wgs84Longitude
         )

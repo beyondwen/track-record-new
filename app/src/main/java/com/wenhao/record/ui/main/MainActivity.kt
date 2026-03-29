@@ -19,8 +19,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
-import com.baidu.mapapi.map.MapView
-import com.baidu.mapapi.model.LatLng
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
@@ -32,7 +30,7 @@ import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
-import com.wenhao.record.map.CoordinateTransformUtils
+import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.permissions.PermissionHelper
 import com.wenhao.record.stability.CrashLogStore
 import com.wenhao.record.tracking.BackgroundTrackingService
@@ -41,7 +39,6 @@ import com.wenhao.record.ui.dashboard.DashboardUiController
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.history.HistoryController
 import com.wenhao.record.ui.map.MapActivity
-import com.wenhao.record.ui.map.BaiduMapProvider
 import com.wenhao.record.util.AppTaskExecutor
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -51,9 +48,8 @@ import java.util.Locale
 class MainActivity : AppCompatActivity() {
 
     private lateinit var dashboardUiController: DashboardUiController
-    private lateinit var homeMapController: HomeMapController
+    private lateinit var homeMapController: HomeMapPort
     private lateinit var historyController: HistoryController
-    private lateinit var dashboardMapView: MapView
 
     private val permissionHelper by lazy {
         PermissionHelper(
@@ -89,12 +85,12 @@ class MainActivity : AppCompatActivity() {
     private var gnssStatusCallback: GnssStatus.Callback? = null
     private var centerOnNextFix = false
     private var lastDashboardSessionStart: Long? = null
-    private var previewLocationCache: LatLng? = null
+    private var previewLocationCache: GeoCoordinate? = null
     private var previewLocationCachedAt = 0L
     private var historyTransferBusy = false
     private var currentTab by mutableStateOf(MainTab.RECORD)
 
-    private val defaultLatLng = LatLng(39.9042, 116.4074)
+    private val defaultLatLng = GeoCoordinate(39.9042, 116.4074)
     private val dataChangeListener = object : TrackDataChangeNotifier.Listener {
         override fun onDashboardDataChanged() {
             refreshDashboardContent()
@@ -113,9 +109,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
-        dashboardMapView = BaiduMapProvider.createMapView(this)
         dashboardUiController = DashboardUiController(this)
-        homeMapController = HomeMapController(this, dashboardMapView)
+        homeMapController = HomeMapController()
         historyController = HistoryController(this)
         locationManager = getSystemService(LocationManager::class.java)
 
@@ -126,7 +121,7 @@ class MainActivity : AppCompatActivity() {
                     dashboardState = dashboardUiController.panelState,
                     dashboardOverlayState = dashboardUiController.overlayState,
                     historyState = historyController.uiState,
-                    dashboardMapView = dashboardMapView,
+                    dashboardMapState = homeMapController.renderState,
                     onRecordTabClick = { showTab(MainTab.RECORD) },
                     onHistoryTabClick = { showTab(MainTab.HISTORY) },
                     onLocateClick = ::handleLocateAction,
@@ -185,7 +180,7 @@ class MainActivity : AppCompatActivity() {
         homeMapController.configure(
             previewLocation = loadPreviewLocation(forceRefresh = true),
             hasLocationPermission = permissionHelper.hasLocationPermission(),
-            defaultLatLng = defaultLatLng,
+            defaultCoordinate = defaultLatLng,
         )
     }
 
@@ -533,7 +528,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleLocationUpdate(location: Location) {
-        val previewLocation = convertToGcj02(location)
+        val previewLocation = toMapCoordinate(location)
         previewLocationCache = previewLocation
         previewLocationCachedAt = System.currentTimeMillis()
         homeMapController.updateCurrentLocation(
@@ -558,23 +553,22 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun loadPreviewLocation(forceRefresh: Boolean = false): LatLng? {
+    private fun loadPreviewLocation(forceRefresh: Boolean = false): GeoCoordinate? {
         val now = System.currentTimeMillis()
         if (!forceRefresh && now - previewLocationCachedAt < 5_000L) {
             return previewLocationCache
         }
-        val previewLocation = loadLastKnownLocation()?.let(::convertToGcj02)
+        val previewLocation = loadLastKnownLocation()?.let(::toMapCoordinate)
         previewLocationCache = previewLocation
         previewLocationCachedAt = now
         return previewLocation
     }
 
-    private fun convertToGcj02(location: Location): LatLng {
-        val coordinate = CoordinateTransformUtils.wgs84ToGcj02(
+    private fun toMapCoordinate(location: Location): GeoCoordinate {
+        return GeoCoordinate(
             latitude = location.latitude,
             longitude = location.longitude,
         )
-        return LatLng(coordinate.latitude, coordinate.longitude)
     }
 
     @SuppressLint("MissingPermission")
@@ -593,7 +587,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        homeMapController.onResume()
         TrackDataChangeNotifier.addListener(dataChangeListener)
         registerGnssCallback()
         refreshGpsStatus()
@@ -608,7 +601,6 @@ class MainActivity : AppCompatActivity() {
         TrackDataChangeNotifier.removeListener(dataChangeListener)
         unregisterGnssCallback()
         stopLocationUpdates()
-        homeMapController.onPause()
         super.onPause()
     }
 
@@ -616,7 +608,7 @@ class MainActivity : AppCompatActivity() {
         unregisterGnssCallback()
         stopLocationUpdates()
         TrackDataChangeNotifier.removeListener(dataChangeListener)
-        homeMapController.onDestroy()
+        homeMapController.onCleared()
         super.onDestroy()
     }
 }

@@ -1,72 +1,51 @@
 package com.wenhao.record.ui.main
 
-import androidx.appcompat.app.AppCompatActivity
-import androidx.core.graphics.toColorInt
-import com.baidu.mapapi.map.BaiduMap
-import com.baidu.mapapi.map.Gradient
-import com.baidu.mapapi.map.HeatMap
-import com.baidu.mapapi.map.MapStatusUpdateFactory
-import com.baidu.mapapi.map.MapView
-import com.baidu.mapapi.map.Marker
-import com.baidu.mapapi.map.MarkerOptions
-import com.baidu.mapapi.map.Polyline
-import com.baidu.mapapi.map.PolylineOptions
-import com.baidu.mapapi.map.WeightedLatLng
-import com.baidu.mapapi.model.LatLng
-import com.baidu.mapapi.model.LatLngBounds
-import com.wenhao.record.R
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.TrackPoint
-import com.wenhao.record.map.MapMarkerIconFactory
+import com.wenhao.record.map.GeoCoordinate
+import com.wenhao.record.ui.map.TrackMapMarker
+import com.wenhao.record.ui.map.TrackMapMarkerKind
+import com.wenhao.record.ui.map.TrackMapPolyline
+import com.wenhao.record.ui.map.TrackMapSceneState
+import com.wenhao.record.ui.map.TrackPolylineBuilder
+import com.wenhao.record.ui.map.TrackMapViewportRequest
 import java.util.Calendar
 
-class HomeMapController(
-    private val activity: AppCompatActivity,
-    val mapView: MapView
-) {
-    private val aMap: BaiduMap = mapView.map
+class HomeMapController : HomeMapPort {
+    override var renderState by mutableStateOf(TrackMapSceneState())
+        private set
 
-    private val activeTrackPolylines = mutableListOf<Polyline>()
-    private val todayTrackPolylines = mutableListOf<Polyline>()
+    override var shouldRefit = true
+
     private val currentTrackPoints = mutableListOf<TrackPoint>()
-    private val todayTrackPoints = mutableListOf<LatLng>()
-
-    private var homeMarker: Marker? = null
-    private var liveStartMarker: Marker? = null
-    private var liveCurrentMarker: Marker? = null
-    private var todayHeatMap: HeatMap? = null
+    private val todayTrackPoints = mutableListOf<GeoCoordinate>()
     private var currentTrackSegments: List<List<TrackPoint>> = emptyList()
+    private var activeTrackPolylines: List<TrackMapPolyline> = emptyList()
+    private var todayTrackPolylines: List<TrackMapPolyline> = emptyList()
+    private var homeMarker: GeoCoordinate? = null
+    private var liveStartMarker: GeoCoordinate? = null
+    private var liveCurrentMarker: GeoCoordinate? = null
+    private var viewportSequence = 0L
 
-    var shouldRefit = true
-
-    fun configure(previewLocation: LatLng?, hasLocationPermission: Boolean, defaultLatLng: LatLng) {
-        mapView.showZoomControls(false)
-        mapView.showScaleControl(false)
-        aMap.uiSettings.setCompassEnabled(false)
-        aMap.uiSettings.setRotateGesturesEnabled(false)
-        aMap.uiSettings.setOverlookingGesturesEnabled(false)
-        aMap.setBaiduHeatMapEnabled(aMap.isSupportBaiduHeatMap())
-
-        val initialLocation = previewLocation ?: defaultLatLng
+    override fun configure(previewLocation: GeoCoordinate?, hasLocationPermission: Boolean, defaultCoordinate: GeoCoordinate) {
+        val initialLocation = previewLocation ?: defaultCoordinate
         updateMarker(initialLocation)
-        aMap.setMapStatus(
-            MapStatusUpdateFactory.newLatLngZoom(
-                initialLocation,
-                if (hasLocationPermission) 16f else 15f
-            )
-        )
+        issueCenter(initialLocation, if (hasLocationPermission) 16.0 else 15.0)
     }
 
-    fun hasActiveTrack(): Boolean = currentTrackPoints.isNotEmpty()
+    override fun hasActiveTrack(): Boolean = currentTrackPoints.isNotEmpty()
 
-    fun hasTodayTracks(): Boolean = todayTrackPoints.isNotEmpty()
+    override fun hasTodayTracks(): Boolean = todayTrackPoints.isNotEmpty()
 
-    fun render(session: AutoTrackSession?, previewLocation: LatLng?, todayHistoryItems: List<HistoryItem>) {
+    override fun render(session: AutoTrackSession?, previewLocation: GeoCoordinate?, todayHistoryItems: List<HistoryItem>) {
         val sanitizedTrack = TrackPathSanitizer.sanitize(
             points = session?.points.orEmpty(),
-            sortByTimestamp = false
+            sortByTimestamp = false,
         )
         currentTrackPoints.clear()
         currentTrackPoints.addAll(sanitizedTrack.points)
@@ -76,256 +55,174 @@ class HomeMapController(
             clearActiveTrack()
             renderTodayTracks(todayHistoryItems)
             previewLocation?.let(::updateMarker)
+            syncScene()
             return
         }
 
         clearTodayTrackOverlays()
-        removeTodayHeatMap()
-        renderTrackPolyline(shouldFitMap = false)
+        renderTrackHeatmap()
         updateLiveTrackMarkers()
-        updateMarker(currentTrackPoints.last().toLatLng())
+        updateMarker(currentTrackPoints.last().toGeoCoordinate())
         if (shouldRefit) {
             focusActiveTrackOnLatestPoint(forceZoom = false)
+        } else {
+            syncScene()
         }
     }
 
-    fun centerOnPreviewLocation(latLng: LatLng, zoom: Float = 17f) {
-        applyViewportPadding()
-        aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(latLng, zoom))
+    override fun centerOnPreviewLocation(latLng: GeoCoordinate, zoom: Double) {
+        issueCenter(latLng, zoom)
     }
 
-    fun updateCurrentLocation(latLng: LatLng, shouldCenter: Boolean) {
+    override fun updateCurrentLocation(latLng: GeoCoordinate, shouldCenter: Boolean) {
         updateMarker(latLng)
         if (shouldCenter) {
-            applyViewportPadding()
-            aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(latLng, 17f))
+            issueCenter(latLng, 17.0)
+        } else {
+            syncScene()
         }
     }
 
-    fun showPreviewLocationIfIdle(previewLocation: LatLng?) {
+    override fun showPreviewLocationIfIdle(previewLocation: GeoCoordinate?) {
         if (!hasActiveTrack()) {
             previewLocation?.let(::updateMarker)
+            syncScene()
         }
     }
 
-    fun focusActiveTrackOnLatestPoint(forceZoom: Boolean) {
-        mapView.post {
-            val latestPoint = currentTrackPoints.lastOrNull()?.toLatLng() ?: return@post
-            applyViewportPadding()
-            val currentZoom = aMap.mapStatus?.zoom ?: 16f
-            val targetZoom = if (forceZoom || currentZoom < 16f) 16.8f else currentZoom
-            aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(latestPoint, targetZoom))
-            shouldRefit = false
-        }
+    override fun focusActiveTrackOnLatestPoint(forceZoom: Boolean) {
+        val latestPoint = currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
+        issueCenter(
+            coordinate = latestPoint,
+            zoom = if (forceZoom) 16.8 else 16.2,
+        )
+        shouldRefit = false
     }
 
-    fun fitTodayTracksToMap(forceSinglePointZoom: Boolean) {
-        mapView.post {
-            when {
-                todayTrackPoints.isEmpty() -> Unit
-                todayTrackPoints.size == 1 -> {
-                    if (forceSinglePointZoom || shouldRefit) {
-                        applyViewportPadding()
-                        aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngZoom(todayTrackPoints.first(), 17f))
-                    }
-                    shouldRefit = false
+    override fun fitTodayTracksToMap(forceSinglePointZoom: Boolean) {
+        when {
+            todayTrackPoints.isEmpty() -> Unit
+            todayTrackPoints.size == 1 -> {
+                if (forceSinglePointZoom || shouldRefit) {
+                    issueCenter(todayTrackPoints.first(), 17.0)
                 }
+                shouldRefit = false
+            }
 
-                else -> {
-                    val bounds = LatLngBounds.Builder().apply {
-                        todayTrackPoints.forEach(::include)
-                    }.build()
-                    applyViewportPadding()
-                    aMap.animateMapStatus(MapStatusUpdateFactory.newLatLngBounds(bounds))
-                    shouldRefit = false
-                }
+            else -> {
+                issueFit(todayTrackPoints, maxZoom = if (forceSinglePointZoom) 17.5 else 16.8)
+                shouldRefit = false
             }
         }
     }
 
-    fun onResume() {
-        mapView.onResume()
-    }
-
-    fun onPause() {
-        mapView.onPause()
-    }
-
-    fun onDestroy() {
+    override fun onCleared() {
         clearActiveTrack()
         clearTodayTrackOverlays()
-        removeTodayHeatMap()
-        homeMarker?.remove()
-        mapView.onDestroy()
+        homeMarker = null
+        syncScene(viewportRequest = null)
     }
 
-    private fun updateMarker(latLng: LatLng) {
+    private fun updateMarker(latLng: GeoCoordinate) {
         if (currentTrackPoints.isNotEmpty()) {
-            homeMarker?.remove()
             homeMarker = null
-            if (liveCurrentMarker == null) {
-                liveCurrentMarker = aMap.addOverlay(
-                    MarkerOptions()
-                        .position(latLng)
-                        .anchor(0.5f, 0.5f)
-                        .icon(MapMarkerIconFactory.fromDrawableResource(activity, R.drawable.ic_route_end_marker))
-                ) as Marker
-            } else {
-                liveCurrentMarker?.position = latLng
-            }
+            liveCurrentMarker = latLng
             return
         }
 
-        liveStartMarker?.remove()
         liveStartMarker = null
-        liveCurrentMarker?.remove()
         liveCurrentMarker = null
-
-        if (homeMarker == null) {
-            homeMarker = aMap.addOverlay(
-                MarkerOptions()
-                    .position(latLng)
-                    .anchor(0.5f, 0.5f)
-                    .icon(MapMarkerIconFactory.fromDrawableResource(activity, R.drawable.ic_location))
-            ) as Marker
-        } else {
-            homeMarker?.position = latLng
-        }
+        homeMarker = latLng
     }
 
-    private fun renderTrackPolyline(shouldFitMap: Boolean) {
-        activeTrackPolylines.forEach { polyline -> polyline.remove() }
-        activeTrackPolylines.clear()
-
-        val drawableSegments = currentTrackSegments.filter { segment -> segment.size > 1 }
-        if (drawableSegments.isEmpty()) {
-            if (shouldFitMap) {
-                focusActiveTrackOnLatestPoint(forceZoom = false)
-            }
-            return
-        }
-
-        drawableSegments.forEach { segment ->
-            activeTrackPolylines += aMap.addOverlay(
-                PolylineOptions()
-                    .points(segment.map { point -> point.toLatLng() })
-                    .color("#8B5CF6".toColorInt())
-                    .width(12)
-            ) as Polyline
-        }
-
-        if (shouldFitMap) {
-            focusActiveTrackOnLatestPoint(forceZoom = false)
-        }
+    private fun renderTrackHeatmap() {
+        val renderableSegments = TrackPathSanitizer.renderableSegments(currentTrackSegments)
+        activeTrackPolylines = TrackPolylineBuilder.build(
+            segments = renderableSegments,
+            idPrefix = "active",
+            width = 6.0,
+        )
     }
 
     private fun clearActiveTrack() {
-        activeTrackPolylines.forEach { polyline -> polyline.remove() }
-        activeTrackPolylines.clear()
+        activeTrackPolylines = emptyList()
         currentTrackSegments = emptyList()
         currentTrackPoints.clear()
-        liveStartMarker?.remove()
         liveStartMarker = null
-        liveCurrentMarker?.remove()
         liveCurrentMarker = null
     }
 
     private fun clearTodayTrackOverlays() {
-        todayTrackPolylines.forEach { polyline -> polyline.remove() }
-        todayTrackPolylines.clear()
+        todayTrackPolylines = emptyList()
         todayTrackPoints.clear()
-    }
-
-    private fun removeTodayHeatMap() {
-        todayHeatMap?.removeHeatMap()
-        todayHeatMap = null
     }
 
     private fun renderTodayTracks(historyItems: List<HistoryItem>) {
         clearTodayTrackOverlays()
-        removeTodayHeatMap()
 
-        val sanitizedTodayPoints = mutableListOf<TrackPoint>()
-
+        val sourceSegments = mutableListOf<List<TrackPoint>>()
         historyItems.forEach { item ->
             if (!isSameDay(item.timestamp, System.currentTimeMillis())) return@forEach
             val sanitizedTrack = TrackPathSanitizer.sanitize(item.points, sortByTimestamp = true)
-            sanitizedTodayPoints += sanitizedTrack.points
-            todayTrackPoints.addAll(sanitizedTrack.points.map { point -> point.toLatLng() })
-            sanitizedTrack.segments.filter { segment -> segment.size > 1 }.forEach { segment ->
-                val polyline = aMap.addOverlay(
-                    PolylineOptions()
-                        .points(segment.map { point -> point.toLatLng() })
-                        .color("#7A8B5CF6".toColorInt())
-                        .width(10)
-                ) as Polyline
-                todayTrackPolylines += polyline
-            }
+            val renderableSegments = TrackPathSanitizer.renderableSegments(sanitizedTrack.segments)
+            val geoPoints = renderableSegments.flatten().map(TrackPoint::toGeoCoordinate)
+            todayTrackPoints.addAll(geoPoints)
+            sourceSegments.addAll(renderableSegments)
         }
-
-        renderTodayHeatMap(sanitizedTodayPoints)
+        todayTrackPolylines = TrackPolylineBuilder.build(
+            segments = sourceSegments,
+            idPrefix = "today",
+            width = 4.6,
+        )
 
         if (todayTrackPoints.isNotEmpty() && shouldRefit) {
             fitTodayTracksToMap(forceSinglePointZoom = false)
         }
     }
 
-    private fun renderTodayHeatMap(points: List<TrackPoint>) {
-        if (!aMap.isSupportBaiduHeatMap() || points.size < 3) return
-
-        val weightedPoints = points.map { point -> WeightedLatLng(point.toLatLng()) }
-        val gradient = Gradient(
-            intArrayOf(
-                "#33D9CCFF".toColorInt(),
-                "#8A8B5CF6".toColorInt(),
-                "#F26E47D7".toColorInt()
-            ),
-            floatArrayOf(0.2f, 0.6f, 1f)
-        )
-
-        todayHeatMap = HeatMap.Builder()
-            .weightedData(weightedPoints)
-            .radius(32)
-            .opacity(0.72)
-            .gradient(gradient)
-            .build()
-        todayHeatMap?.let(aMap::addHeatMap)
-    }
-
     private fun updateLiveTrackMarkers() {
-        val firstPoint = currentTrackPoints.firstOrNull()?.toLatLng() ?: return
-        val lastPoint = currentTrackPoints.lastOrNull()?.toLatLng() ?: return
-
-        if (liveStartMarker == null) {
-            liveStartMarker = aMap.addOverlay(
-                MarkerOptions()
-                    .position(firstPoint)
-                    .anchor(0.5f, 0.5f)
-                    .icon(MapMarkerIconFactory.fromDrawableResource(activity, R.drawable.ic_route_start_marker))
-            ) as Marker
-        } else {
-            liveStartMarker?.position = firstPoint
-        }
-
-        if (liveCurrentMarker == null) {
-            liveCurrentMarker = aMap.addOverlay(
-                MarkerOptions()
-                    .position(lastPoint)
-                    .anchor(0.5f, 0.5f)
-                    .icon(MapMarkerIconFactory.fromDrawableResource(activity, R.drawable.ic_route_end_marker))
-            ) as Marker
-        } else {
-            liveCurrentMarker?.position = lastPoint
-        }
+        val firstPoint = currentTrackPoints.firstOrNull()?.toGeoCoordinate() ?: return
+        val lastPoint = currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
+        liveStartMarker = firstPoint
+        liveCurrentMarker = lastPoint
     }
 
-    private fun applyViewportPadding() {
-        aMap.setViewPadding(
-            dpToPx(20),
-            dpToPx(132),
-            dpToPx(20),
-            dpToPx(24)
+    private fun syncScene(viewportRequest: TrackMapViewportRequest? = renderState.viewportRequest) {
+        renderState = TrackMapSceneState(
+            polylines = activeTrackPolylines + todayTrackPolylines,
+            heatPoints = emptyList(),
+            markers = buildList {
+                homeMarker?.let { add(TrackMapMarker("home", it, TrackMapMarkerKind.HOME)) }
+                liveStartMarker?.let { add(TrackMapMarker("start", it, TrackMapMarkerKind.START)) }
+                liveCurrentMarker?.let { add(TrackMapMarker("end", it, TrackMapMarkerKind.END)) }
+            },
+            viewportRequest = viewportRequest,
         )
+    }
+
+    private fun issueCenter(coordinate: GeoCoordinate, zoom: Double) {
+        syncScene(
+            viewportRequest = TrackMapViewportRequest.Center(
+                sequence = nextViewportSequence(),
+                coordinate = coordinate,
+                zoom = zoom,
+            )
+        )
+    }
+
+    private fun issueFit(coordinates: List<GeoCoordinate>, maxZoom: Double? = null) {
+        syncScene(
+            viewportRequest = TrackMapViewportRequest.Fit(
+                sequence = nextViewportSequence(),
+                coordinates = coordinates.toList(),
+                maxZoom = maxZoom,
+            )
+        )
+    }
+
+    private fun nextViewportSequence(): Long {
+        viewportSequence += 1
+        return viewportSequence
     }
 
     private fun isSameDay(firstTimestamp: Long, secondTimestamp: Long): Boolean {
@@ -333,9 +230,5 @@ class HomeMapController(
         val second = Calendar.getInstance().apply { timeInMillis = secondTimestamp }
         return first.get(Calendar.YEAR) == second.get(Calendar.YEAR) &&
             first.get(Calendar.DAY_OF_YEAR) == second.get(Calendar.DAY_OF_YEAR)
-    }
-
-    private fun dpToPx(dp: Int): Int {
-        return (dp * activity.resources.displayMetrics.density).toInt()
     }
 }

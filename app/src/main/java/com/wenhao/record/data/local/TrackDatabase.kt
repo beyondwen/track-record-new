@@ -20,7 +20,7 @@ import com.wenhao.record.data.local.history.HistoryRecordEntity
         HistoryRecordEntity::class,
         HistoryPointEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class TrackDatabase : RoomDatabase() {
@@ -46,6 +46,13 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE auto_track_point ADD COLUMN altitudeMeters REAL")
+                database.execSQL("ALTER TABLE history_point ADD COLUMN altitudeMeters REAL")
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -56,7 +63,7 @@ abstract class TrackDatabase : RoomDatabase() {
                     TrackDatabase::class.java,
                     "track_record.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }

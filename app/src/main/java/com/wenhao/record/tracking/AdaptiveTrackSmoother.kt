@@ -41,6 +41,11 @@ object AdaptiveTrackSmoother {
             longitude = previousPoint.longitude + (candidatePoint.longitude - previousPoint.longitude) * alpha,
             timestampMillis = candidatePoint.timestampMillis,
             accuracyMeters = candidatePoint.accuracyMeters,
+            altitudeMeters = candidatePoint.altitudeMeters?.let { candidateAltitude ->
+                previousPoint.altitudeMeters?.let { previousAltitude ->
+                    previousAltitude + (candidateAltitude - previousAltitude) * alpha
+                }
+            } ?: candidatePoint.altitudeMeters,
             wgs84Latitude = smoothedWgs84Latitude ?: candidatePoint.wgs84Latitude,
             wgs84Longitude = smoothedWgs84Longitude ?: candidatePoint.wgs84Longitude
         )

@@ -34,7 +34,25 @@ object CoordinateTransformUtils {
         )
     }
 
-    private fun isOutOfChina(latitude: Double, longitude: Double): Boolean {
+    fun gcj02ToWgs84(latitude: Double, longitude: Double): GeoCoordinate {
+        if (isOutOfChina(latitude, longitude)) {
+            return GeoCoordinate(latitude, longitude)
+        }
+
+        var currentLatitude = latitude
+        var currentLongitude = longitude
+        repeat(6) {
+            val gcj = wgs84ToGcj02(currentLatitude, currentLongitude)
+            currentLatitude -= (gcj.latitude - latitude)
+            currentLongitude -= (gcj.longitude - longitude)
+        }
+        return GeoCoordinate(
+            latitude = currentLatitude,
+            longitude = currentLongitude
+        )
+    }
+
+    fun isOutOfChina(latitude: Double, longitude: Double): Boolean {
         return longitude < 72.004 || longitude > 137.8347 || latitude < 0.8293 || latitude > 55.8271
     }
 

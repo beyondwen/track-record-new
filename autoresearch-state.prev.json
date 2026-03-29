@@ -1,0 +1,51 @@
+{
+  "config": {
+    "direction": "lower",
+    "goal": "Replace Baidu Map with a Mapbox-ready Compose scaffold and convert the homepage panel into a draggable bottom sheet",
+    "guard": "./gradlew.bat assembleDebug --no-daemon",
+    "iterations": null,
+    "metric": "remaining core tasks for bottom-sheet homepage and Mapbox-ready scaffold",
+    "parallel_mode": "serial",
+    "repos": [
+      {
+        "path": "D:\\data\\AndroidWork\\TrackRecord",
+        "role": "primary",
+        "scope": "build.gradle,app/build.gradle,settings.gradle,app/src/main/java/com/wenhao/record/ui/main/**/*.kt,app/src/main/java/com/wenhao/record/ui/dashboard/**/*.kt,app/src/main/java/com/wenhao/record/ui/map/**/*.kt,app/src/main/java/com/wenhao/record/ui/designsystem/**/*.kt,app/src/main/res/values/**/*.xml,docs/**/*.md"
+      }
+    ],
+    "rollback_policy": null,
+    "scope": "build.gradle,app/build.gradle,settings.gradle,app/src/main/java/com/wenhao/record/ui/main/**/*.kt,app/src/main/java/com/wenhao/record/ui/dashboard/**/*.kt,app/src/main/java/com/wenhao/record/ui/map/**/*.kt,app/src/main/java/com/wenhao/record/ui/designsystem/**/*.kt,app/src/main/res/values/**/*.xml,docs/**/*.md",
+    "session_mode": "foreground",
+    "stop_condition": null,
+    "verify": "./gradlew.bat assembleDebug --no-daemon",
+    "web_search": "disabled"
+  },
+  "mode": "loop",
+  "run_tag": "",
+  "state": {
+    "baseline_metric": 2,
+    "best_iteration": 19,
+    "best_metric": 0,
+    "blocked": 0,
+    "consecutive_discards": 0,
+    "crashes": 4,
+    "current_metric": 0,
+    "discards": 0,
+    "iteration": 19,
+    "keeps": 3,
+    "last_commit": "d542d7378e181dd1951e8aa3b85321690188d1ea",
+    "last_repo_commits": {
+      "D:\\data\\AndroidWork\\TrackRecord": "d542d7378e181dd1951e8aa3b85321690188d1ea"
+    },
+    "last_status": "keep",
+    "last_trial_commit": "d542d7378e181dd1951e8aa3b85321690188d1ea",
+    "last_trial_metric": 0,
+    "last_trial_repo_commits": {
+      "D:\\data\\AndroidWork\\TrackRecord": "d542d7378e181dd1951e8aa3b85321690188d1ea"
+    },
+    "no_ops": 0,
+    "pivot_count": 0
+  },
+  "updated_at": "2026-03-26T22:15:48.6784357+08:00",
+  "version": 1
+}

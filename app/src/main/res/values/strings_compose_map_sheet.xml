@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compose_map_sheet_title">轨迹详情</string>
+    <string name="compose_map_sheet_expand">展开详情</string>
+    <string name="compose_map_sheet_collapse">收起详情</string>
+    <string name="compose_map_sheet_expanded">详情已展开</string>
+    <string name="compose_map_sheet_collapsed">详情已收起</string>
+    <string name="compose_map_points">点位</string>
+    <string name="compose_map_altitude_legend_title">海拔图例</string>
+    <string name="compose_map_altitude_legend_subtitle">连线颜色会随海拔变化，颜色越暖表示海拔越高。</string>
+    <string name="compose_map_altitude_legend_low">低</string>
+    <string name="compose_map_altitude_legend_high">高</string>
+    <string name="compose_map_altitude_legend_min">最低 %.0f m</string>
+    <string name="compose_map_altitude_legend_max">最高 %.0f m</string>
+    <string name="compose_map_altitude_legend_content_description">海拔图例，%1$s，%2$s。</string>
+</resources>

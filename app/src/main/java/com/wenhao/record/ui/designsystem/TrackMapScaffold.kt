@@ -1,10 +1,12 @@
 package com.wenhao.record.ui.designsystem
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -15,14 +17,18 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 @Composable
@@ -34,7 +40,12 @@ fun TrackFloatingMapButton(
 ) {
     FilledIconButton(
         onClick = onClick,
-        modifier = modifier.size(48.dp),
+        modifier = modifier.size(52.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = IconButtonDefaults.filledIconButtonColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+        ),
     ) {
         Icon(
             painter = icon,
@@ -47,31 +58,74 @@ fun TrackFloatingMapButton(
 fun TrackTopOverlayCard(
     title: String,
     body: String? = null,
+    eyebrow: String? = null,
+    accentColor: Color = MaterialTheme.colorScheme.primary,
     modifier: Modifier = Modifier,
 ) {
     Card(
         modifier = modifier,
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+            containerColor = Color.Transparent,
         ),
-        shape = MaterialTheme.shapes.small,
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.trackSoftOutline,
+        ),
+        shape = RoundedCornerShape(22.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                            accentColor.copy(alpha = 0.06f),
+                        ),
+                    ),
+                ),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            if (!body.isNullOrBlank()) {
+            Column(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(accentColor),
+                    )
+                    eyebrow?.takeIf { it.isNotBlank() }?.let {
+                        Surface(
+                            color = accentColor.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(999.dp),
+                        ) {
+                            Text(
+                                text = it,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = accentColor,
+                            )
+                        }
+                    }
+                }
                 Text(
-                    text = body,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = title,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
+                if (!body.isNullOrBlank()) {
+                    Text(
+                        text = body,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }
@@ -84,16 +138,22 @@ fun TrackBottomSurface(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.trackSoftOutline,
+        ),
+        shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 20.dp),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(horizontal = 24.dp, vertical = 14.dp),
+            horizontalAlignment = Alignment.Start,
             content = content,
         )
     }
@@ -120,8 +180,9 @@ fun TrackMapBottomScrim(modifier: Modifier = Modifier) {
                 Brush.verticalGradient(
                     colors = listOf(
                         Color.Transparent,
-                        Color.Black.copy(alpha = 0.08f),
-                        Color.Black.copy(alpha = 0.18f),
+                        Color.Black.copy(alpha = 0.06f),
+                        Color.Black.copy(alpha = 0.16f),
+                        Color.Black.copy(alpha = 0.24f),
                     ),
                 ),
             ),
@@ -137,7 +198,35 @@ fun TrackTopOverlayColumn(
         modifier = modifier
             .statusBarsPadding()
             .padding(horizontal = 18.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         content = content,
     )
+}
+
+/*
+@Preview(showBackground = true)
+@Composable
+private fun TrackTopOverlayCardPreview() {
+    TrackRecordTheme {
+        TrackTopOverlayCard(
+            title = "GPS 已就绪",
+            body = "后台待命中 · 最近一次定位精度良好",
+            eyebrow = "实时状态",
+            modifier = Modifier.padding(16.dp),
+        )
+    }
+}
+*/
+
+@Preview(showBackground = true)
+@Composable
+private fun TrackTopOverlayCardPreview() {
+    TrackRecordTheme {
+        TrackTopOverlayCard(
+            title = "GPS ready",
+            body = "Background tracking is standing by and the latest location fix is stable.",
+            eyebrow = "Live status",
+            modifier = Modifier.padding(16.dp),
+        )
+    }
 }

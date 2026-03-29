@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compose_dashboard_dialog_open">查看智能记录状态</string>
+    <string name="compose_dashboard_dialog_open_hint">点按查看后台状态、定位情况和记录诊断</string>
+    <string name="compose_dashboard_dialog_badge">智能记录</string>
+    <string name="compose_dashboard_dialog_close">关闭智能记录状态弹窗</string>
+    <string name="compose_dashboard_dialog_summary_title">它会如何工作</string>
+    <string name="compose_dashboard_dialog_summary_body">应用会在后台低功耗待命，检测到步行、骑行或驾车时自动开始记录；静止一段时间后会自动整理并保存到历史。</string>
+    <string name="compose_dashboard_dialog_gps_label">定位状态</string>
+    <string name="compose_dashboard_dialog_diagnostics_label">记录诊断</string>
+    <string name="compose_dashboard_dialog_confirm">我知道了</string>
+</resources>

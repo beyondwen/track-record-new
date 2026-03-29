@@ -938,6 +938,7 @@ class BackgroundTrackingService : Service() {
             longitude = coordinate.longitude,
             timestampMillis = location.time.takeIf { it > 0L } ?: System.currentTimeMillis(),
             accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() },
+            altitudeMeters = location.altitude.takeIf { location.hasAltitude() },
             wgs84Latitude = wgs84Latitude,
             wgs84Longitude = wgs84Longitude
         )

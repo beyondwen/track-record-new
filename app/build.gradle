@@ -13,10 +13,6 @@ if (localPropertiesFile.exists()) {
         localProperties.load(stream)
     }
 }
-def baiduMapApiKey = providers.gradleProperty("BAIDU_MAP_API_KEY").orNull
-if (!baiduMapApiKey) {
-    baiduMapApiKey = localProperties.getProperty("BAIDU_MAP_API_KEY", "")
-}
 def mapboxAccessToken = providers.gradleProperty("MAPBOX_ACCESS_TOKEN").orNull
 if (!mapboxAccessToken) {
     mapboxAccessToken = localProperties.getProperty("MAPBOX_ACCESS_TOKEN", "")
@@ -84,7 +80,7 @@ android {
         versionCode = 15
         versionName = "1.0.14"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        resValue "string", "baidu_map_api_key", baiduMapApiKey
+        resValue "string", "mapbox_access_token", "\"${mapboxAccessToken.replace("\\", "\\\\").replace("\"", "\\\"")}\""
         buildConfigField "String", "MAPBOX_ACCESS_TOKEN", "\"${mapboxAccessToken.replace("\\", "\\\\").replace("\"", "\\\"")}\""
     }
 
@@ -120,6 +116,7 @@ android {
     packaging {
         jniLibs {
             useLegacyPackaging = false
+            pickFirsts += ['**/libc++_shared.so']
         }
     }
 }
@@ -130,6 +127,7 @@ room {
 
 dependencies {
     def composeBom = platform('androidx.compose:compose-bom:2025.02.00')
+    def mapboxVersion = '11.20.2'
 
     implementation 'androidx.core:core-ktx:1.18.0'
     implementation 'androidx.appcompat:appcompat:1.7.1'
@@ -143,8 +141,9 @@ dependencies {
     implementation 'androidx.compose.foundation:foundation'
     implementation 'androidx.compose.material3:material3'
     implementation 'androidx.compose.ui:ui-tooling-preview'
+    implementation "com.mapbox.maps:android-ndk27:${mapboxVersion}"
+    implementation "com.mapbox.extension:maps-compose-ndk27:${mapboxVersion}"
     implementation 'androidx.room:room-runtime:2.8.4'
-    implementation 'com.baidu.lbsyun:BaiduMapSDK_Map:7.6.7'
     ksp 'androidx.room:room-compiler:2.8.4'
 
     testImplementation 'junit:junit:4.13.2'

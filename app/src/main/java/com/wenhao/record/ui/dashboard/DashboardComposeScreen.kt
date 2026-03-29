@@ -5,8 +5,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,20 +16,26 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.Close
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -35,11 +43,24 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.wenhao.record.R
+import com.wenhao.record.ui.designsystem.TrackBottomNavigationBar
+import com.wenhao.record.ui.designsystem.TrackBottomTab
+import com.wenhao.record.ui.designsystem.TrackInsetPanel
+import com.wenhao.record.ui.designsystem.TrackPrimaryButton
 import com.wenhao.record.ui.designsystem.TrackRecordSpacing
+import com.wenhao.record.ui.designsystem.TrackRecordStatusColors
+import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.designsystem.TrackStatChip
 
 enum class DashboardTone {
@@ -53,7 +74,7 @@ data class DashboardScreenUiState(
     val isRecordTabSelected: Boolean = true,
     val distanceText: String = "0.00",
     val durationText: String = "00:00",
-    val speedText: String = "0.0 公里/小时",
+    val speedText: String = "0.0 km/h",
     val autoTrackTitle: String = "",
     val autoTrackMeta: String = "",
     val statusLabel: String = "",
@@ -65,140 +86,255 @@ data class DashboardScreenUiState(
 @Composable
 fun DashboardComposeScreen(
     state: DashboardScreenUiState,
+    overlayState: DashboardOverlayUiState,
+    isSheetExpanded: Boolean,
     onRecordClick: () -> Unit,
     onHistoryClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val dividerColor = MaterialTheme.colorScheme.outlineVariant
+    var showStatusDialog by rememberSaveable { mutableStateOf(false) }
 
     Surface(
         modifier = modifier,
-        color = Color.White,
-        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
-        tonalElevation = 4.dp,
-        shadowElevation = 16.dp,
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.985f),
+        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+        tonalElevation = 6.dp,
+        shadowElevation = 20.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+                .padding(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Box(
                 modifier = Modifier
-                    .width(42.dp)
-                    .height(4.dp)
+                    .align(Alignment.CenterHorizontally)
+                    .size(width = 42.dp, height = 4.dp)
                     .background(
                         color = MaterialTheme.colorScheme.outlineVariant,
                         shape = RoundedCornerShape(999.dp),
                     ),
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            DashboardHeroSection(
+                state = state,
+                onStatusClick = { showStatusDialog = true },
+            )
 
+            DashboardStatusPanel(
+                isSheetExpanded = isSheetExpanded,
+                onClick = onRecordClick,
+            )
+
+            TrackBottomNavigationBar(
+                selectedTab = if (state.isRecordTabSelected) {
+                    TrackBottomTab.RECORD
+                } else {
+                    TrackBottomTab.HISTORY
+                },
+                onRecordClick = onRecordClick,
+                onHistoryClick = onHistoryClick,
+                recordLabel = stringResource(R.string.compose_dashboard_record),
+                historyLabel = stringResource(R.string.compose_dashboard_history),
+            )
+        }
+    }
+
+    if (showStatusDialog) {
+        DashboardStatusDialog(
+            state = state,
+            overlayState = overlayState,
+            onDismiss = { showStatusDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun DashboardHeroSection(
+    state: DashboardScreenUiState,
+    onStatusClick: () -> Unit,
+) {
+    val accessibilitySummary = stringResource(
+        R.string.compose_dashboard_accessibility_summary,
+        state.distanceText,
+        state.durationText,
+        state.speedText,
+    )
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = accessibilitySummary
+            },
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+        TrackStatChip(
+            text = stringResource(R.string.compose_dashboard_primary_metric_label),
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.Start),
+        ) {
             Text(
                 text = state.distanceText,
-                style = MaterialTheme.typography.displayMedium.copy(
-                    fontWeight = FontWeight.Black,
-                ),
+                style = MaterialTheme.typography.displayMedium.copy(fontFeatureSettings = "tnum"),
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Text(
-                text = stringResource(R.string.compose_dashboard_distance_unit).uppercase(),
-                style = MaterialTheme.typography.labelLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified,
-                ),
+                text = stringResource(R.string.compose_dashboard_distance_unit),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp),
+            )
+        }
+
+        Text(
+            text = state.autoTrackMeta,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            DashboardMiniMetric(
+                label = stringResource(R.string.compose_dashboard_time_label),
+                value = state.durationText,
+                modifier = Modifier.weight(1f),
+            )
+            DashboardMiniMetric(
+                label = stringResource(R.string.compose_dashboard_speed_label),
+                value = state.speedText.substringBefore(" ").ifBlank { state.speedText },
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        DashboardStatusEntry(
+            title = state.autoTrackTitle,
+            badge = state.statusLabel,
+            tone = state.statusTone,
+            onClick = onStatusClick,
+        )
+    }
+}
+
+@Composable
+private fun DashboardMiniMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(26.dp))
+@Composable
+private fun DashboardStatusEntry(
+    title: String,
+    badge: String,
+    tone: DashboardTone,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val openHint = stringResource(R.string.compose_dashboard_status_entry_hint)
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clickable(
+                role = Role.Button,
+                onClickLabel = stringResource(R.string.compose_dashboard_dialog_open),
+                onClick = onClick,
+            )
+            .semantics(mergeDescendants = true) {
+                heading()
+                stateDescription = title
+                contentDescription = "$title，$badge，$openHint"
+            },
+        color = statusContainerColor(tone).copy(alpha = 0.12f),
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = statusContainerColor(tone).copy(alpha = 0.42f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .background(
+                        color = statusContentColor(tone),
+                        shape = RoundedCornerShape(999.dp),
+                    ),
+            )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                DashboardStat(
-                    label = stringResource(R.string.compose_dashboard_time_label),
-                    value = state.durationText,
-                    modifier = Modifier.weight(1f),
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Canvas(
-                    modifier = Modifier
-                        .height(42.dp)
-                        .width(1.dp),
-                ) {
-                    drawLine(
-                        color = dividerColor,
-                        start = center.copy(y = 0f),
-                        end = center.copy(y = size.height),
-                        strokeWidth = size.width,
-                    )
-                }
-                DashboardStat(
-                    label = stringResource(R.string.compose_dashboard_speed_label),
-                    value = state.speedText.substringBefore(" "),
-                    modifier = Modifier.weight(1f),
-                    suffix = stringResource(R.string.compose_dashboard_speed_unit),
+                Text(
+                    text = openHint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
-
-            DashboardRecordIndicator(
-                iconRes = state.recordIconRes,
-                isPulseActive = state.isPulseActive,
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            Spacer(modifier = Modifier.height(18.dp))
-
-            Text(
-                text = state.statusLabel,
-                style = MaterialTheme.typography.labelLarge,
-                color = statusContentColor(state.statusTone),
-            )
-            Text(
-                text = state.autoTrackMeta,
-                modifier = Modifier.padding(top = 2.dp, start = 8.dp, end = 8.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-            )
-
-            Spacer(modifier = Modifier.height(30.dp))
-
-            NavigationBar(
-                modifier = Modifier.navigationBarsPadding(),
-                containerColor = Color.Transparent,
-                tonalElevation = 0.dp,
-            ) {
-                NavigationBarItem(
-                    selected = state.isRecordTabSelected,
-                    onClick = onRecordClick,
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_tab_record),
-                            contentDescription = stringResource(R.string.compose_dashboard_record),
-                        )
-                    },
-                    label = { Text(stringResource(R.string.compose_dashboard_record)) },
-                    colors = navigationItemColors(),
+            if (badge.isNotBlank()) {
+                TrackStatChip(
+                    text = badge,
+                    containerColor = statusContainerColor(tone),
+                    contentColor = statusContentColor(tone),
                 )
-                NavigationBarItem(
-                    selected = !state.isRecordTabSelected,
-                    onClick = onHistoryClick,
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_tab_history),
-                            contentDescription = stringResource(R.string.compose_dashboard_history),
-                        )
-                    },
-                    label = { Text(stringResource(R.string.compose_dashboard_history)) },
-                    colors = navigationItemColors(),
+            } else {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -206,39 +342,266 @@ fun DashboardComposeScreen(
 }
 
 @Composable
-private fun DashboardStat(
+private fun DashboardStatusDialog(
+    state: DashboardScreenUiState,
+    overlayState: DashboardOverlayUiState,
+    onDismiss: () -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = true,
+            dismissOnClickOutside = true,
+        ),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .navigationBarsPadding()
+                .imePadding(),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.985f),
+            shape = RoundedCornerShape(30.dp),
+            tonalElevation = 8.dp,
+            shadowElevation = 24.dp,
+            border = BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(TrackRecordSpacing.lg),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .background(
+                                color = statusContainerColor(state.statusTone),
+                                shape = RoundedCornerShape(18.dp),
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_tab_record),
+                            contentDescription = null,
+                            tint = statusContentColor(state.statusTone),
+                        )
+                    }
+
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        TrackStatChip(
+                            text = stringResource(R.string.compose_dashboard_dialog_badge),
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                        Text(
+                            text = state.autoTrackTitle,
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.semantics { heading() },
+                        )
+                        TrackStatChip(
+                            text = state.statusLabel,
+                            containerColor = statusContainerColor(state.statusTone),
+                            contentColor = statusContentColor(state.statusTone),
+                        )
+                    }
+
+                    FilledIconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(48.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = stringResource(R.string.compose_dashboard_dialog_close),
+                        )
+                    }
+                }
+
+                Text(
+                    text = state.autoTrackMeta,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                TrackInsetPanel {
+                    Text(
+                        text = stringResource(R.string.compose_dashboard_dialog_summary_title),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(R.string.compose_dashboard_dialog_summary_body),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                TrackInsetPanel(accented = true) {
+                    DialogInfoRow(
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_locate_dashboard),
+                                contentDescription = null,
+                                tint = statusContentColor(overlayState.gpsTone),
+                            )
+                        },
+                        label = stringResource(R.string.compose_dashboard_dialog_gps_label),
+                        value = overlayState.gpsLabel,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    DialogInfoRow(
+                        icon = {
+                            Icon(
+                                painter = painterResource(R.drawable.ic_history),
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        },
+                        label = overlayState.diagnosticsTitle.ifBlank {
+                            stringResource(R.string.compose_dashboard_dialog_diagnostics_label)
+                        },
+                        value = overlayState.diagnosticsCompactBody,
+                    )
+                }
+
+                TrackPrimaryButton(
+                    text = stringResource(R.string.compose_dashboard_dialog_confirm),
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DialogInfoRow(
+    icon: @Composable () -> Unit,
     label: String,
     value: String,
     modifier: Modifier = Modifier,
-    suffix: String? = null,
 ) {
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {},
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = label.uppercase(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                    shape = RoundedCornerShape(14.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            icon()
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
-                text = value,
-                style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = value.ifBlank { stringResource(R.string.compose_dashboard_diagnostics_loading) },
+                style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
             )
-            if (!suffix.isNullOrBlank()) {
+        }
+    }
+}
+
+@Composable
+private fun DashboardStatusPanel(
+    isSheetExpanded: Boolean,
+    onClick: () -> Unit,
+) {
+    val actionTitle = stringResource(
+        if (isSheetExpanded) {
+            R.string.compose_dashboard_panel_collapse_title
+        } else {
+            R.string.compose_dashboard_panel_expand_title
+        }
+    )
+    val actionBody = stringResource(
+        if (isSheetExpanded) {
+            R.string.compose_dashboard_panel_collapse_body
+        } else {
+            R.string.compose_dashboard_panel_expand_body
+        }
+    )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                role = Role.Button,
+                onClickLabel = actionTitle,
+                onClick = onClick,
+            )
+            .semantics(mergeDescendants = true) {
+                stateDescription = actionTitle
+            },
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
+        ),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text(
-                    text = suffix,
-                    style = MaterialTheme.typography.labelSmall,
+                    text = stringResource(R.string.compose_dashboard_panel_caption),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = actionBody,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 2.dp),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
+
+            TrackStatChip(
+                text = if (isSheetExpanded) {
+                    stringResource(R.string.compose_dashboard_panel_collapse_short)
+                } else {
+                    stringResource(R.string.compose_dashboard_panel_expand_short)
+                },
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
@@ -247,6 +610,8 @@ private fun DashboardStat(
 private fun DashboardRecordIndicator(
     iconRes: Int,
     isPulseActive: Boolean,
+    tone: DashboardTone,
+    modifier: Modifier = Modifier,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "dashboardPulse")
     val haloScale = if (isPulseActive) {
@@ -254,7 +619,7 @@ private fun DashboardRecordIndicator(
             initialValue = 1f,
             targetValue = 1.12f,
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1400),
+                animation = tween(durationMillis = 1500),
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "haloScale",
@@ -264,38 +629,48 @@ private fun DashboardRecordIndicator(
     }
     val haloAlpha = if (isPulseActive) {
         infiniteTransition.animateFloat(
-            initialValue = 0.72f,
-            targetValue = 1f,
+            initialValue = 0.32f,
+            targetValue = 0.78f,
             animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1400),
+                animation = tween(durationMillis = 1500),
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "haloAlpha",
         ).value
     } else {
-        0.72f
+        0.28f
+    }
+    val accentColor = when (tone) {
+        DashboardTone.ACTIVE -> MaterialTheme.colorScheme.primary
+        DashboardTone.WARNING -> MaterialTheme.colorScheme.tertiary
+        DashboardTone.MUTED -> MaterialTheme.colorScheme.secondary
+        DashboardTone.SUCCESS -> TrackRecordStatusColors.Success
     }
 
     Box(
-        modifier = Modifier
-            .size(96.dp),
+        modifier = modifier,
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
-                .size(96.dp)
+                .size(92.dp)
                 .scale(haloScale)
                 .alpha(haloAlpha)
                 .background(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                    color = accentColor.copy(alpha = 0.22f),
                     shape = CircleShape,
                 ),
         )
+        Canvas(modifier = Modifier.size(92.dp)) {
+            drawCircle(
+                color = accentColor.copy(alpha = 0.12f),
+            )
+        }
         Box(
             modifier = Modifier
-                .size(78.dp)
+                .size(76.dp)
                 .background(
-                    color = MaterialTheme.colorScheme.primary,
+                    color = accentColor,
                     shape = CircleShape,
                 ),
             contentAlignment = Alignment.Center,
@@ -304,33 +679,52 @@ private fun DashboardRecordIndicator(
                 painter = painterResource(iconRes),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(30.dp),
+                modifier = Modifier.size(28.dp),
             )
         }
     }
 }
 
 @Composable
-private fun navigationItemColors() = NavigationBarItemDefaults.colors(
-    selectedIconColor = MaterialTheme.colorScheme.primary,
-    selectedTextColor = MaterialTheme.colorScheme.primary,
-    indicatorColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f),
-    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-)
-
-@Composable
 private fun statusContainerColor(tone: DashboardTone): Color = when (tone) {
     DashboardTone.ACTIVE -> MaterialTheme.colorScheme.primaryContainer
-    DashboardTone.WARNING -> MaterialTheme.colorScheme.secondaryContainer
-    DashboardTone.MUTED -> MaterialTheme.colorScheme.surfaceVariant
-    DashboardTone.SUCCESS -> MaterialTheme.colorScheme.primaryContainer
+    DashboardTone.WARNING -> MaterialTheme.colorScheme.tertiaryContainer
+    DashboardTone.MUTED -> MaterialTheme.colorScheme.surface
+    DashboardTone.SUCCESS -> TrackRecordStatusColors.Success.copy(alpha = 0.14f)
 }
 
 @Composable
 private fun statusContentColor(tone: DashboardTone): Color = when (tone) {
     DashboardTone.ACTIVE -> MaterialTheme.colorScheme.onPrimaryContainer
-    DashboardTone.WARNING -> MaterialTheme.colorScheme.onSecondaryContainer
+    DashboardTone.WARNING -> MaterialTheme.colorScheme.onTertiaryContainer
     DashboardTone.MUTED -> MaterialTheme.colorScheme.onSurfaceVariant
-    DashboardTone.SUCCESS -> MaterialTheme.colorScheme.onPrimaryContainer
+    DashboardTone.SUCCESS -> TrackRecordStatusColors.Success
+}
+
+@Preview(showBackground = true, widthDp = 412, heightDp = 560)
+@Composable
+private fun DashboardComposeScreenPreview() {
+    TrackRecordTheme {
+        DashboardComposeScreen(
+            state = DashboardScreenUiState(
+                distanceText = "18.46",
+                durationText = "01:42",
+                speedText = "12.8 km/h",
+                autoTrackTitle = "Smart tracking is standing by",
+                autoTrackMeta = "The app will quietly wait in the background and begin a trip when clear movement is detected.",
+                statusLabel = "Background standby",
+                statusTone = DashboardTone.ACTIVE,
+                isPulseActive = true,
+            ),
+            overlayState = DashboardOverlayUiState(
+                gpsLabel = "GPS ready",
+                gpsTone = DashboardTone.SUCCESS,
+                diagnosticsTitle = "Recording diagnostics",
+                diagnosticsCompactBody = "Background tracking is active and waiting for clear movement.",
+            ),
+            isSheetExpanded = true,
+            onRecordClick = {},
+            onHistoryClick = {},
+        )
+    }
 }

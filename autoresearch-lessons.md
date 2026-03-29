@@ -37,3 +37,35 @@
 - **Context:** goal=Replace Baidu Map with a Mapbox-ready Compose scaffold and convert the homepage panel into a draggable bottom sheet; scope=build.gradle,app/build.gradle,settings.gradle,app/src/main/java/com/wenhao/record/ui/main/**/*.kt,app/src/main/java/com/wenhao/record/ui/dashboard/**/*.kt,app/src/main/java/com/wenhao/record/ui/map/**/*.kt,app/src/main/java/com/wenhao/record/ui/designsystem/**/*.kt,app/src/main/res/values/**/*.xml,docs/**/*.md; metric=remaining core tasks for bottom-sheet homepage and Mapbox-ready scaffold; direction=lower
 - **Iteration:** 1
 - **Timestamp:** 2026-03-25T15:38:50Z
+
+### L-6: Resolved the Baidu/Mapbox native library collision and confirmed the project can now compile with the Mapbox Maps SDK an
+- **Strategy:** Resolved the Baidu/Mapbox native library collision and confirmed the project can now compile with the Mapbox Maps SDK and Compose extension present in the build.
+- **Outcome:** keep
+- **Insight:** Resolved the Baidu/Mapbox native library collision and confirmed the project can now compile with the Mapbox Maps SDK and Compose extension present in the build.
+- **Context:** goal=Replace Baidu Map with a Mapbox-ready Compose scaffold and convert the homepage panel into a draggable bottom sheet; scope=build.gradle,app/build.gradle,settings.gradle,app/src/main/java/com/wenhao/record/ui/main/**/*.kt,app/src/main/java/com/wenhao/record/ui/dashboard/**/*.kt,app/src/main/java/com/wenhao/record/ui/map/**/*.kt,app/src/main/java/com/wenhao/record/ui/designsystem/**/*.kt,app/src/main/res/values/**/*.xml,docs/**/*.md; metric=remaining core tasks for bottom-sheet homepage and Mapbox-ready scaffold; direction=lower
+- **Iteration:** 14
+- **Timestamp:** 2026-03-26T13:13:49Z
+
+### L-7: Homepage overlay and control panel were simplified into a cleaner premium map-first composition while assembleDebug stay
+- **Strategy:** Homepage overlay and control panel were simplified into a cleaner premium map-first composition while assembleDebug stayed green.
+- **Outcome:** keep
+- **Insight:** Homepage overlay and control panel were simplified into a cleaner premium map-first composition while assembleDebug stayed green.
+- **Context:** goal=Refine the premium Compose UI polish for the homepage, history page, and map detail page without changing business logic; scope=app/src/main/java/com/wenhao/record/ui/main/**/*.kt,app/src/main/java/com/wenhao/record/ui/dashboard/**/*.kt,app/src/main/java/com/wenhao/record/ui/history/**/*.kt,app/src/main/java/com/wenhao/record/ui/map/**/*.kt,app/src/main/java/com/wenhao/record/ui/designsystem/**/*.kt; metric=remaining high-confidence UI polish findings; direction=lower
+- **Iteration:** ui-polish-20260326#1
+- **Timestamp:** 2026-03-26T15:05:50Z
+
+### L-8: History overview and archive cards were lightened into a cleaner editorial hierarchy while assembleDebug stayed green.
+- **Strategy:** History overview and archive cards were lightened into a cleaner editorial hierarchy while assembleDebug stayed green.
+- **Outcome:** keep
+- **Insight:** History overview and archive cards were lightened into a cleaner editorial hierarchy while assembleDebug stayed green.
+- **Context:** goal=Refine the premium Compose UI polish for the homepage, history page, and map detail page without changing business logic; scope=app/src/main/java/com/wenhao/record/ui/main/**/*.kt,app/src/main/java/com/wenhao/record/ui/dashboard/**/*.kt,app/src/main/java/com/wenhao/record/ui/history/**/*.kt,app/src/main/java/com/wenhao/record/ui/map/**/*.kt,app/src/main/java/com/wenhao/record/ui/designsystem/**/*.kt; metric=remaining high-confidence UI polish findings; direction=lower
+- **Iteration:** ui-polish-20260326#2
+- **Timestamp:** 2026-03-26T15:07:38Z
+
+### L-9: Map detail was rebalanced around a hero distance metric and a calmer metadata panel, bringing the targeted premium UI po
+- **Strategy:** Map detail was rebalanced around a hero distance metric and a calmer metadata panel, bringing the targeted premium UI polish findings for this pass to zero while assembleDebug stayed green.
+- **Outcome:** keep
+- **Insight:** Map detail was rebalanced around a hero distance metric and a calmer metadata panel, bringing the targeted premium UI polish findings for this pass to zero while assembleDebug stayed green.
+- **Context:** goal=Refine the premium Compose UI polish for the homepage, history page, and map detail page without changing business logic; scope=app/src/main/java/com/wenhao/record/ui/main/**/*.kt,app/src/main/java/com/wenhao/record/ui/dashboard/**/*.kt,app/src/main/java/com/wenhao/record/ui/history/**/*.kt,app/src/main/java/com/wenhao/record/ui/map/**/*.kt,app/src/main/java/com/wenhao/record/ui/designsystem/**/*.kt; metric=remaining high-confidence UI polish findings; direction=lower
+- **Iteration:** ui-polish-20260326#3
+- **Timestamp:** 2026-03-26T15:08:44Z
