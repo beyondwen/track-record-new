@@ -22,6 +22,7 @@ object TrackPathSanitizer {
     private const val MAX_SPIKE_WINDOW_MILLIS = 120_000L
     private const val MIN_RENDERABLE_SEGMENT_DISTANCE_METERS = 40f
     private const val MIN_SIGNIFICANT_SEGMENT_DISTANCE_METERS = 78f
+    private const val DOUGLAS_PEUCKER_TOLERANCE_METERS = 6f
 
     fun sanitize(points: List<TrackPoint>, sortByTimestamp: Boolean): SanitizedTrackPath {
         if (points.isEmpty()) {
@@ -57,10 +58,16 @@ object TrackPathSanitizer {
         val finalizedSegments = segments
             .map { segment -> segment.toList() }
             .filter { segment -> segment.isNotEmpty() }
+        val simplifiedSegments = if (sortByTimestamp) {
+            finalizedSegments.map(::simplifySegment)
+        } else {
+            finalizedSegments
+        }
+        removedPointCount += finalizedSegments.sumOf { it.size } - simplifiedSegments.sumOf { it.size }
 
         return SanitizedTrackPath(
-            points = finalizedSegments.flatten(),
-            segments = finalizedSegments,
+            points = simplifiedSegments.flatten(),
+            segments = simplifiedSegments,
             totalDistanceKm = finalizedSegments.sumOf(::calculateSegmentDistanceKm),
             removedPointCount = removedPointCount
         )
@@ -244,6 +251,91 @@ object TrackPathSanitizer {
         return segment.zipWithNext().sumOf { (first, second) ->
             distanceBetween(first, second).toDouble() / 1000.0
         }
+    }
+
+    private fun simplifySegment(segment: List<TrackPoint>): List<TrackPoint> {
+        if (segment.size <= 2) return segment
+
+        val keepFlags = BooleanArray(segment.size)
+        keepFlags[0] = true
+        keepFlags[segment.lastIndex] = true
+        markDouglasPeuckerPoints(
+            segment = segment,
+            startIndex = 0,
+            endIndex = segment.lastIndex,
+            toleranceMeters = DOUGLAS_PEUCKER_TOLERANCE_METERS,
+            keepFlags = keepFlags,
+        )
+        return segment.filterIndexed { index, _ -> keepFlags[index] }
+    }
+
+    private fun markDouglasPeuckerPoints(
+        segment: List<TrackPoint>,
+        startIndex: Int,
+        endIndex: Int,
+        toleranceMeters: Float,
+        keepFlags: BooleanArray,
+    ) {
+        if (endIndex - startIndex <= 1) return
+
+        var maxDistanceMeters = 0f
+        var farthestIndex = -1
+        for (index in (startIndex + 1) until endIndex) {
+            val distanceMeters = perpendicularDistanceMeters(
+                point = segment[index],
+                lineStart = segment[startIndex],
+                lineEnd = segment[endIndex],
+            )
+            if (distanceMeters > maxDistanceMeters) {
+                maxDistanceMeters = distanceMeters
+                farthestIndex = index
+            }
+        }
+
+        if (farthestIndex == -1 || maxDistanceMeters < toleranceMeters) return
+
+        keepFlags[farthestIndex] = true
+        markDouglasPeuckerPoints(segment, startIndex, farthestIndex, toleranceMeters, keepFlags)
+        markDouglasPeuckerPoints(segment, farthestIndex, endIndex, toleranceMeters, keepFlags)
+    }
+
+    private fun perpendicularDistanceMeters(
+        point: TrackPoint,
+        lineStart: TrackPoint,
+        lineEnd: TrackPoint,
+    ): Float {
+        val start = planarCoordinatesMeters(lineStart, lineStart)
+        val end = planarCoordinatesMeters(lineStart, lineEnd)
+        val target = planarCoordinatesMeters(lineStart, point)
+        val segmentDx = end.first - start.first
+        val segmentDy = end.second - start.second
+        val segmentLengthSquared = segmentDx * segmentDx + segmentDy * segmentDy
+        if (segmentLengthSquared <= 0.0) {
+            return distanceBetween(lineStart, point)
+        }
+
+        val projection = ((target.first - start.first) * segmentDx + (target.second - start.second) * segmentDy) /
+            segmentLengthSquared
+        val clampedProjection = projection.coerceIn(0.0, 1.0)
+        val projectedX = start.first + clampedProjection * segmentDx
+        val projectedY = start.second + clampedProjection * segmentDy
+        val deltaX = target.first - projectedX
+        val deltaY = target.second - projectedY
+        return kotlin.math.sqrt(deltaX * deltaX + deltaY * deltaY).toFloat()
+    }
+
+    private fun planarCoordinatesMeters(origin: TrackPoint, target: TrackPoint): Pair<Double, Double> {
+        val originLatitude = Math.toRadians(origin.getLatitudeForDistance())
+        val originLongitude = Math.toRadians(origin.getLongitudeForDistance())
+        val targetLatitude = Math.toRadians(target.getLatitudeForDistance())
+        val targetLongitude = Math.toRadians(target.getLongitudeForDistance())
+        val latitudeDelta = targetLatitude - originLatitude
+        val longitudeDelta = targetLongitude - originLongitude
+        val meanLatitude = (originLatitude + targetLatitude) / 2.0
+        val metersPerRadian = 6_371_000.0
+        val xMeters = longitudeDelta * kotlin.math.cos(meanLatitude) * metersPerRadian
+        val yMeters = latitudeDelta * metersPerRadian
+        return xMeters to yMeters
     }
 
     private fun distanceBetween(first: TrackPoint, second: TrackPoint): Float {

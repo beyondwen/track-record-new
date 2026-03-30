@@ -61,6 +61,12 @@ class BackgroundTrackingService : Service() {
         private const val MAX_LAST_KNOWN_LOCATION_AGE_MS = 10 * 60 * 1000L
         private const val MIN_USEFUL_DURATION_SECONDS = 45
         private const val MIN_USEFUL_DISTANCE_KM = 0.08
+        private const val STAY_CLUSTER_RADIUS_METERS = 18f
+        private const val STAY_CLUSTER_EXIT_RADIUS_METERS = 30f
+        private const val STAY_CLUSTER_MIN_DURATION_MS = 60_000L
+        private const val STAY_CLUSTER_MIN_SAMPLES = 4
+        private const val STAY_CLUSTER_MAX_ENTRY_SPEED_METERS_PER_SECOND = 1.6f
+        private const val STAY_CLUSTER_MAX_ACTIVE_SPEED_METERS_PER_SECOND = 2.4f
 
         private const val IDLE_INTERVAL_MS = 45_000L
         private const val IDLE_INTERVAL_ANCHOR_MS = 90_000L
@@ -166,6 +172,7 @@ class BackgroundTrackingService : Service() {
     private var requestedMinDistanceMeters = -1f
     private var stayAnchors: List<FrequentPlaceAnchor> = emptyList()
     private var insideAnchorIds: MutableSet<String> = mutableSetOf()
+    private var stationaryCluster: StationaryClusterState? = null
     private var lastIdleScoutPoint: TrackPoint? = null
     private var lastIdleScoutSamplePoint: TrackPoint? = null
     private var currentWifiSnapshot = WifiSnapshot(false)
@@ -180,9 +187,11 @@ class BackgroundTrackingService : Service() {
         accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         significantMotionSensor = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
         currentSession = AutoTrackStorage.peekSession(this)
+        AdaptiveTrackSmoother.seed(currentSession?.points?.lastOrNull())
         AutoTrackStorage.whenReady(this) { restoredSession ->
             if (restoredSession == null || currentSession != null) return@whenReady
             currentSession = restoredSession
+            AdaptiveTrackSmoother.seed(restoredSession.points.lastOrNull())
             if (AutoTrackStorage.isAutoTrackingEnabled(this)) {
                 motionConfidenceEngine.onActiveEntered()
                 enterPhase(TrackingPhase.ACTIVE, "异步恢复上一次未结束的行程", emitEvent = true)
@@ -521,6 +530,10 @@ class BackgroundTrackingService : Service() {
 
     private fun beginActiveTracking(reason: String, firstLocation: Location?) {
         val now = System.currentTimeMillis()
+        if (currentSession == null) {
+            AdaptiveTrackSmoother.reset()
+            stationaryCluster = null
+        }
         val session = currentSession ?: AutoTrackSession(
             startTimestamp = now,
             lastMotionTimestamp = now,
@@ -574,6 +587,7 @@ class BackgroundTrackingService : Service() {
         val previousSession = currentSession ?: return
         val trackPoint = convertToGcj02TrackPoint(location)
         val noiseResult = TrackNoiseFilter.evaluate(
+            previousPoint = previousSession.points.getOrNull(previousSession.points.lastIndex - 1),
             lastPoint = previousSession.points.lastOrNull(),
             sample = TrackNoiseSample(
                 point = trackPoint,
@@ -589,8 +603,17 @@ class BackgroundTrackingService : Service() {
                 accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
             )
         }
+        val stationaryDecision = applyStationaryCluster(
+            existingPoints = previousSession.points,
+            candidatePoint = smoothedPoint,
+            speedMetersPerSecond = location.speed.takeIf { it >= 0f } ?: 0f,
+        )
         val points = when (noiseResult.action) {
-            TrackNoiseAction.ACCEPT -> previousSession.points + requireNotNull(smoothedPoint)
+            TrackNoiseAction.ACCEPT -> when {
+                stationaryDecision.rewrittenPoints != null -> stationaryDecision.rewrittenPoints
+                stationaryDecision.shouldSuppressAcceptedPoint -> previousSession.points
+                else -> previousSession.points + requireNotNull(smoothedPoint)
+            }
             TrackNoiseAction.MERGE_STILL,
             TrackNoiseAction.DROP_DRIFT,
             TrackNoiseAction.DROP_JUMP -> previousSession.points
@@ -615,12 +638,14 @@ class BackgroundTrackingService : Service() {
         AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(currentPhase))
         AutoTrackDiagnosticsStorage.markLocationDecision(
             this,
-            "${phaseLabel(currentPhase)} / ${locationDecisionLabel(noiseResult.action)}",
+            "${phaseLabel(currentPhase)} / ${locationDecisionLabel(stationaryDecision.resolveAction(noiseResult.action))}",
             updatedSession.points.size,
             location.accuracy.takeIf { location.hasAccuracy() }
         )
 
-        if (noiseResult.action == TrackNoiseAction.ACCEPT) {
+        if (noiseResult.action == TrackNoiseAction.ACCEPT &&
+            !stationaryDecision.shouldSuppressAcceptedPoint
+        ) {
             scheduleFinalizeForCurrentSession()
         }
 
@@ -639,6 +664,8 @@ class BackgroundTrackingService : Service() {
         val session = currentSession ?: return
         handler.removeCallbacks(finalizeRunnable)
         currentSession = null
+        AdaptiveTrackSmoother.reset()
+        stationaryCluster = null
         AutoTrackStorage.clearSession(this)
         stopLocationUpdates()
 
@@ -964,6 +991,179 @@ class BackgroundTrackingService : Service() {
         return result[0]
     }
 
+    private fun applyStationaryCluster(
+        existingPoints: List<TrackPoint>,
+        candidatePoint: TrackPoint?,
+        speedMetersPerSecond: Float,
+    ): StationaryDecision {
+        val currentCluster = stationaryCluster
+        if (candidatePoint == null) {
+            if (speedMetersPerSecond > STAY_CLUSTER_MAX_ACTIVE_SPEED_METERS_PER_SECOND) {
+                stationaryCluster = null
+            }
+            return StationaryDecision()
+        }
+
+        if (speedMetersPerSecond > STAY_CLUSTER_MAX_ACTIVE_SPEED_METERS_PER_SECOND) {
+            stationaryCluster = null
+            return StationaryDecision()
+        }
+
+        if (currentCluster != null) {
+            val distanceToCenter = distanceBetween(currentCluster.centerPoint, candidatePoint)
+            if (distanceToCenter <= STAY_CLUSTER_EXIT_RADIUS_METERS) {
+                val updatedCluster = currentCluster.addSample(candidatePoint)
+                stationaryCluster = updatedCluster
+                if (updatedCluster.isConfirmed) {
+                    return StationaryDecision(
+                        shouldSuppressAcceptedPoint = true,
+                        rewrittenPoints = collapseStationaryTail(existingPoints, updatedCluster.centerPoint),
+                    )
+                }
+                return StationaryDecision()
+            }
+            stationaryCluster = null
+        }
+
+        val previousPoint = existingPoints.lastOrNull() ?: return StationaryDecision()
+        val distanceToPrevious = distanceBetween(previousPoint, candidatePoint)
+        if (speedMetersPerSecond > STAY_CLUSTER_MAX_ENTRY_SPEED_METERS_PER_SECOND ||
+            distanceToPrevious > STAY_CLUSTER_RADIUS_METERS
+        ) {
+            return StationaryDecision()
+        }
+
+        val newCluster = StationaryClusterState.start(previousPoint, candidatePoint)
+        stationaryCluster = newCluster
+        return if (newCluster.isConfirmed) {
+            StationaryDecision(
+                shouldSuppressAcceptedPoint = true,
+                rewrittenPoints = collapseStationaryTail(existingPoints, newCluster.centerPoint),
+            )
+        } else {
+            StationaryDecision()
+        }
+    }
+
+    private fun collapseStationaryTail(
+        existingPoints: List<TrackPoint>,
+        centerPoint: TrackPoint,
+    ): List<TrackPoint> {
+        if (existingPoints.isEmpty()) return listOf(centerPoint)
+
+        var keepUntilIndex = existingPoints.lastIndex
+        while (keepUntilIndex >= 0 &&
+            distanceBetween(existingPoints[keepUntilIndex], centerPoint) <= STAY_CLUSTER_EXIT_RADIUS_METERS
+        ) {
+            keepUntilIndex--
+        }
+        val stablePrefix = if (keepUntilIndex >= 0) {
+            existingPoints.subList(0, keepUntilIndex + 1)
+        } else {
+            emptyList()
+        }
+        return stablePrefix + centerPoint
+    }
+
+    private data class StationaryDecision(
+        val shouldSuppressAcceptedPoint: Boolean = false,
+        val rewrittenPoints: List<TrackPoint>? = null,
+    ) {
+        fun resolveAction(defaultAction: TrackNoiseAction): TrackNoiseAction {
+            return if (shouldSuppressAcceptedPoint) TrackNoiseAction.MERGE_STILL else defaultAction
+        }
+    }
+
+    private data class StationaryClusterState(
+        val centerPoint: TrackPoint,
+        val firstTimestampMillis: Long,
+        val lastTimestampMillis: Long,
+        val sampleCount: Int,
+        val isConfirmed: Boolean,
+    ) {
+        fun addSample(point: TrackPoint): StationaryClusterState {
+            val nextSampleCount = sampleCount + 1
+            val nextCenter = averagePoint(centerPoint, sampleCount, point, nextSampleCount)
+            return copy(
+                centerPoint = nextCenter,
+                lastTimestampMillis = point.timestampMillis,
+                sampleCount = nextSampleCount,
+                isConfirmed = isConfirmed || isStationaryConfirmed(
+                    firstTimestampMillis = firstTimestampMillis,
+                    lastTimestampMillis = point.timestampMillis,
+                    sampleCount = nextSampleCount,
+                ),
+            )
+        }
+
+        companion object {
+            fun start(previousPoint: TrackPoint, candidatePoint: TrackPoint): StationaryClusterState {
+                val centerPoint = averagePoint(previousPoint, 1, candidatePoint, 2)
+                return StationaryClusterState(
+                    centerPoint = centerPoint,
+                    firstTimestampMillis = previousPoint.timestampMillis,
+                    lastTimestampMillis = candidatePoint.timestampMillis,
+                    sampleCount = 2,
+                    isConfirmed = isStationaryConfirmed(
+                        firstTimestampMillis = previousPoint.timestampMillis,
+                        lastTimestampMillis = candidatePoint.timestampMillis,
+                        sampleCount = 2,
+                    ),
+                )
+            }
+
+            private fun isStationaryConfirmed(
+                firstTimestampMillis: Long,
+                lastTimestampMillis: Long,
+                sampleCount: Int,
+            ): Boolean {
+                return sampleCount >= STAY_CLUSTER_MIN_SAMPLES &&
+                    lastTimestampMillis - firstTimestampMillis >= STAY_CLUSTER_MIN_DURATION_MS
+            }
+
+            private fun averagePoint(
+                accumulatedPoint: TrackPoint,
+                accumulatedSamples: Int,
+                newPoint: TrackPoint,
+                totalSamples: Int,
+            ): TrackPoint {
+                fun blend(previous: Double, current: Double): Double {
+                    return (previous * accumulatedSamples + current) / totalSamples
+                }
+
+                fun blendNullable(previous: Double?, current: Double?): Double? {
+                    return when {
+                        previous == null -> current
+                        current == null -> previous
+                        else -> blend(previous, current)
+                    }
+                }
+
+                return TrackPoint(
+                    latitude = blend(accumulatedPoint.latitude, newPoint.latitude),
+                    longitude = blend(accumulatedPoint.longitude, newPoint.longitude),
+                    timestampMillis = newPoint.timestampMillis,
+                    accuracyMeters = blendNullable(
+                        accumulatedPoint.accuracyMeters?.toDouble(),
+                        newPoint.accuracyMeters?.toDouble(),
+                    )?.toFloat(),
+                    altitudeMeters = blendNullable(
+                        accumulatedPoint.altitudeMeters,
+                        newPoint.altitudeMeters,
+                    ),
+                    wgs84Latitude = blendNullable(
+                        accumulatedPoint.wgs84Latitude,
+                        newPoint.wgs84Latitude,
+                    ),
+                    wgs84Longitude = blendNullable(
+                        accumulatedPoint.wgs84Longitude,
+                        newPoint.wgs84Longitude,
+                    ),
+                )
+            }
+        }
+    }
+
     private fun phaseLabel(phase: TrackingPhase): String {
         return when (phase) {
             TrackingPhase.IDLE -> "后台待命中"
@@ -1049,10 +1249,12 @@ class BackgroundTrackingService : Service() {
         accelerationWindow.clear()
         wifiStayContext.clear()
         motionConfidenceEngine.resetAll()
+        stationaryCluster = null
         lastIdleScoutPoint = null
         lastIdleScoutSamplePoint = null
         if (clearSession) {
             currentSession = null
+            AdaptiveTrackSmoother.reset()
             AutoTrackStorage.clearSession(this)
         }
     }
