@@ -19,7 +19,7 @@ object HistoryStorage {
     private const val SNAPSHOT_FILE_NAME = "history_snapshot.json"
 
     private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-    private val cacheLock = Any()
+    private val cacheLock = java.lang.Object()
 
     @Volatile
     private var historyCache: List<HistoryItem> = emptyList()
@@ -63,7 +63,6 @@ object HistoryStorage {
     fun loadById(context: Context, historyId: Long): HistoryItem? {
         ensureHistoryCache(context)
         return historyCache.firstOrNull { item -> item.id == historyId }
-            ?.let { item -> item.copy(points = item.points.toList()) }
     }
 
     fun loadDailyByStart(context: Context, dayStartMillis: Long): HistoryDayItem? {
@@ -244,9 +243,31 @@ object HistoryStorage {
 
         synchronized(cacheLock) {
             if (historyCacheInitialized) return
-            val loadedHistory = ioExecutor.submit<List<HistoryItem>> {
+            while (historyCacheLoading && !historyCacheInitialized) {
+                try {
+                    cacheLock.wait()
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return
+                }
+            }
+            if (historyCacheInitialized) return
+            historyCacheLoading = true
+        }
+
+        val loadedHistory = try {
+            ioExecutor.submit<List<HistoryItem>> {
                 loadHistoryFromDisk(context)
             }.get()
+        } catch (throwable: Throwable) {
+            synchronized(cacheLock) {
+                historyCacheLoading = false
+                cacheLock.notifyAll()
+            }
+            throw throwable
+        }
+
+        val callbacksToDispatch: List<(List<HistoryItem>) -> Unit> = synchronized(cacheLock) {
             historyCache = loadedHistory
             refreshDailyCacheLocked()
             if (loadedHistory.isNotEmpty()) {
@@ -255,6 +276,17 @@ object HistoryStorage {
                 }
             }
             historyCacheInitialized = true
+            historyCacheLoading = false
+            cacheLock.notifyAll()
+            readyCallbacks.toList().also { readyCallbacks.clear() }
+        }
+
+        if (callbacksToDispatch.isNotEmpty()) {
+            callbacksToDispatch.forEach { callback ->
+                AppTaskExecutor.runOnMain {
+                    callback(copyHistoryList(loadedHistory))
+                }
+            }
         }
     }
 
@@ -271,12 +303,21 @@ object HistoryStorage {
         }
 
         ioExecutor.execute {
-            val loadedHistory = loadHistoryFromDisk(context)
-            val callbacksToDispatch = synchronized(cacheLock) {
+            val loadedHistory = try {
+                loadHistoryFromDisk(context)
+            } catch (_: Throwable) {
+                synchronized(cacheLock) {
+                    historyCacheLoading = false
+                    cacheLock.notifyAll()
+                }
+                return@execute
+            }
+            val callbacksToDispatch: List<(List<HistoryItem>) -> Unit> = synchronized(cacheLock) {
                 historyCache = loadedHistory
                 refreshDailyCacheLocked()
                 historyCacheInitialized = true
                 historyCacheLoading = false
+                cacheLock.notifyAll()
                 readyCallbacks.toList().also { readyCallbacks.clear() }
             }
             if (loadedHistory.isNotEmpty()) {
@@ -458,19 +499,15 @@ object HistoryStorage {
     }
 
     private fun copyHistoryList(items: List<HistoryItem>): MutableList<HistoryItem> {
-        return items.map { it.copy(points = it.points.toList()) }.toMutableList()
+        return items.toMutableList()
     }
 
     private fun copyDailyList(items: List<HistoryDayItem>): List<HistoryDayItem> {
-        return items.map(::copyDailyItem)
+        return items.toList()
     }
 
     private fun copyDailyItem(item: HistoryDayItem): HistoryDayItem {
-        return item.copy(
-            sourceIds = item.sourceIds.toList(),
-            segments = item.segments.map { segment -> segment.toList() },
-            points = item.points.toList()
-        )
+        return item
     }
 
     private fun prefs(context: Context) =

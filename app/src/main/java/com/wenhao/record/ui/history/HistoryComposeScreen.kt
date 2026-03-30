@@ -1,5 +1,7 @@
 package com.wenhao.record.ui.history
 
+import android.content.Context
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -82,6 +84,18 @@ fun HistoryComposeScreen(
     onHistoryLongClick: (HistoryDayItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val todayLabel = stringResource(R.string.compose_history_day_today)
+    val yesterdayLabel = stringResource(R.string.compose_history_day_yesterday)
+    val groupLabels = remember(state.items, context, todayLabel, yesterdayLabel) {
+        buildGroupLabels(
+            items = state.items,
+            context = context,
+            todayLabel = todayLabel,
+            yesterdayLabel = yesterdayLabel,
+        )
+    }
+
     Surface(
         modifier = modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.trackPageBackground,
@@ -119,8 +133,10 @@ fun HistoryComposeScreen(
                         items = state.items,
                         key = { _, item -> item.dayStartMillis },
                     ) { index, item ->
-                        val previousLabel = state.items.getOrNull(index - 1)?.let { buildGroupLabel(it.dayStartMillis) }
-                        val currentLabel = buildGroupLabel(item.dayStartMillis)
+                        val previousLabel = state.items.getOrNull(index - 1)?.let { previousItem ->
+                            groupLabels[previousItem.dayStartMillis]
+                        }
+                        val currentLabel = requireNotNull(groupLabels[item.dayStartMillis])
                         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             if (index == 0 || currentLabel != previousLabel) {
                                 HistorySectionHeader(
@@ -591,16 +607,47 @@ private fun qualityChipContentColor(level: TrackQualityLevel) = when (level) {
     TrackQualityLevel.LOW -> MaterialTheme.colorScheme.onErrorContainer
 }
 
-@Composable
-private fun buildGroupLabel(dayStartMillis: Long): String {
-    val context = LocalContext.current
+private fun buildGroupLabels(
+    items: List<HistoryDayItem>,
+    context: Context,
+    todayLabel: String,
+    yesterdayLabel: String,
+): Map<Long, String> {
+    if (items.isEmpty()) return emptyMap()
+
     val now = Calendar.getInstance()
-    val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+    val yesterday = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+
+    return buildMap(items.size) {
+        items.forEach { item ->
+            put(
+                item.dayStartMillis,
+                buildGroupLabel(
+                    dayStartMillis = item.dayStartMillis,
+                    context = context,
+                    now = now,
+                    yesterday = yesterday,
+                    todayLabel = todayLabel,
+                    yesterdayLabel = yesterdayLabel,
+                ),
+            )
+        }
+    }
+}
+
+private fun buildGroupLabel(
+    dayStartMillis: Long,
+    context: Context,
+    now: Calendar,
+    yesterday: Calendar,
+    todayLabel: String,
+    yesterdayLabel: String,
+): String {
     val target = Calendar.getInstance().apply { timeInMillis = dayStartMillis }
 
     return when {
-        isSameDay(target, now) -> context.getString(R.string.compose_history_day_today)
-        isSameDay(target, yesterday) -> context.getString(R.string.compose_history_day_yesterday)
+        isSameDay(target, now) -> todayLabel
+        isSameDay(target, yesterday) -> yesterdayLabel
         target.get(Calendar.YEAR) == now.get(Calendar.YEAR) -> {
             context.getString(R.string.compose_history_day_month, target.get(Calendar.MONTH) + 1)
         }
