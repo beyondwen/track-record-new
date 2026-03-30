@@ -7,8 +7,7 @@ import androidx.compose.runtime.setValue
 import com.wenhao.record.R
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackUiState
-import com.wenhao.record.data.tracking.TrackPathSanitizer
-import java.util.Locale
+import kotlin.math.roundToInt
 
 data class DashboardOverlayUiState(
     val gpsLabel: String = "",
@@ -53,14 +52,7 @@ class DashboardUiController(
     }
 
     fun render(session: AutoTrackSession?, state: AutoTrackUiState, durationSeconds: Int) {
-        val sanitizedTrack = session?.let {
-            TrackPathSanitizer.sanitize(it.points, sortByTimestamp = false)
-        }
-        val displayDistanceKm = when {
-            sanitizedTrack == null -> 0.0
-            sanitizedTrack.points.size >= 2 -> sanitizedTrack.totalDistanceKm
-            else -> session.totalDistanceKm
-        }
+        val displayDistanceKm = session?.totalDistanceKm ?: 0.0
         val averageSpeed = if (durationSeconds > 0) {
             displayDistanceKm / (durationSeconds / 3600.0)
         } else {
@@ -68,7 +60,7 @@ class DashboardUiController(
         }
 
         panelState = panelState.copy(
-            distanceText = String.format(Locale.getDefault(), "%.2f", displayDistanceKm),
+            distanceText = formatDistance(displayDistanceKm),
             durationText = formatDuration(durationSeconds),
             speedText = context.getString(R.string.compose_dashboard_speed_value, averageSpeed),
             autoTrackTitle = titleForState(state),
@@ -115,11 +107,31 @@ class DashboardUiController(
         val hours = durationSeconds / 3600
         val minutes = (durationSeconds % 3600) / 60
         val seconds = durationSeconds % 60
-        return if (hours > 0) {
-            String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
+        return buildString {
+            if (hours > 0) {
+                appendTwoDigits(hours)
+                append(':')
+            }
+            appendTwoDigits(minutes)
+            append(':')
+            appendTwoDigits(seconds)
         }
+    }
+
+    private fun formatDistance(distanceKm: Double): String {
+        val scaled = (distanceKm * 100).roundToInt().coerceAtLeast(0)
+        val integerPart = scaled / 100
+        val decimalPart = scaled % 100
+        return buildString {
+            append(integerPart)
+            append('.')
+            appendTwoDigits(decimalPart)
+        }
+    }
+
+    private fun StringBuilder.appendTwoDigits(value: Int) {
+        if (value < 10) append('0')
+        append(value)
     }
 
     private fun titleForState(state: AutoTrackUiState): String = when (state) {

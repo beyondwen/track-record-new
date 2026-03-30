@@ -19,6 +19,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
@@ -44,6 +45,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
@@ -375,14 +378,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun exportHistoryToUri(uri: Uri) {
-        AppTaskExecutor.runOnIo {
-            val items = HistoryStorage.load(this)
+        lifecycleScope.launch(Dispatchers.IO) {
+            val items = HistoryStorage.load(this@MainActivity)
             if (items.isEmpty()) {
                 AppTaskExecutor.runOnMain {
-                    setHistoryTransferBusy(false)
+                    with(this@MainActivity) {
+                        setHistoryTransferBusy(false)
                     Toast.makeText(this, "当前没有可导出的历史记录", Toast.LENGTH_SHORT).show()
+                    }
                 }
-                return@runOnIo
+                return@launch
             }
 
             val result = runCatching {
@@ -392,12 +397,14 @@ class MainActivity : AppCompatActivity() {
                 } ?: error("Unable to open export stream")
             }
             AppTaskExecutor.runOnMain {
-                setHistoryTransferBusy(false)
+                with(this@MainActivity) {
+                    setHistoryTransferBusy(false)
                 Toast.makeText(
                     this,
                     if (result.isSuccess) "历史记录已导出" else "导出失败，请重试",
                     Toast.LENGTH_SHORT,
                 ).show()
+                }
             }
         }
     }
@@ -409,7 +416,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun importHistoryFromUri(uri: Uri) {
-        AppTaskExecutor.runOnIo {
+        lifecycleScope.launch(Dispatchers.IO) {
             val importedItems = runCatching {
                 contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
                     HistoryTransferCodec.decode(reader.readText())
@@ -418,28 +425,32 @@ class MainActivity : AppCompatActivity() {
 
             if (importedItems.isEmpty()) {
                 AppTaskExecutor.runOnMain {
-                    setHistoryTransferBusy(false)
+                    with(this@MainActivity) {
+                        setHistoryTransferBusy(false)
                     Toast.makeText(this, "导入失败，请确认备份文件格式", Toast.LENGTH_SHORT).show()
+                    }
                 }
-                return@runOnIo
+                return@launch
             }
 
             val mergedItems = HistoryTransferCodec.merge(
-                existingItems = HistoryStorage.load(this),
+                existingItems = HistoryStorage.load(this@MainActivity),
                 importedItems = importedItems,
             )
-            HistoryStorage.save(this, mergedItems)
+            HistoryStorage.save(this@MainActivity, mergedItems)
             AppTaskExecutor.runOnMain {
-                setHistoryTransferBusy(false)
-                homeMapController.shouldRefit = true
-                historyController.reload()
-                historyController.updateContent()
-                refreshDashboardContent()
+                with(this@MainActivity) {
+                    setHistoryTransferBusy(false)
+                    homeMapController.shouldRefit = true
+                    historyController.reload()
+                    historyController.updateContent()
+                    refreshDashboardContent()
                 Toast.makeText(
                     this,
                     "已导入 ${importedItems.size} 条记录，当前共 ${mergedItems.size} 条",
                     Toast.LENGTH_SHORT,
                 ).show()
+                }
             }
         }
     }

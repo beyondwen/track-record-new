@@ -13,6 +13,8 @@ class HistoryController(
     private val context: Context,
 ) {
     private var historyItems: List<HistoryDayItem> = emptyList()
+    private var cachedTotalDistanceKm = 0.0
+    private var cachedTotalDurationSeconds = 0
     private var selectedDayStartMillis: Long? = null
     private var transferBusy = false
     private var recordTabSelected = true
@@ -39,6 +41,7 @@ class HistoryController(
 
     fun reload() {
         historyItems = HistoryStorage.peekDaily(context)
+        recalculateTotals()
     }
 
     fun updateContent() {
@@ -66,22 +69,25 @@ class HistoryController(
             selectedDayStartMillis = historyItems.firstOrNull()?.dayStartMillis
         }
         HistoryStorage.deleteMany(context, item.sourceIds)
+        recalculateTotals()
         pushState()
     }
 
     private fun pushState() {
-        val totalDistance = historyItems.sumOf { it.totalDistanceKm }
-        val totalDurationSeconds = historyItems.sumOf { it.totalDurationSeconds }
-
         uiState = HistoryScreenUiState(
             items = historyItems,
             selectedDayStartMillis = selectedDayStartMillis,
-            totalDistanceText = formatDistance(totalDistance),
-            totalDurationText = formatDuration(totalDurationSeconds),
+            totalDistanceText = formatDistance(cachedTotalDistanceKm),
+            totalDurationText = formatDuration(cachedTotalDurationSeconds),
             totalCountText = context.getString(R.string.compose_history_days_value, historyItems.size),
             isTransferBusy = transferBusy,
             isRecordTabSelected = recordTabSelected,
         )
+    }
+
+    private fun recalculateTotals() {
+        cachedTotalDistanceKm = historyItems.sumOf { it.totalDistanceKm }
+        cachedTotalDurationSeconds = historyItems.sumOf { it.totalDurationSeconds }
     }
 
     private fun formatDistance(totalDistanceKm: Double): String {

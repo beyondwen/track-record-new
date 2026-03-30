@@ -12,6 +12,8 @@ import com.wenhao.record.util.AppTaskExecutor
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 object HistoryStorage {
     private const val PREFS_NAME = "track_record_history"
@@ -38,9 +40,12 @@ object HistoryStorage {
 
     private val readyCallbacks = mutableListOf<(List<HistoryItem>) -> Unit>()
 
-    fun load(context: Context): MutableList<HistoryItem> {
-        ensureHistoryCache(context)
-        return copyHistoryList(historyCache)
+    suspend fun load(context: Context): MutableList<HistoryItem> {
+        val appContext = context.applicationContext
+        return withContext(Dispatchers.IO) {
+            ensureHistoryCache(appContext)
+            copyHistoryList(historyCache)
+        }
     }
 
     fun peek(context: Context): MutableList<HistoryItem> {
@@ -48,10 +53,13 @@ object HistoryStorage {
         return copyHistoryList(historyCache)
     }
 
-    fun loadDaily(context: Context): List<HistoryDayItem> {
-        ensureHistoryCache(context)
-        ensureDailyCache()
-        return copyDailyList(dailyCache)
+    suspend fun loadDaily(context: Context): List<HistoryDayItem> {
+        val appContext = context.applicationContext
+        return withContext(Dispatchers.IO) {
+            ensureHistoryCache(appContext)
+            ensureDailyCache()
+            copyDailyList(dailyCache)
+        }
     }
 
     fun peekDaily(context: Context): List<HistoryDayItem> {
@@ -60,16 +68,22 @@ object HistoryStorage {
         return copyDailyList(dailyCache)
     }
 
-    fun loadById(context: Context, historyId: Long): HistoryItem? {
-        ensureHistoryCache(context)
-        return historyCache.firstOrNull { item -> item.id == historyId }
+    suspend fun loadById(context: Context, historyId: Long): HistoryItem? {
+        val appContext = context.applicationContext
+        return withContext(Dispatchers.IO) {
+            ensureHistoryCache(appContext)
+            historyCache.firstOrNull { item -> item.id == historyId }
+        }
     }
 
-    fun loadDailyByStart(context: Context, dayStartMillis: Long): HistoryDayItem? {
-        ensureHistoryCache(context)
-        ensureDailyCache()
-        return dailyCache.firstOrNull { item -> item.dayStartMillis == dayStartMillis }
-            ?.let(::copyDailyItem)
+    suspend fun loadDailyByStart(context: Context, dayStartMillis: Long): HistoryDayItem? {
+        val appContext = context.applicationContext
+        return withContext(Dispatchers.IO) {
+            ensureHistoryCache(appContext)
+            ensureDailyCache()
+            dailyCache.firstOrNull { item -> item.dayStartMillis == dayStartMillis }
+                ?.let(::copyDailyItem)
+        }
     }
 
     fun peekDailyByStart(context: Context, dayStartMillis: Long): HistoryDayItem? {

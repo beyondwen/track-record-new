@@ -613,7 +613,7 @@ private fun DashboardRecordIndicator(
     modifier: Modifier = Modifier,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "dashboardPulse")
-    val haloScale = if (isPulseActive) {
+    val haloScaleState = if (isPulseActive) {
         infiniteTransition.animateFloat(
             initialValue = 1f,
             targetValue = 1.12f,
@@ -622,11 +622,11 @@ private fun DashboardRecordIndicator(
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "haloScale",
-        ).value
+        )
     } else {
-        1f
+        null
     }
-    val haloAlpha = if (isPulseActive) {
+    val haloAlphaState = if (isPulseActive) {
         infiniteTransition.animateFloat(
             initialValue = 0.32f,
             targetValue = 0.78f,
@@ -635,9 +635,9 @@ private fun DashboardRecordIndicator(
                 repeatMode = RepeatMode.Reverse,
             ),
             label = "haloAlpha",
-        ).value
+        )
     } else {
-        0.28f
+        null
     }
     val accentColor = when (tone) {
         DashboardTone.ACTIVE -> MaterialTheme.colorScheme.primary
@@ -654,9 +654,10 @@ private fun DashboardRecordIndicator(
             modifier = Modifier
                 .size(92.dp)
                 .graphicsLayer {
-                    scaleX = haloScale
-                    scaleY = haloScale
-                    alpha = haloAlpha
+                    val scale = haloScaleState?.value ?: 1f
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = haloAlphaState?.value ?: 0.28f
                 }
                 .background(
                     color = accentColor.copy(alpha = 0.22f),
