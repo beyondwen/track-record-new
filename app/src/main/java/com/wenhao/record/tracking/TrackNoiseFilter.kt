@@ -29,11 +29,11 @@ internal data class TrackNoiseResult(
 
 internal object TrackNoiseFilter {
     private const val MIN_ACCEPTED_POINT_DISTANCE_METERS = 5f
-    private const val MAX_STATIONARY_JITTER_METERS = 9f
+    private const val MAX_STATIONARY_JITTER_METERS = 25f
     private const val MAX_POOR_ACCURACY_METERS = 45f
     private const val MAX_POOR_ACCURACY_INITIAL_METERS = 70f
     private const val MAX_EXTREME_ACCURACY_METERS = 120f
-    private const val LOW_SPEED_METERS_PER_SECOND = 1.5f
+    private const val LOW_SPEED_METERS_PER_SECOND = 2.0f
     private const val MAX_JUMP_DISTANCE_METERS = 180f
     private const val MAX_JUMP_SPEED_METERS_PER_SECOND = 55f
     private const val MIN_JUMP_TIME_DELTA_MS = 2_000L

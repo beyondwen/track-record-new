@@ -24,6 +24,7 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
@@ -79,6 +80,7 @@ class BackgroundTrackingService : Service() {
         private const val ACTIVE_FAST_INTERVAL_MS = 2_500L
         private const val ACTIVE_NORMAL_INTERVAL_MS = 4_000L
         private const val ACTIVE_SLOW_INTERVAL_MS = 6_500L
+        private const val ACTIVE_NOTIFICATION_UPDATE_INTERVAL_MS = 10_000L
 
         private const val IDLE_TRIGGER_DISTANCE_METERS = 85f
         private const val IDLE_TRIGGER_DISTANCE_ANCHOR_METERS = 120f
@@ -108,7 +110,6 @@ class BackgroundTrackingService : Service() {
         }
     }
 
-    private val handler = Handler(Looper.getMainLooper())
     private val motionConfidenceEngine = MotionConfidenceEngine()
     private val wifiStayContext = WifiStayContext()
     private val accelerationWindow = ArrayDeque<Float>()
@@ -152,6 +153,8 @@ class BackgroundTrackingService : Service() {
     private lateinit var sensorManager: SensorManager
     private lateinit var wifiManager: WifiManager
     private lateinit var connectivityManager: ConnectivityManager
+    private lateinit var trackingThread: HandlerThread
+    private lateinit var trackingHandler: Handler
 
     private var stepCounterSensor: Sensor? = null
     private var accelerometerSensor: Sensor? = null
@@ -176,9 +179,15 @@ class BackgroundTrackingService : Service() {
     private var lastIdleScoutPoint: TrackPoint? = null
     private var lastIdleScoutSamplePoint: TrackPoint? = null
     private var currentWifiSnapshot = WifiSnapshot(false)
+    private var lastNotificationUpdateMs = 0L
+    private val distanceResultCache = object : ThreadLocal<FloatArray>() {
+        override fun initialValue(): FloatArray = FloatArray(1)
+    }
 
     override fun onCreate() {
         super.onCreate()
+        trackingThread = HandlerThread("LocationTrackingThread").apply { start() }
+        trackingHandler = Handler(trackingThread.looper)
         locationManager = getSystemService(LocationManager::class.java)
         sensorManager = getSystemService(SensorManager::class.java)
         wifiManager = applicationContext.getSystemService(WifiManager::class.java)
@@ -240,6 +249,7 @@ class BackgroundTrackingService : Service() {
         stopAllTracking(clearSession = false)
         AutoTrackDiagnosticsStorage.flush(this)
         unregisterNetworkCallback()
+        trackingThread.quitSafely()
         super.onDestroy()
     }
 
@@ -285,7 +295,7 @@ class BackgroundTrackingService : Service() {
                 requestActiveLocationUpdates(speedMetersPerSecond = null)
                 AutoTrackStorage.saveUiState(this, AutoTrackUiState.TRACKING)
                 AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(phase), reason)
-                updateNotification()
+                updateNotification(force = true)
             }
 
             TrackingPhase.SUSPECT_STOPPING -> {
@@ -331,7 +341,7 @@ class BackgroundTrackingService : Service() {
                 intervalMs,
                 minDistanceMeters,
                 locationListener,
-                Looper.getMainLooper()
+                trackingHandler.looper
             )
         }
         isLocationUpdatesActive = true
@@ -655,14 +665,14 @@ class BackgroundTrackingService : Service() {
 
     private fun scheduleFinalizeForCurrentSession() {
         val session = currentSession ?: return
-        handler.removeCallbacks(finalizeRunnable)
+        trackingHandler.removeCallbacks(finalizeRunnable)
         val delayMs = max(15_000L, session.lastMotionTimestamp + STILL_STOP_DELAY_MS - System.currentTimeMillis())
-        handler.postDelayed(finalizeRunnable, delayMs)
+        trackingHandler.postDelayed(finalizeRunnable, delayMs)
     }
 
     private fun finalizeCurrentSession() {
         val session = currentSession ?: return
-        handler.removeCallbacks(finalizeRunnable)
+        trackingHandler.removeCallbacks(finalizeRunnable)
         currentSession = null
         AdaptiveTrackSmoother.reset()
         stationaryCluster = null
@@ -986,7 +996,7 @@ class BackgroundTrackingService : Service() {
         secondLatitude: Double,
         secondLongitude: Double
     ): Float {
-        val result = FloatArray(1)
+        val result = distanceResultCache.get()!!
         Location.distanceBetween(firstLatitude, firstLongitude, secondLatitude, secondLongitude, result)
         return result[0]
     }
@@ -1211,9 +1221,18 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun updateNotification(
+        force: Boolean = false,
         title: String = resolvedNotificationTitle(),
         content: String = resolvedNotificationContent()
     ) {
+        val now = System.currentTimeMillis()
+        if (!force &&
+            currentPhase == TrackingPhase.ACTIVE &&
+            now - lastNotificationUpdateMs < ACTIVE_NOTIFICATION_UPDATE_INTERVAL_MS
+        ) {
+            return
+        }
+        lastNotificationUpdateMs = now
         val manager = getSystemService(NotificationManager::class.java)
         manager.notify(
             NOTIFICATION_ID,
@@ -1238,7 +1257,7 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun stopAllTracking(clearSession: Boolean) {
-        handler.removeCallbacks(finalizeRunnable)
+        trackingHandler.removeCallbacksAndMessages(null)
         stopLocationUpdates()
         sensorManager.unregisterListener(sensorListener)
         registerSignificantMotionSensor(false)

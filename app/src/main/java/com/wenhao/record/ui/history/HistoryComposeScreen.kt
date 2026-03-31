@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.TrackQualityLevel
+import com.wenhao.record.data.history.buildHistoryDayItem
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.ui.designsystem.TrackEmptyStateCard
 import com.wenhao.record.ui.designsystem.TrackBottomNavigationBar
@@ -64,6 +66,7 @@ import com.wenhao.record.ui.designsystem.trackSoftOutline
 import com.wenhao.record.ui.designsystem.trackSoftSurface
 import java.util.Calendar
 
+@Immutable
 data class HistoryScreenUiState(
     val items: List<HistoryDayItem> = emptyList(),
     val selectedDayStartMillis: Long? = null,
@@ -202,7 +205,7 @@ private fun HistoryHeroSection(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             HistoryActionButton(
                 text = stringResource(R.string.compose_history_export),
@@ -246,22 +249,22 @@ private fun HistoryActionButton(
 ) {
     Surface(
         modifier = modifier
-            .height(100.dp)
+            .height(56.dp)
             .clickable(
                 enabled = enabled,
                 onClick = onClick,
             ),
                 color = if (enabled) containerColor else containerColor.copy(alpha = 0.48f),
         contentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.52f),
-        shape = RoundedCornerShape(34.dp),
+        shape = RoundedCornerShape(20.dp),
         border = BorderStroke(1.dp, borderColor),
-        shadowElevation = 10.dp,
-        tonalElevation = 3.dp,
+        shadowElevation = 4.dp,
+        tonalElevation = 1.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 18.dp),
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
         ) {
@@ -269,10 +272,10 @@ private fun HistoryActionButton(
                 direction = iconMode,
                 color = if (enabled) contentColor else contentColor.copy(alpha = 0.52f),
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = text,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
             )
         }
@@ -304,7 +307,7 @@ private fun HistoryTransferGlyph(
     color: Color,
     modifier: Modifier = Modifier,
 ) {
-    Canvas(modifier = modifier.size(18.dp)) {
+    Canvas(modifier = modifier.size(12.dp)) {
         val centerX = size.width / 2f
         val topY = size.height * 0.18f
         val bottomY = size.height * 0.82f
@@ -494,10 +497,7 @@ private fun HistoryPreviewCard(
             ) {
                 HistoryRoutePreviewCanvas(
                     segments = item.segments,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(270.dp)
-                        .padding(18.dp),
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
@@ -617,13 +617,15 @@ private fun buildGroupLabels(
 
     val now = Calendar.getInstance()
     val yesterday = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+    val target = Calendar.getInstance()
 
     return buildMap(items.size) {
         items.forEach { item ->
+            target.timeInMillis = item.dayStartMillis
             put(
                 item.dayStartMillis,
                 buildGroupLabel(
-                    dayStartMillis = item.dayStartMillis,
+                    target = target,
                     context = context,
                     now = now,
                     yesterday = yesterday,
@@ -636,15 +638,13 @@ private fun buildGroupLabels(
 }
 
 private fun buildGroupLabel(
-    dayStartMillis: Long,
+    target: Calendar,
     context: Context,
     now: Calendar,
     yesterday: Calendar,
     todayLabel: String,
     yesterdayLabel: String,
 ): String {
-    val target = Calendar.getInstance().apply { timeInMillis = dayStartMillis }
-
     return when {
         isSameDay(target, now) -> todayLabel
         isSameDay(target, yesterday) -> yesterdayLabel
@@ -684,7 +684,7 @@ private fun HistoryComposeScreenPreview() {
         TrackPoint(30.2761, 120.1621, timestampMillis = 61_000L, accuracyMeters = 6f, altitudeMeters = 42.0),
         TrackPoint(30.2794, 120.1682, timestampMillis = 121_000L, accuracyMeters = 6f, altitudeMeters = 61.0),
     )
-    val sampleItem = HistoryDayItem(
+    val sampleItem = buildHistoryDayItem(
         dayStartMillis = 1_742_976_000_000L,
         latestTimestamp = 1_742_980_200_000L,
         sessionCount = 1,
@@ -693,7 +693,6 @@ private fun HistoryComposeScreenPreview() {
         averageSpeedKmh = 10.5,
         sourceIds = listOf(1L),
         segments = listOf(sampleSegment),
-        points = sampleSegment,
     )
 
     TrackRecordTheme {

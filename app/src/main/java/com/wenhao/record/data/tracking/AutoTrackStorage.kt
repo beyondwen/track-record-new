@@ -74,12 +74,12 @@ object AutoTrackStorage {
 
     fun loadSession(context: Context): AutoTrackSession? {
         ensureSessionCache(context)
-        return sessionCache?.copy(points = sessionCache?.points?.toList().orEmpty())
+        return sessionCache
     }
 
     fun peekSession(context: Context): AutoTrackSession? {
         ensureSessionCacheAsync(context)
-        return sessionCache?.copy(points = sessionCache?.points?.toList().orEmpty())
+        return sessionCache
     }
 
     fun warmUp(context: Context) {
@@ -91,7 +91,7 @@ object AutoTrackStorage {
     fun whenReady(context: Context, callback: (AutoTrackSession?) -> Unit) {
         val readySnapshot = synchronized(cacheLock) {
             if (sessionCacheInitialized) {
-                sessionCache?.copy(points = sessionCache?.points?.toList().orEmpty())
+                sessionCache
             } else {
                 readyCallbacks += callback
                 PendingReady
@@ -110,16 +110,15 @@ object AutoTrackStorage {
     fun saveSession(context: Context, session: AutoTrackSession) {
         ensureSessionCache(context)
         val appContext = context.applicationContext
-        val normalizedSession = session.copy(points = session.points.toList())
         val immediatePersistRequest = synchronized(cacheLock) {
-            sessionCache = normalizedSession
+            sessionCache = session
             sessionCacheInitialized = true
             sessionCacheLoading = false
             val persistedSession = lastPersistedSession
             val now = System.currentTimeMillis()
             val shouldPersistImmediately = AutoTrackSessionPersistPolicy.shouldPersistImmediately(
                 persistedSession = persistedSession,
-                newSession = normalizedSession,
+                newSession = session,
                 lastPersistedAt = lastPersistedAt,
                 nowMillis = now
             )
@@ -131,12 +130,12 @@ object AutoTrackStorage {
                 lastPersistedAt = now
                 PersistRequest(
                     previousSession = persistedSession,
-                    newSession = normalizedSession
+                    newSession = session
                 )
             } else {
                 pendingPersistDao = TrackDatabase.getInstance(appContext).autoTrackDao()
                 pendingPersistPreviousSession = pendingPersistPreviousSession ?: persistedSession
-                pendingPersistSession = normalizedSession
+                pendingPersistSession = session
                 val delayMs = AutoTrackSessionPersistPolicy.nextFlushDelayMillis(
                     lastPersistedAt = lastPersistedAt,
                     nowMillis = now
@@ -163,7 +162,6 @@ object AutoTrackStorage {
     }
 
     fun clearSession(context: Context) {
-        ensureSessionCache(context)
         synchronized(cacheLock) {
             sessionCache = null
             sessionCacheInitialized = true
@@ -257,7 +255,7 @@ object AutoTrackStorage {
             TrackDataChangeNotifier.notifyDashboardChanged()
             callbacksToDispatch.forEach { callback ->
                 AppTaskExecutor.runOnMain {
-                    callback(loadedSession?.copy(points = loadedSession.points.toList()))
+                    callback(loadedSession)
                 }
             }
         }
@@ -326,7 +324,17 @@ object AutoTrackStorage {
         if (previousSession.startTimestamp != newSession.startTimestamp) return false
         if (previousSession.points.size > newSession.points.size) return false
         if (previousSession.points.isEmpty()) return true
-        return previousSession.points == newSession.points.take(previousSession.points.size)
+
+        val stablePrefixSize = previousSession.points.size - 1
+        if (stablePrefixSize <= 0) return true
+        if (newSession.points.size < stablePrefixSize) return false
+
+        for (index in 0 until stablePrefixSize) {
+            if (previousSession.points[index] != newSession.points[index]) {
+                return false
+            }
+        }
+        return true
     }
 
     private fun migrateLegacySessionIfNeeded(context: Context) {

@@ -14,15 +14,15 @@ object TrackPathSanitizer {
 
     private const val MAX_POOR_ACCURACY_METERS = 90f
     private const val MAX_JUMP_DISTANCE_METERS = 220f
-    private const val MAX_JUMP_SPEED_METERS_PER_SECOND = 60f
+    private const val MAX_JUMP_SPEED_METERS_PER_SECOND = 85f
     private const val MAX_NO_TIMESTAMP_SPLIT_DISTANCE_METERS = 1_200f
     private const val MIN_SPIKE_EDGE_DISTANCE_METERS = 48f
     private const val MIN_SPIKE_EXCESS_DISTANCE_METERS = 72f
     private const val MAX_SPIKE_EDGE_DURATION_MILLIS = 75_000L
     private const val MAX_SPIKE_WINDOW_MILLIS = 120_000L
-    private const val MIN_RENDERABLE_SEGMENT_DISTANCE_METERS = 40f
-    private const val MIN_SIGNIFICANT_SEGMENT_DISTANCE_METERS = 78f
-    private const val DOUGLAS_PEUCKER_TOLERANCE_METERS = 6f
+    private const val MIN_RENDERABLE_SEGMENT_DISTANCE_METERS = 15f
+    private const val MIN_SIGNIFICANT_SEGMENT_DISTANCE_METERS = 20f
+    private const val DOUGLAS_PEUCKER_TOLERANCE_METERS = 15f
 
     fun sanitize(points: List<TrackPoint>, sortByTimestamp: Boolean): SanitizedTrackPath {
         if (points.isEmpty()) {
@@ -97,12 +97,9 @@ object TrackPathSanitizer {
         val validTimestampCount = points.count { it.timestampMillis > 0L }
         if (validTimestampCount < 2) return points.toList()
 
-        return points.sortedWith(
-            compareBy<TrackPoint> { point ->
-                if (point.timestampMillis > 0L) point.timestampMillis else Long.MAX_VALUE
-            }.thenBy { point -> point.latitude }
-                .thenBy { point -> point.longitude }
-        )
+        return points.sortedBy { point ->
+            if (point.timestampMillis > 0L) point.timestampMillis else Long.MAX_VALUE
+        }
     }
 
     private fun removeSpikeOutliers(points: List<TrackPoint>): SpikeCleanupResult {

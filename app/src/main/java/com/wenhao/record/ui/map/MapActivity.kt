@@ -59,7 +59,7 @@ class MapActivity : AppCompatActivity() {
         }
 
         val item = HistoryStorage.peekDailyByStart(this, dayStartMillis)
-        if (item != null && item.points.isNotEmpty()) {
+        if (item != null && item.segments.any { segment -> segment.isNotEmpty() }) {
             renderHistoryItem(item)
             return
         }
@@ -67,7 +67,7 @@ class MapActivity : AppCompatActivity() {
         HistoryStorage.whenReady(this) {
             if (isFinishing || isDestroyed) return@whenReady
             val readyItem = HistoryStorage.peekDailyByStart(this, dayStartMillis)
-            if (readyItem == null || readyItem.points.isEmpty()) {
+            if (readyItem == null || readyItem.segments.none { segment -> segment.isNotEmpty() }) {
                 Toast.makeText(this, R.string.dashboard_history_no_route, Toast.LENGTH_SHORT).show()
                 finish()
             } else {
@@ -81,7 +81,8 @@ class MapActivity : AppCompatActivity() {
         val appContext = applicationContext
         AppTaskExecutor.runOnIo {
             val renderableSegments = TrackPathSanitizer.renderableSegments(item.segments)
-            val viewportPoints = renderableSegments.flatten().ifEmpty { item.points }
+            val flattenedPoints = item.segments.flatten()
+            val viewportPoints = renderableSegments.flatten().ifEmpty { flattenedPoints }
             val preparedState = MapScreenUiState(
                 title = item.displayTitle,
                 timeText = item.formattedDateDetail,
@@ -92,7 +93,12 @@ class MapActivity : AppCompatActivity() {
                 durationText = item.formattedDurationDetail,
                 speedText = item.formattedSpeed,
                 altitudeLegend = buildAltitudeLegend(appContext, viewportPoints),
-                mapState = historySceneState(item, renderableSegments, viewportPoints),
+                mapState = historySceneState(
+                    item = item,
+                    renderableSegments = renderableSegments,
+                    viewportPoints = viewportPoints,
+                    flattenedPoints = flattenedPoints,
+                ),
             )
             AppTaskExecutor.runOnMain {
                 if (isFinishing || isDestroyed || generation != renderGeneration) return@runOnMain
@@ -114,10 +120,11 @@ class MapActivity : AppCompatActivity() {
         item: HistoryDayItem,
         renderableSegments: List<List<TrackPoint>>,
         viewportPoints: List<TrackPoint>,
+        flattenedPoints: List<TrackPoint>,
     ): TrackMapSceneState {
         val markers = buildList {
-            val startPoint = renderableSegments.firstOrNull()?.firstOrNull() ?: item.points.firstOrNull()
-            val endPoint = renderableSegments.lastOrNull()?.lastOrNull() ?: item.points.lastOrNull()
+            val startPoint = renderableSegments.firstOrNull()?.firstOrNull() ?: flattenedPoints.firstOrNull()
+            val endPoint = renderableSegments.lastOrNull()?.lastOrNull() ?: flattenedPoints.lastOrNull()
             startPoint?.let { point ->
                 add(
                     TrackMapMarker(

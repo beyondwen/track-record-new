@@ -6,7 +6,7 @@ import kotlin.math.max
 
 object AdaptiveTrackSmoother {
     private const val EARTH_RADIUS_METERS = 6_371_000.0
-    private const val MIN_MEASUREMENT_STD_DEV_METERS = 3.5
+    private const val MIN_MEASUREMENT_STD_DEV_METERS = 8.0
     private const val MAX_PREDICTION_GAP_SECONDS = 8.0
 
     private var filterState: KalmanTrackState? = null
