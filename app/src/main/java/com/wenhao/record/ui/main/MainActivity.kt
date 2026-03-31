@@ -316,6 +316,9 @@ class MainActivity : AppCompatActivity() {
         !permissionHelper.hasLocationPermission() -> "缺少定位权限"
         !permissionHelper.hasActivityRecognitionPermission() -> "缺少活动识别权限"
         permissionHelper.needsBackgroundLocationPermission() -> "缺少“始终允许定位”"
+        permissionHelper.shouldRequestIgnoreBatteryOptimizations() -> {
+            getString(R.string.battery_optimization_settings_title)
+        }
         permissionHelper.needsNotificationPermission() -> "通知权限未开启"
         else -> "权限完整"
     }

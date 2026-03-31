@@ -6,10 +6,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -47,6 +51,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -242,26 +247,37 @@ private fun MapSheetContent(
         verticalArrangement = Arrangement.spacedBy(TrackRecordSpacing.lg),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
             horizontalArrangement = Arrangement.spacedBy(TrackRecordSpacing.sm),
         ) {
-            TrackStatChip(
+            MapSheetStatChip(
                 text = stringResource(R.string.compose_map_badge),
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
             if (state.qualityText.isNotBlank()) {
-                TrackStatChip(
+                MapSheetStatChip(
                     text = state.qualityText,
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
                 )
             }
             if (state.pointCountText.isNotBlank()) {
-                TrackStatChip(
+                MapSheetStatChip(
                     text = state.pointCountText,
                     containerColor = MaterialTheme.colorScheme.tertiaryContainer,
                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
                 )
             }
         }
@@ -287,18 +303,24 @@ private fun MapSheetContent(
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             TrackMetricTile(
                 label = stringResource(R.string.compose_map_duration),
                 value = state.durationText,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
             TrackMetricTile(
                 label = stringResource(R.string.compose_map_speed),
                 value = state.speedText,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
         }
 
@@ -308,30 +330,41 @@ private fun MapSheetContent(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+    }
+}
 
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.56f),
-            shape = MaterialTheme.shapes.small,
-            border = androidx.compose.foundation.BorderStroke(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-            ),
+@Composable
+private fun RowScope.MapSheetStatChip(
+    text: String,
+    containerColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = containerColor,
+        contentColor = contentColor,
+        shape = MaterialTheme.shapes.small,
+        border = androidx.compose.foundation.BorderStroke(
+            width = 1.dp,
+            color = contentColor.copy(alpha = 0.12f),
+        ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(TrackRecordSpacing.xs),
-            ) {
-                Text(
-                    text = stringResource(R.string.compose_map_points),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = state.pointCountText,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

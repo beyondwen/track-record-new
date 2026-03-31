@@ -23,6 +23,7 @@ class PermissionHelper(
     }
 
     private var pendingPermissionAction: PendingPermissionAction? = null
+    private var hasShownBatteryOptimizationPrompt = false
 
     private val locationPermissionLauncher = activity.registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -66,8 +67,7 @@ class PermissionHelper(
             return@registerForActivityResult
         }
 
-        onStartBackgroundTracking()
-        maybeShowNotificationPermissionHint()
+        startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
     }
 
     private val appSettingsLauncher = activity.registerForActivityResult(
@@ -76,10 +76,22 @@ class PermissionHelper(
         if (needsBackgroundLocationPermission()) {
             Toast.makeText(activity, R.string.background_location_permission_required, Toast.LENGTH_LONG).show()
         } else {
-            onStartBackgroundTracking()
-            maybeShowNotificationPermissionHint()
+            startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
         }
         onRefreshDashboard()
+    }
+
+    private val batteryOptimizationLauncher = activity.registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        onRefreshDashboard()
+        if (TrackingPermissionGate.shouldRequestIgnoreBatteryOptimizations(activity)) {
+            Toast.makeText(
+                activity,
+                R.string.battery_optimization_settings_recommended,
+                Toast.LENGTH_LONG
+            ).show()
+        }
     }
 
     fun ensureSmartTrackingEnabled() {
@@ -93,15 +105,13 @@ class PermissionHelper(
             return
         }
 
-        onStartBackgroundTracking()
-        maybeShowNotificationPermissionHint()
+        startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
     }
 
     fun startBackgroundTrackingServiceIfReady() {
         if (!hasSmartTrackingBasePermissions()) return
         if (needsBackgroundLocationPermission()) return
-        onStartBackgroundTracking()
-        maybeShowNotificationPermissionHint()
+        startBackgroundTrackingWithPrompts(promptBatteryOptimization = false)
     }
 
     fun requestLocatePermissionOrRun() {
@@ -139,6 +149,10 @@ class PermissionHelper(
         return TrackingPermissionGate.needsNotificationPermission(activity)
     }
 
+    fun shouldRequestIgnoreBatteryOptimizations(): Boolean {
+        return TrackingPermissionGate.shouldRequestIgnoreBatteryOptimizations(activity)
+    }
+
     private fun buildSmartTrackingPermissionList(): Array<String> {
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -171,5 +185,28 @@ class PermissionHelper(
     private fun maybeShowNotificationPermissionHint() {
         if (!needsNotificationPermission()) return
         Toast.makeText(activity, R.string.notification_permission_limited, Toast.LENGTH_LONG).show()
+    }
+
+    private fun startBackgroundTrackingWithPrompts(promptBatteryOptimization: Boolean) {
+        onStartBackgroundTracking()
+        maybeShowNotificationPermissionHint()
+        if (promptBatteryOptimization) {
+            maybeShowBatteryOptimizationPrompt()
+        }
+    }
+
+    private fun maybeShowBatteryOptimizationPrompt() {
+        if (hasShownBatteryOptimizationPrompt) return
+        if (!TrackingPermissionGate.shouldRequestIgnoreBatteryOptimizations(activity)) return
+        val intent = TrackingPermissionGate.buildIgnoreBatteryOptimizationsIntent(activity) ?: return
+        hasShownBatteryOptimizationPrompt = true
+        MaterialAlertDialogBuilder(activity)
+            .setTitle(R.string.battery_optimization_settings_title)
+            .setMessage(R.string.battery_optimization_settings_message)
+            .setNegativeButton(R.string.action_cancel, null)
+            .setPositiveButton(R.string.action_go_to_settings) { _, _ ->
+                batteryOptimizationLauncher.launch(intent)
+            }
+            .show()
     }
 }

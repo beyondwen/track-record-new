@@ -87,7 +87,11 @@ class MapActivity : AppCompatActivity() {
                 title = item.displayTitle,
                 timeText = item.formattedDateDetail,
                 qualityText = item.quality.badgeLabel,
-                pointCountText = item.pointCountLabel,
+                pointCountText = getString(
+                    R.string.compose_map_sheet_point_count_compact,
+                    item.sessionCount,
+                    item.pointCount,
+                ),
                 summaryText = item.summary,
                 distanceText = item.formattedDistance,
                 durationText = item.formattedDurationDetail,

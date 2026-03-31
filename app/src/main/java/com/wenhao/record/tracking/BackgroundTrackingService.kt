@@ -27,6 +27,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.wenhao.record.R
@@ -81,6 +82,7 @@ class BackgroundTrackingService : Service() {
         private const val ACTIVE_NORMAL_INTERVAL_MS = 4_000L
         private const val ACTIVE_SLOW_INTERVAL_MS = 6_500L
         private const val ACTIVE_NOTIFICATION_UPDATE_INTERVAL_MS = 10_000L
+        private const val WAKE_LOCK_TIMEOUT_MS = 12 * 60 * 60 * 1000L
 
         private const val IDLE_TRIGGER_DISTANCE_METERS = 85f
         private const val IDLE_TRIGGER_DISTANCE_ANCHOR_METERS = 120f
@@ -92,6 +94,7 @@ class BackgroundTrackingService : Service() {
         private const val MAX_IDLE_ACCURACY_METERS = 80f
         private const val IDLE_BASELINE_RESET_GAP_MS = 4 * 60 * 1000L
         private const val IDLE_STATIONARY_RESET_DISTANCE_METERS = 18f
+        private const val IDLE_ACCELEROMETER_SAMPLING_PERIOD_US = 1_000_000
 
         private const val ACCELERATION_WINDOW_SIZE = 12
 
@@ -155,6 +158,7 @@ class BackgroundTrackingService : Service() {
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var trackingThread: HandlerThread
     private lateinit var trackingHandler: Handler
+    private var wakeLock: PowerManager.WakeLock? = null
 
     private var stepCounterSensor: Sensor? = null
     private var accelerometerSensor: Sensor? = null
@@ -192,6 +196,9 @@ class BackgroundTrackingService : Service() {
         sensorManager = getSystemService(SensorManager::class.java)
         wifiManager = applicationContext.getSystemService(WifiManager::class.java)
         connectivityManager = getSystemService(ConnectivityManager::class.java)
+        wakeLock = (getSystemService(Context.POWER_SERVICE) as? PowerManager)
+            ?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:smart-tracking")
+            ?.apply { setReferenceCounted(false) }
         stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         significantMotionSensor = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
@@ -247,6 +254,7 @@ class BackgroundTrackingService : Service() {
     override fun onDestroy() {
         AutoTrackStorage.flush(this)
         stopAllTracking(clearSession = false)
+        releaseWakeLockIfHeld()
         AutoTrackDiagnosticsStorage.flush(this)
         unregisterNetworkCallback()
         trackingThread.quitSafely()
@@ -262,6 +270,7 @@ class BackgroundTrackingService : Service() {
     private fun enterPhase(phase: TrackingPhase, reason: String, emitEvent: Boolean) {
         currentPhase = phase
         phaseEnteredAt = System.currentTimeMillis()
+        updateWakeLockForPhase(phase)
         if (emitEvent) {
             AutoTrackDiagnosticsStorage.markEvent(this, "${phaseLabel(phase)}：$reason")
         }
@@ -309,6 +318,28 @@ class BackgroundTrackingService : Service() {
             }
         }
         updateSensorRegistration()
+    }
+
+    private fun updateWakeLockForPhase(phase: TrackingPhase) {
+        when (phase) {
+            TrackingPhase.SUSPECT_MOVING,
+            TrackingPhase.ACTIVE -> acquireWakeLockIfNeeded()
+
+            TrackingPhase.IDLE,
+            TrackingPhase.SUSPECT_STOPPING -> releaseWakeLockIfHeld()
+        }
+    }
+
+    private fun acquireWakeLockIfNeeded() {
+        val lock = wakeLock ?: return
+        if (lock.isHeld) return
+        lock.acquire(WAKE_LOCK_TIMEOUT_MS)
+    }
+
+    private fun releaseWakeLockIfHeld() {
+        val lock = wakeLock ?: return
+        if (!lock.isHeld) return
+        lock.release()
     }
 
     @SuppressLint("MissingPermission")
@@ -756,19 +787,30 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun updateSensorRegistration() {
+        val hasActivityRecognition = hasActivityRecognitionPermission()
         val accelerometerDelay = when (currentPhase) {
             TrackingPhase.SUSPECT_MOVING,
             TrackingPhase.SUSPECT_STOPPING -> SensorManager.SENSOR_DELAY_UI
-            TrackingPhase.ACTIVE,
-            TrackingPhase.IDLE -> SensorManager.SENSOR_DELAY_NORMAL
+            TrackingPhase.ACTIVE -> SensorManager.SENSOR_DELAY_NORMAL
+            TrackingPhase.IDLE -> {
+                if (hasActivityRecognition && significantMotionSensor != null) {
+                    null
+                } else {
+                    IDLE_ACCELEROMETER_SAMPLING_PERIOD_US
+                }
+            }
         }
         registerAccelerometerIfNeeded(accelerometerDelay)
-        registerStepCounterIfNeeded(enable = hasActivityRecognitionPermission())
-        registerSignificantMotionSensor(enable = hasActivityRecognitionPermission())
+        registerStepCounterIfNeeded(enable = hasActivityRecognition)
+        registerSignificantMotionSensor(enable = hasActivityRecognition)
     }
 
-    private fun registerAccelerometerIfNeeded(delay: Int) {
+    private fun registerAccelerometerIfNeeded(delay: Int?) {
         val sensor = accelerometerSensor ?: return
+        if (delay == null) {
+            unregisterAccelerometerIfNeeded(sensor)
+            return
+        }
         if (accelerometerRegistered && currentAccelerometerDelay == delay) return
         if (accelerometerRegistered) {
             sensorManager.unregisterListener(sensorListener, sensor)
@@ -776,6 +818,15 @@ class BackgroundTrackingService : Service() {
         sensorManager.registerListener(sensorListener, sensor, delay)
         accelerometerRegistered = true
         currentAccelerometerDelay = delay
+    }
+
+    private fun unregisterAccelerometerIfNeeded(sensor: Sensor? = accelerometerSensor) {
+        sensor ?: return
+        if (!accelerometerRegistered) return
+        sensorManager.unregisterListener(sensorListener, sensor)
+        accelerometerRegistered = false
+        currentAccelerometerDelay = -1
+        accelerationWindow.clear()
     }
 
     private fun registerStepCounterIfNeeded(enable: Boolean) {
@@ -1258,6 +1309,7 @@ class BackgroundTrackingService : Service() {
 
     private fun stopAllTracking(clearSession: Boolean) {
         trackingHandler.removeCallbacksAndMessages(null)
+        releaseWakeLockIfHeld()
         stopLocationUpdates()
         sensorManager.unregisterListener(sensorListener)
         registerSignificantMotionSensor(false)

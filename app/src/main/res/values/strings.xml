@@ -140,4 +140,7 @@
     <string name="action_cancel">取消</string>
     <string name="action_delete">删除</string>
     <string name="action_go_to_settings">去设置</string>
+    <string name="battery_optimization_settings_title">建议关闭电池优化限制</string>
+    <string name="battery_optimization_settings_message">为了提高息屏和待机时的后台轨迹记录稳定性，建议把当前应用加入系统电池优化白名单。</string>
+    <string name="battery_optimization_settings_recommended">若系统仍限制后台耗电，息屏后可能出现轨迹中断。</string>
 </resources>

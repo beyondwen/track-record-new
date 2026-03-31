@@ -500,61 +500,7 @@ private fun HistoryPreviewCard(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-
-            Surface(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 20.dp, top = 20.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
-                shape = RoundedCornerShape(999.dp),
-                shadowElevation = 10.dp,
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    PreviewTrailGlyph()
-                    Text(
-                        text = stringResource(R.string.compose_history_card_preview_title),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
         }
-    }
-}
-
-@Composable
-private fun PreviewTrailGlyph(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier.size(width = 26.dp, height = 16.dp)) {
-        val color = Color(0xFF115D77)
-        val stroke = 2.5.dp.toPx()
-        drawLine(
-            color = color,
-            start = Offset(size.width * 0.08f, size.height * 0.75f),
-            end = Offset(size.width * 0.36f, size.height * 0.3f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = color,
-            start = Offset(size.width * 0.36f, size.height * 0.3f),
-            end = Offset(size.width * 0.56f, size.height * 0.72f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = color,
-            start = Offset(size.width * 0.56f, size.height * 0.72f),
-            end = Offset(size.width * 0.88f, size.height * 0.24f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round,
-        )
-        drawCircle(color = color, radius = 2.3.dp.toPx(), center = Offset(size.width * 0.08f, size.height * 0.75f))
-        drawCircle(color = color, radius = 2.3.dp.toPx(), center = Offset(size.width * 0.88f, size.height * 0.24f))
     }
 }
 
