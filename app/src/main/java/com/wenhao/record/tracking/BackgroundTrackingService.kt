@@ -42,6 +42,7 @@ import com.wenhao.record.data.tracking.FrequentPlaceAnchor
 import com.wenhao.record.data.tracking.FrequentPlaceStorage
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.map.CoordinateTransformUtils
+import com.wenhao.record.util.AppTaskExecutor
 import com.wenhao.record.ui.main.MainActivity
 import java.util.Locale
 import kotlin.math.abs
@@ -82,6 +83,8 @@ class BackgroundTrackingService : Service() {
         private const val ACTIVE_NORMAL_INTERVAL_MS = 4_000L
         private const val ACTIVE_SLOW_INTERVAL_MS = 6_500L
         private const val ACTIVE_NOTIFICATION_UPDATE_INTERVAL_MS = 10_000L
+        private const val MAX_ACTIVE_LOCATION_ACCURACY_METERS = 35f
+        private const val MAX_ACTIVE_LOCATION_SPEED_METERS_PER_SECOND = 45f
         private const val WAKE_LOCK_TIMEOUT_MS = 12 * 60 * 60 * 1000L
 
         private const val IDLE_TRIGGER_DISTANCE_METERS = 85f
@@ -433,10 +436,17 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun handleLocationUpdate(location: Location) {
-        updateInsideAnchorsFromLocation(location)
         if (currentSession == null) {
+            if (shouldRefreshAnchorState(location, MAX_IDLE_ACCURACY_METERS)) {
+                updateInsideAnchorsFromLocation(location)
+            }
             handleIdleOrSuspectLocation(location)
         } else {
+            if (shouldIgnoreActiveLocation(location)) {
+                requestActiveLocationUpdates(location.speed.takeIf { it >= 0f })
+                return
+            }
+            updateInsideAnchorsFromLocation(location)
             handleActiveLocation(location)
         }
     }
@@ -659,8 +669,11 @@ class BackgroundTrackingService : Service() {
             TrackNoiseAction.DROP_DRIFT,
             TrackNoiseAction.DROP_JUMP -> previousSession.points
         }
-        val sanitizedTrack = TrackPathSanitizer.sanitize(points, sortByTimestamp = false)
-        val sanitizedPoints = sanitizedTrack.points
+        val updatedDistanceKm = ActiveTrackSessionMetrics.updatedDistanceKm(
+            previousDistanceKm = previousSession.totalDistanceKm,
+            previousPoints = previousSession.points,
+            updatedPoints = points
+        )
 
         val updatedSession = previousSession.copy(
             lastMotionTimestamp = if (noiseResult.action == TrackNoiseAction.ACCEPT) {
@@ -668,10 +681,10 @@ class BackgroundTrackingService : Service() {
             } else {
                 previousSession.lastMotionTimestamp
             },
-            totalDistanceKm = sanitizedTrack.totalDistanceKm,
-            lastLatitude = sanitizedPoints.lastOrNull()?.latitude ?: previousSession.lastLatitude,
-            lastLongitude = sanitizedPoints.lastOrNull()?.longitude ?: previousSession.lastLongitude,
-            points = sanitizedPoints
+            totalDistanceKm = updatedDistanceKm,
+            lastLatitude = points.lastOrNull()?.latitude ?: previousSession.lastLatitude,
+            lastLongitude = points.lastOrNull()?.longitude ?: previousSession.lastLongitude,
+            points = points
         )
         currentSession = updatedSession
         AutoTrackStorage.saveSession(this, updatedSession)
@@ -709,6 +722,62 @@ class BackgroundTrackingService : Service() {
         stationaryCluster = null
         AutoTrackStorage.clearSession(this)
         stopLocationUpdates()
+        AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
+        enterPhase(TrackingPhase.IDLE, "Session finalizing in background", emitEvent = true)
+
+        val appContext = applicationContext
+        AppTaskExecutor.runOnIo {
+            runCatching {
+                val durationSeconds = currentSessionDurationSeconds(session)
+                val sanitizedTrack = TrackPathSanitizer.sanitize(session.points, sortByTimestamp = true)
+                val sanitizedDistanceKm = sanitizedTrack.totalDistanceKm
+
+                if (sanitizedDistanceKm < 0.05 || sanitizedTrack.points.size < 2) {
+                    AutoTrackDiagnosticsStorage.markSessionDiscarded(
+                        appContext,
+                        "Session dropped after sanitize: ${formatDistance(sanitizedDistanceKm)}"
+                    )
+                    return@runCatching
+                }
+
+                if (durationSeconds < MIN_USEFUL_DURATION_SECONDS &&
+                    sanitizedDistanceKm < MIN_USEFUL_DISTANCE_KM
+                ) {
+                    AutoTrackDiagnosticsStorage.markSessionDiscarded(
+                        appContext,
+                        "Session too short: ${durationSeconds}s / ${formatDistance(sanitizedDistanceKm)}"
+                    )
+                    return@runCatching
+                }
+
+                val averageSpeedKmh = if (durationSeconds > 0) {
+                    sanitizedDistanceKm / (durationSeconds / 3600.0)
+                } else {
+                    0.0
+                }
+                val historyItem = HistoryItem(
+                    id = HistoryStorage.nextHistoryId(appContext),
+                    timestamp = session.startTimestamp,
+                    distanceKm = sanitizedDistanceKm,
+                    durationSeconds = durationSeconds,
+                    averageSpeedKmh = averageSpeedKmh,
+                    points = sanitizedTrack.points
+                )
+                HistoryStorage.add(appContext, historyItem)
+                AutoTrackStorage.saveUiState(appContext, AutoTrackUiState.SAVED_RECENTLY)
+                AutoTrackDiagnosticsStorage.markSessionSaved(
+                    appContext,
+                    "Saved ${formatDistance(sanitizedDistanceKm)} / ${durationSeconds / 60} min"
+                )
+                trackingHandler.post(::scheduleFrequentPlacesRefresh)
+            }.onFailure { error ->
+                AutoTrackDiagnosticsStorage.markEvent(
+                    appContext,
+                    "Finalize failed: ${error.message ?: error.javaClass.simpleName}"
+                )
+            }
+        }
+        return
 
         val durationSeconds = currentSessionDurationSeconds(session)
         val sanitizedTrack = TrackPathSanitizer.sanitize(session.points, sortByTimestamp = true)
@@ -1050,6 +1119,39 @@ class BackgroundTrackingService : Service() {
         val result = distanceResultCache.get()!!
         Location.distanceBetween(firstLatitude, firstLongitude, secondLatitude, secondLongitude, result)
         return result[0]
+    }
+
+    private fun shouldRefreshAnchorState(location: Location, maxAccuracyMeters: Float): Boolean {
+        return !isLocationTooOld(location) &&
+            location.hasAccuracy() &&
+            location.accuracy <= maxAccuracyMeters
+    }
+
+    private fun shouldIgnoreActiveLocation(location: Location): Boolean {
+        val accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
+        if (accuracyMeters == null || accuracyMeters > MAX_ACTIVE_LOCATION_ACCURACY_METERS) {
+            AutoTrackDiagnosticsStorage.markLocationDecision(
+                this,
+                "Active sample dropped: poor accuracy",
+                currentSession?.points?.size ?: 0,
+                accuracyMeters
+            )
+            return true
+        }
+
+        val speedMetersPerSecond = location.speed.takeIf { location.hasSpeed() && it >= 0f }
+        if (speedMetersPerSecond != null &&
+            speedMetersPerSecond > MAX_ACTIVE_LOCATION_SPEED_METERS_PER_SECOND
+        ) {
+            AutoTrackDiagnosticsStorage.markLocationDecision(
+                this,
+                "Active sample dropped: abnormal speed",
+                currentSession?.points?.size ?: 0,
+                accuracyMeters
+            )
+            return true
+        }
+        return false
     }
 
     private fun applyStationaryCluster(

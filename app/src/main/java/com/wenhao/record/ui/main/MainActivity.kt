@@ -3,6 +3,10 @@ package com.wenhao.record.ui.main
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationManager
@@ -11,6 +15,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -38,6 +43,7 @@ import com.wenhao.record.tracking.BackgroundTrackingService
 import com.wenhao.record.tracking.LocationSelectionUtils
 import com.wenhao.record.ui.dashboard.DashboardUiController
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
+import com.wenhao.record.ui.barometer.BarometerController
 import com.wenhao.record.ui.history.HistoryController
 import com.wenhao.record.ui.map.MapActivity
 import com.wenhao.record.util.AppTaskExecutor
@@ -49,8 +55,23 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
+    companion object {
+        private const val TAG = "TrackRecordBarometer"
+        private val PressureSensorKeywords = listOf(
+            "pressure",
+            "barometer",
+            "air pressure",
+            "air_pressure",
+            "bmp",
+            "lps",
+            "qmp",
+            "hpa",
+            "press",
+        )
+    }
 
     private lateinit var dashboardUiController: DashboardUiController
+    private lateinit var barometerController: BarometerController
     private lateinit var homeMapController: HomeMapPort
     private lateinit var historyController: HistoryController
 
@@ -85,11 +106,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private var locationManager: LocationManager? = null
+    private var sensorManager: SensorManager? = null
+    private var pressureSensor: Sensor? = null
     private var gnssStatusCallback: GnssStatus.Callback? = null
     private var centerOnNextFix = false
     private var lastDashboardSessionStart: Long? = null
     private var previewLocationCache: GeoCoordinate? = null
     private var previewLocationCachedAt = 0L
+    private var previewAltitudeMeters: Double? = null
     private var historyTransferBusy = false
     private var currentTab by mutableStateOf(MainTab.RECORD)
 
@@ -107,15 +131,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private val freshLocationListener = android.location.LocationListener(::handleLocationUpdate)
+    private val pressureSensorListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) = Unit
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         dashboardUiController = DashboardUiController(this)
+        barometerController = BarometerController()
         homeMapController = HomeMapController()
         historyController = HistoryController(this)
         locationManager = getSystemService(LocationManager::class.java)
+        sensorManager = getSystemService(SensorManager::class.java)
+        refreshPressureSensorCapability()
 
         setContent {
             TrackRecordTheme {
@@ -124,9 +156,11 @@ class MainActivity : AppCompatActivity() {
                     dashboardState = dashboardUiController.panelState,
                     dashboardOverlayState = dashboardUiController.overlayState,
                     historyState = historyController.uiState,
+                    barometerState = barometerController.uiState,
                     dashboardMapState = homeMapController.renderState,
                     onRecordTabClick = { showTab(MainTab.RECORD) },
                     onHistoryTabClick = { showTab(MainTab.HISTORY) },
+                    onBarometerTabClick = { showTab(MainTab.BAROMETER) },
                     onLocateClick = ::handleLocateAction,
                     onHistoryOpen = { dayStartMillis ->
                         startActivity(MapActivity.createHistoryIntent(this, dayStartMillis))
@@ -154,29 +188,49 @@ class MainActivity : AppCompatActivity() {
         dashboardUiController.setRecordTabSelected(isRecord)
         historyController.setTabSelected(isRecord)
 
-        if (!isRecord) {
+        if (tab == MainTab.BAROMETER) {
+            refreshPressureSensorCapability()
+            barometerController.updateLocationAltitude(previewAltitudeMeters)
+            registerPressureSensorIfNeeded()
+        } else {
+            unregisterPressureSensor()
+        }
+
+        if (tab == MainTab.HISTORY) {
             historyController.reload()
             historyController.updateContent()
             return
         }
 
-        homeMapController.shouldRefit = true
-        refreshDashboardContent()
-        homeMapController.showPreviewLocationIfIdle(loadPreviewLocation())
+        if (tab == MainTab.RECORD) {
+            syncRecordTabToCurrentLocation()
+            refreshDashboardContent()
+        }
     }
 
-    private fun handleLocateAction() {
+    private fun syncRecordTabToCurrentLocation() {
+        val previewLocation = loadPreviewLocation(forceRefresh = true)
         when {
+            previewLocation != null -> {
+                homeMapController.updateCurrentLocation(
+                    latLng = previewLocation,
+                    shouldCenter = true,
+                )
+            }
+
             homeMapController.hasActiveTrack() -> {
                 homeMapController.focusActiveTrackOnLatestPoint(forceZoom = true)
             }
-
-            homeMapController.hasTodayTracks() -> {
-                homeMapController.fitTodayTracksToMap(forceSinglePointZoom = true)
-            }
-
-            else -> centerOnCurrentLocation()
         }
+
+        if (permissionHelper.hasLocationPermission() && isLocationEnabled()) {
+            centerOnNextFix = true
+            requestFreshLocationUpdates()
+        }
+    }
+
+    private fun handleLocateAction() {
+        centerOnCurrentLocation()
     }
 
     private fun configureHomeMap() {
@@ -545,6 +599,12 @@ class MainActivity : AppCompatActivity() {
         val previewLocation = toMapCoordinate(location)
         previewLocationCache = previewLocation
         previewLocationCachedAt = System.currentTimeMillis()
+        previewAltitudeMeters = location.altitude.takeIf { location.hasAltitude() }
+        barometerController.updateLocationAltitude(
+            altitudeMeters = previewAltitudeMeters,
+            accuracyMeters = location.accuracy,
+            timestampMillis = location.time.takeIf { it > 0L } ?: System.currentTimeMillis(),
+        )
         homeMapController.updateCurrentLocation(
             latLng = previewLocation,
             shouldCenter = centerOnNextFix,
@@ -572,7 +632,14 @@ class MainActivity : AppCompatActivity() {
         if (!forceRefresh && now - previewLocationCachedAt < 5_000L) {
             return previewLocationCache
         }
-        val previewLocation = loadLastKnownLocation()?.let(::toMapCoordinate)
+        val lastKnownLocation = loadLastKnownLocation()
+        previewAltitudeMeters = lastKnownLocation?.altitude?.takeIf { lastKnownLocation.hasAltitude() }
+        barometerController.updateLocationAltitude(
+            altitudeMeters = previewAltitudeMeters,
+            accuracyMeters = lastKnownLocation?.accuracy,
+            timestampMillis = lastKnownLocation?.time?.takeIf { it > 0L } ?: now,
+        )
+        val previewLocation = lastKnownLocation?.let(::toMapCoordinate)
         previewLocationCache = previewLocation
         previewLocationCachedAt = now
         return previewLocation
@@ -599,10 +666,170 @@ class MainActivity : AppCompatActivity() {
         manager.unregisterGnssStatusCallback(callback)
     }
 
+    private fun registerPressureSensorIfNeeded() {
+        refreshPressureSensorCapability()
+        val manager = sensorManager ?: return
+        val sensor = pressureSensor ?: return
+        manager.unregisterListener(pressureSensorListener, sensor)
+        manager.registerListener(
+            pressureSensorListener,
+            sensor,
+            SensorManager.SENSOR_DELAY_NORMAL,
+        )
+    }
+
+    private fun unregisterPressureSensor() {
+        val manager = sensorManager ?: return
+        val sensor = pressureSensor ?: return
+        manager.unregisterListener(pressureSensorListener, sensor)
+    }
+
+    private fun refreshPressureSensorCapability() {
+        val manager = sensorManager
+        val resolvedSensor = resolvePressureSensor(manager)
+        pressureSensor = resolvedSensor
+        val hasFeature = packageManager.hasSystemFeature(PackageManager.FEATURE_SENSOR_BAROMETER)
+        barometerController.setBarometerFeatureAvailable(hasFeature)
+        barometerController.setSensorAvailability(resolvedSensor != null)
+        barometerController.updateSensorDebugLabel(
+            resolvedSensor?.let(::buildPressureSensorLabel).orEmpty(),
+        )
+        barometerController.updateSensorDiagnostics(
+            buildPressureSensorDiagnostics(
+                manager = manager,
+                resolvedSensor = resolvedSensor,
+                hasFeature = hasFeature,
+            ),
+        )
+        barometerController.updateSensorInventory(
+            buildPressureSensorInventory(manager),
+        )
+    }
+
+    private fun resolvePressureSensor(manager: SensorManager?): Sensor? {
+        if (manager == null) return null
+        val typedPressureSensors = manager.getSensorList(Sensor.TYPE_PRESSURE)
+        if (typedPressureSensors.isNotEmpty()) {
+            val picked = typedPressureSensors.first()
+            Log.d(TAG, "Using typed pressure sensor: ${buildPressureSensorLabel(picked)}")
+            return picked
+        }
+
+        val defaultPressure = manager.getDefaultSensor(Sensor.TYPE_PRESSURE)
+        if (defaultPressure != null) {
+            Log.d(TAG, "Using default pressure sensor: ${buildPressureSensorLabel(defaultPressure)}")
+            return defaultPressure
+        }
+
+        val nonWakePressure = manager.getDefaultSensor(Sensor.TYPE_PRESSURE, false)
+        if (nonWakePressure != null) {
+            Log.d(TAG, "Using non-wake pressure sensor: ${buildPressureSensorLabel(nonWakePressure)}")
+            return nonWakePressure
+        }
+
+        val wakePressure = manager.getDefaultSensor(Sensor.TYPE_PRESSURE, true)
+        if (wakePressure != null) {
+            Log.d(TAG, "Using wake-up pressure sensor: ${buildPressureSensorLabel(wakePressure)}")
+            return wakePressure
+        }
+
+        val allSensors = manager.getSensorList(Sensor.TYPE_ALL)
+        val pressureCandidates = allSensors.filter { sensor ->
+            sensor.type == Sensor.TYPE_PRESSURE ||
+                matchesPressureSensor(sensor.name) ||
+                matchesPressureSensor(sensor.vendor) ||
+                matchesPressureSensor(sensor.stringType)
+        }
+        if (pressureCandidates.isNotEmpty()) {
+            val picked = pressureCandidates.first()
+            Log.d(
+                TAG,
+                "Fallback pressure sensor picked: ${buildPressureSensorLabel(picked)} from ${
+                    pressureCandidates.joinToString { buildPressureSensorLabel(it) }
+                }",
+            )
+            return picked
+        }
+
+        Log.w(
+            TAG,
+            "No pressure sensor matched. Sensors=${allSensors.joinToString { "${it.name}|${it.vendor}|${it.type}|${it.stringType}" }}",
+        )
+        return null
+    }
+
+    private fun buildPressureSensorLabel(sensor: Sensor): String {
+        return "${sensor.name} · ${sensor.vendor}"
+    }
+
+    private fun buildPressureSensorDiagnostics(
+        manager: SensorManager?,
+        resolvedSensor: Sensor?,
+        hasFeature: Boolean,
+    ): String {
+        if (manager == null) return "SensorManager 不可用"
+        val typedPressureSensors = manager.getSensorList(Sensor.TYPE_PRESSURE)
+        val allSensors = manager.getSensorList(Sensor.TYPE_ALL)
+        val pressureLikeSensors = allSensors.filter { sensor ->
+            sensor.type == Sensor.TYPE_PRESSURE ||
+                matchesPressureSensor(sensor.name) ||
+                matchesPressureSensor(sensor.vendor) ||
+                matchesPressureSensor(sensor.stringType)
+        }
+        return buildString {
+            append("系统气压特性: ")
+            append(if (hasFeature) "有" else "无")
+            append(" · TYPE_PRESSURE: ")
+            append(typedPressureSensors.size)
+            append(" · 压力候选: ")
+            append(pressureLikeSensors.size)
+            append(" · 结果: ")
+            append(resolvedSensor?.let(::buildPressureSensorLabel) ?: "未匹配")
+            if (pressureLikeSensors.isNotEmpty()) {
+                append(" · 候选列表: ")
+                append(
+                    pressureLikeSensors.take(4).joinToString(" / ") { sensor ->
+                        buildPressureSensorLabel(sensor)
+                    },
+                )
+            }
+        }
+    }
+
+    private fun buildPressureSensorInventory(manager: SensorManager?): String {
+        if (manager == null) return ""
+        val allSensors = manager.getSensorList(Sensor.TYPE_ALL)
+        if (allSensors.isEmpty()) return ""
+        return allSensors
+            .take(18)
+            .joinToString(separator = "\n") { sensor ->
+                val marker = if (
+                    sensor.type == Sensor.TYPE_PRESSURE ||
+                    matchesPressureSensor(sensor.name) ||
+                    matchesPressureSensor(sensor.vendor) ||
+                    matchesPressureSensor(sensor.stringType)
+                ) {
+                    "可能相关"
+                } else {
+                    "其他"
+                }
+                "$marker · ${sensor.name} · ${sensor.vendor} · type=${sensor.type} · ${sensor.stringType}"
+            }
+    }
+
+    private fun matchesPressureSensor(text: String): Boolean {
+        return PressureSensorKeywords.any { keyword ->
+            text.contains(keyword, ignoreCase = true)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         TrackDataChangeNotifier.addListener(dataChangeListener)
         registerGnssCallback()
+        if (currentTab == MainTab.BAROMETER) {
+            registerPressureSensorIfNeeded()
+        }
         refreshGpsStatus()
         historyController.reload()
         historyController.updateContent()
@@ -614,12 +841,14 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         TrackDataChangeNotifier.removeListener(dataChangeListener)
         unregisterGnssCallback()
+        unregisterPressureSensor()
         stopLocationUpdates()
         super.onPause()
     }
 
     override fun onDestroy() {
         unregisterGnssCallback()
+        unregisterPressureSensor()
         stopLocationUpdates()
         TrackDataChangeNotifier.removeListener(dataChangeListener)
         homeMapController.onCleared()

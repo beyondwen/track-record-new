@@ -59,6 +59,7 @@ object TrackingPermissionGate {
             !isIgnoringBatteryOptimizations(context)
     }
 
+    @android.annotation.SuppressLint("BatteryLife")
     fun buildIgnoreBatteryOptimizationsIntent(context: Context): Intent? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return null
         val requestIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {

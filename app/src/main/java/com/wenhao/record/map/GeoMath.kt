@@ -30,8 +30,10 @@ object GeoMath {
         val dLat = lat2 - lat1
         val dLon = Math.toRadians(secondLongitude - firstLongitude)
 
-        val haversine = sin(dLat / 2).pow(2) +
-            cos(lat1) * cos(lat2) * sin(dLon / 2).pow(2)
+        val sinDLat2 = sin(dLat / 2)
+        val sinDLon2 = sin(dLon / 2)
+        val haversine = sinDLat2 * sinDLat2 +
+            cos(lat1) * cos(lat2) * sinDLon2 * sinDLon2
         val arc = 2 * asin(sqrt(haversine.coerceIn(0.0, 1.0)))
         return (EARTH_RADIUS_METERS * arc).toFloat()
     }

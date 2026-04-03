@@ -4,6 +4,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
@@ -13,6 +14,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import com.wenhao.record.data.tracking.TrackPathSanitizer
@@ -43,13 +45,121 @@ fun HistoryRoutePreviewCanvas(
         val startColor = Color(0xFF35C77D)
         val endColor = Color(0xFFFF6B6B)
         val cornerRadius = 16.dp.toPx()
+        val clipPath = Path().apply {
+            addRoundRect(
+                RoundRect(
+                    rect = Rect(rectTopLeft, rectSize),
+                    cornerRadius = CornerRadius(cornerRadius, cornerRadius),
+                )
+            )
+        }
 
-        drawPreviewMapBackdrop(
-            rectTopLeft = rectTopLeft,
-            rectSize = rectSize,
-            cornerRadius = cornerRadius,
-            points = points,
-        )
+        clipPath(clipPath) {
+            drawPreviewMapBackdrop(
+                rectTopLeft = rectTopLeft,
+                rectSize = rectSize,
+                cornerRadius = cornerRadius,
+                points = points,
+            )
+
+            if (points.isEmpty()) {
+                drawLine(
+                    color = guideColor,
+                    start = Offset(rectTopLeft.x + 10.dp.toPx(), centerY),
+                    end = Offset(rectTopLeft.x + rectSize.width - 10.dp.toPx(), centerY),
+                    strokeWidth = 1.dp.toPx(),
+                )
+                return@Canvas
+            }
+
+            if (points.size == 1) {
+                drawCircle(
+                    color = startColor,
+                    radius = 5.dp.toPx(),
+                    center = Offset(rectTopLeft.x + rectSize.width / 2f, centerY),
+                )
+                return@Canvas
+            }
+
+            val minLat = points.minOf { it.latitude }
+            val maxLat = points.maxOf { it.latitude }
+            val minLng = points.minOf { it.longitude }
+            val maxLng = points.maxOf { it.longitude }
+            val latRange = max(maxLat - minLat, 0.00001)
+            val lngRange = max(maxLng - minLng, 0.00001)
+            val altitudeRange = TrackAltitudePalette.altitudeRange(points)
+
+            val projectedSegments = renderableSegments.map { segment ->
+                segment.map { point ->
+                    project(
+                        point = point,
+                        left = rectTopLeft.x,
+                        top = rectTopLeft.y,
+                        width = rectSize.width,
+                        height = rectSize.height,
+                        minLat = minLat,
+                        minLng = minLng,
+                        latRange = latRange,
+                        lngRange = lngRange,
+                    )
+                }
+            }
+
+            renderableSegments.forEachIndexed { segmentIndex, segment ->
+                val projectedSegment = projectedSegments[segmentIndex]
+                if (segment.size < 2 || projectedSegment.size < 2) return@forEachIndexed
+                for (i in 0 until segment.size - 1) {
+                    val startTrack = segment[i]
+                    val endTrack = segment[i + 1]
+                    val startProjected = projectedSegment[i]
+                    val endProjected = projectedSegment[i + 1]
+
+                    val a1 = startTrack.altitudeMeters
+                    val a2 = endTrack.altitudeMeters
+                    val averageAltitude = if (a1 != null && a2 != null) {
+                        (a1 + a2) / 2.0
+                    } else {
+                        a1 ?: a2
+                    }
+
+                    drawLine(
+                        color = TrackAltitudePalette.colorForAltitude(averageAltitude, altitudeRange),
+                        start = startProjected,
+                        end = endProjected,
+                        strokeWidth = 3.4.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
+
+            val start = renderableSegments.firstOrNull { it.isNotEmpty() }?.first() ?: points.first()
+            val end = renderableSegments.lastOrNull { it.isNotEmpty() }?.last() ?: points.last()
+            val startProjected = project(
+                point = start,
+                left = rectTopLeft.x,
+                top = rectTopLeft.y,
+                width = rectSize.width,
+                height = rectSize.height,
+                minLat = minLat,
+                minLng = minLng,
+                latRange = latRange,
+                lngRange = lngRange,
+            )
+            val endProjected = project(
+                point = end,
+                left = rectTopLeft.x,
+                top = rectTopLeft.y,
+                width = rectSize.width,
+                height = rectSize.height,
+                minLat = minLat,
+                minLng = minLng,
+                latRange = latRange,
+                lngRange = lngRange,
+            )
+
+            drawCircle(color = startColor, radius = 4.dp.toPx(), center = startProjected)
+            drawCircle(color = endColor, radius = 4.dp.toPx(), center = endProjected)
+        }
 
         drawRoundRect(
             color = guideColor,
@@ -58,93 +168,6 @@ fun HistoryRoutePreviewCanvas(
             cornerRadius = CornerRadius(cornerRadius, cornerRadius),
             style = Stroke(width = 1.dp.toPx()),
         )
-
-        if (points.isEmpty()) {
-            drawLine(
-                color = guideColor,
-                start = Offset(rectTopLeft.x + 10.dp.toPx(), centerY),
-                end = Offset(rectTopLeft.x + rectSize.width - 10.dp.toPx(), centerY),
-                strokeWidth = 1.dp.toPx(),
-            )
-            return@Canvas
-        }
-
-        if (points.size == 1) {
-            drawCircle(
-                color = startColor,
-                radius = 5.dp.toPx(),
-                center = Offset(rectTopLeft.x + rectSize.width / 2f, centerY),
-            )
-            return@Canvas
-        }
-
-        val minLat = points.minOf { it.latitude }
-        val maxLat = points.maxOf { it.latitude }
-        val minLng = points.minOf { it.longitude }
-        val maxLng = points.maxOf { it.longitude }
-        val latRange = max(maxLat - minLat, 0.00001)
-        val lngRange = max(maxLng - minLng, 0.00001)
-        val altitudeRange = TrackAltitudePalette.altitudeRange(points)
-
-        val projectedSegments = renderableSegments.map { segment ->
-            segment.map { point ->
-                project(
-                    point = point,
-                    left = rectTopLeft.x,
-                    top = rectTopLeft.y,
-                    width = rectSize.width,
-                    height = rectSize.height,
-                    minLat = minLat,
-                    minLng = minLng,
-                    latRange = latRange,
-                    lngRange = lngRange,
-                )
-            }
-        }
-        renderableSegments.zip(projectedSegments).forEach { (segment, projectedSegment) ->
-            if (segment.size < 2 || projectedSegment.size < 2) return@forEach
-            segment.zipWithNext().zip(projectedSegment.zipWithNext()).forEach { (trackPair, projectedPair) ->
-                val averageAltitude = listOfNotNull(
-                    trackPair.first.altitudeMeters,
-                    trackPair.second.altitudeMeters,
-                ).average().takeUnless { it.isNaN() }
-                drawLine(
-                    color = TrackAltitudePalette.colorForAltitude(averageAltitude, altitudeRange),
-                    start = projectedPair.first,
-                    end = projectedPair.second,
-                    strokeWidth = 3.4.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-            }
-        }
-
-        val start = renderableSegments.firstOrNull { it.isNotEmpty() }?.first() ?: points.first()
-        val end = renderableSegments.lastOrNull { it.isNotEmpty() }?.last() ?: points.last()
-        val startProjected = project(
-            point = start,
-            left = rectTopLeft.x,
-            top = rectTopLeft.y,
-            width = rectSize.width,
-            height = rectSize.height,
-            minLat = minLat,
-            minLng = minLng,
-            latRange = latRange,
-            lngRange = lngRange,
-        )
-        val endProjected = project(
-            point = end,
-            left = rectTopLeft.x,
-            top = rectTopLeft.y,
-            width = rectSize.width,
-            height = rectSize.height,
-            minLat = minLat,
-            minLng = minLng,
-            latRange = latRange,
-            lngRange = lngRange,
-        )
-
-        drawCircle(color = startColor, radius = 4.dp.toPx(), center = startProjected)
-        drawCircle(color = endColor, radius = 4.dp.toPx(), center = endProjected)
     }
 }
 

@@ -33,9 +33,17 @@ object HistoryTransferCodec {
         }
 
         return runCatching {
-            val root = JSONObject(trimmed)
-            val items = root.optJSONArray(KEY_ITEMS) ?: return@runCatching emptyList()
-            HistorySnapshotCodec.decode(items.toString())
+            val itemsIndex = trimmed.indexOf(""""$KEY_ITEMS":""")
+            if (itemsIndex == -1) return@runCatching emptyList()
+            
+            val arrayStart = trimmed.indexOf('[', itemsIndex)
+            if (arrayStart == -1) return@runCatching emptyList()
+            
+            val arrayEnd = trimmed.lastIndexOf(']')
+            if (arrayEnd == -1 || arrayEnd < arrayStart) return@runCatching emptyList()
+            
+            val itemsJson = trimmed.substring(arrayStart, arrayEnd + 1)
+            HistorySnapshotCodec.decode(itemsJson)
         }.getOrDefault(emptyList())
     }
 

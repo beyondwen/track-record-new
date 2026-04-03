@@ -85,10 +85,11 @@ object TrackPathSanitizer {
         val filteredSegments = normalizedSegments.filter(::isMultiSegmentRenderable)
         if (filteredSegments.isNotEmpty()) return filteredSegments
 
-        return listOfNotNull(
-            normalizedSegments.maxByOrNull(::segmentRenderScore)
-                ?.takeIf(::isStandaloneSegmentRenderable)
-        )
+        val bestSegment = normalizedSegments.maxByOrNull(::segmentRenderScore)
+        if (bestSegment != null && isStandaloneSegmentRenderable(bestSegment)) {
+            return listOf(bestSegment)
+        }
+        return emptyList()
     }
 
     private fun orderPoints(points: List<TrackPoint>, sortByTimestamp: Boolean): List<TrackPoint> {

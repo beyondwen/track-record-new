@@ -1,6 +1,5 @@
 package com.wenhao.record.ui.main
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -54,16 +53,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.wenhao.record.R
+import com.wenhao.record.ui.barometer.BarometerUiState
+import com.wenhao.record.ui.barometer.BarometerComposeScreen
 import com.wenhao.record.ui.dashboard.DashboardComposeScreen
 import com.wenhao.record.ui.dashboard.DashboardOverlayUiState
 import com.wenhao.record.ui.dashboard.DashboardScreenUiState
 import com.wenhao.record.ui.dashboard.DashboardTone
 import com.wenhao.record.ui.designsystem.TrackFloatingMapButton
 import com.wenhao.record.ui.designsystem.TrackInsetPanel
+import com.wenhao.record.ui.designsystem.TrackLiquidPanel
+import com.wenhao.record.ui.designsystem.TrackLiquidTone
 import com.wenhao.record.ui.designsystem.TrackPrimaryButton
 import com.wenhao.record.ui.designsystem.TrackRecordSpacing
 import com.wenhao.record.ui.designsystem.TrackStatChip
 import com.wenhao.record.ui.designsystem.TrackTopOverlayColumn
+import com.wenhao.record.ui.designsystem.TrackAtmosphericBackground
+import com.wenhao.record.ui.designsystem.trackInnerPanelSurface
 import com.wenhao.record.ui.designsystem.trackPageBackground
 import com.wenhao.record.ui.designsystem.trackSecondarySurface
 import com.wenhao.record.ui.designsystem.trackSoftOutline
@@ -84,9 +89,11 @@ fun MainComposeScreen(
     dashboardState: DashboardScreenUiState,
     dashboardOverlayState: DashboardOverlayUiState,
     historyState: HistoryScreenUiState,
+    barometerState: BarometerUiState,
     dashboardMapState: TrackMapSceneState,
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
+    onBarometerTabClick: () -> Unit,
     onLocateClick: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
     onHistoryDelete: (Long) -> Unit,
@@ -94,28 +101,41 @@ fun MainComposeScreen(
     onHistoryImport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.trackPageBackground,
-    ) {
-        if (currentTab == MainTab.HISTORY) {
-            HistoryComposeScreen(
-                state = historyState,
-                onRecordClick = onRecordTabClick,
-                onExportClick = onHistoryExport,
-                onImportClick = onHistoryImport,
-                onHistoryClick = { onHistoryOpen(it.dayStartMillis) },
-                onHistoryLongClick = { onHistoryDelete(it.dayStartMillis) },
-            )
-        } else {
-            DashboardRoot(
-                dashboardState = dashboardState,
-                overlayState = dashboardOverlayState,
-                mapState = dashboardMapState,
-                onRecordTabClick = onRecordTabClick,
-                onHistoryTabClick = onHistoryTabClick,
-                onLocateClick = onLocateClick,
-            )
+    Box(modifier = modifier.fillMaxSize()) {
+        TrackAtmosphericBackground()
+        when (currentTab) {
+            MainTab.HISTORY -> {
+                HistoryComposeScreen(
+                    state = historyState,
+                    onRecordClick = onRecordTabClick,
+                    onBarometerClick = onBarometerTabClick,
+                    onExportClick = onHistoryExport,
+                    onImportClick = onHistoryImport,
+                    onHistoryClick = { onHistoryOpen(it.dayStartMillis) },
+                    onHistoryLongClick = { onHistoryDelete(it.dayStartMillis) },
+                )
+            }
+
+            MainTab.BAROMETER -> {
+                BarometerComposeScreen(
+                    state = barometerState,
+                    onRecordClick = onRecordTabClick,
+                    onHistoryClick = onHistoryTabClick,
+                    onBarometerClick = onBarometerTabClick,
+                )
+            }
+
+            MainTab.RECORD -> {
+                DashboardRoot(
+                    dashboardState = dashboardState,
+                    overlayState = dashboardOverlayState,
+                    mapState = dashboardMapState,
+                    onRecordTabClick = onRecordTabClick,
+                    onHistoryTabClick = onHistoryTabClick,
+                    onBarometerTabClick = onBarometerTabClick,
+                    onLocateClick = onLocateClick,
+                )
+            }
         }
     }
 }
@@ -128,9 +148,11 @@ private fun DashboardRoot(
     mapState: TrackMapSceneState,
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
+    onBarometerTabClick: () -> Unit,
     onLocateClick: () -> Unit,
 ) {
     var showOverlayStatusDialog by rememberSaveable { mutableStateOf(false) }
+    var showRecenterCue by rememberSaveable { mutableStateOf(false) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val dashboardSheetPeekHeight = 72.dp
@@ -196,6 +218,7 @@ private fun DashboardRoot(
                         }
                     },
                     onHistoryClick = onHistoryTabClick,
+                    onBarometerClick = onBarometerTabClick,
                     modifier = Modifier
                         .fillMaxWidth()
                         .onSizeChanged { sheetContentHeightPx = it.height.toFloat() },
@@ -212,6 +235,8 @@ private fun DashboardRoot(
                         end = 20.dp,
                         bottom = mapViewportBottomPadding,
                     ),
+                    showCenterIndicator = true,
+                    onUserGestureMove = { showRecenterCue = true },
                 )
 
                 TrackTopOverlayColumn {
@@ -226,7 +251,11 @@ private fun DashboardRoot(
                     TrackFloatingMapButton(
                         icon = painterResource(R.drawable.ic_locate_dashboard),
                         contentDescription = stringResource(R.string.dashboard_locate),
-                        onClick = onLocateClick,
+                        onClick = {
+                            showRecenterCue = false
+                            onLocateClick()
+                        },
+                        accented = showRecenterCue,
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .navigationBarsPadding()
@@ -249,6 +278,7 @@ private fun DashboardRoot(
 enum class MainTab {
     RECORD,
     HISTORY,
+    BAROMETER,
 }
 
 @Composable
@@ -272,7 +302,7 @@ private fun MapStatusCollapsedEntry(
         R.string.compose_map_overlay_collapsed_description,
         collapsedTitle,
     )
-    Surface(
+    TrackLiquidPanel(
         modifier = modifier
             .clickable(
                 role = Role.Button,
@@ -283,17 +313,12 @@ private fun MapStatusCollapsedEntry(
                 stateDescription = collapsedTitle
                 contentDescription = collapsedDescription
             },
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
         shape = MaterialTheme.shapes.extraLarge,
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.trackSoftOutline,
-        ),
-        shadowElevation = 6.dp,
-        tonalElevation = 3.dp,
+        tone = TrackLiquidTone.STANDARD,
+        shadowElevation = 8.dp,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 9.dp),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -343,19 +368,18 @@ private fun MapOverlayStatusDialog(
             dismissOnClickOutside = true,
         ),
     ) {
-        Surface(
+        TrackLiquidPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
                 .imePadding(),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.985f),
             shape = MaterialTheme.shapes.extraLarge,
+            tone = TrackLiquidTone.STRONG,
             shadowElevation = 24.dp,
-            tonalElevation = 8.dp,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 18.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(TrackRecordSpacing.lg),
             ) {
                 Row(

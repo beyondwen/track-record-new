@@ -71,12 +71,14 @@ class HomeMapController : HomeMapPort {
     }
 
     override fun centerOnPreviewLocation(latLng: GeoCoordinate, zoom: Double) {
+        shouldRefit = false
         issueCenter(latLng, zoom)
     }
 
     override fun updateCurrentLocation(latLng: GeoCoordinate, shouldCenter: Boolean) {
         updateMarker(latLng)
         if (shouldCenter) {
+            shouldRefit = false
             issueCenter(latLng, 17.0)
         } else {
             syncScene()

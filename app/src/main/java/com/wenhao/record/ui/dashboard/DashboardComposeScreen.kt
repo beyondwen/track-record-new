@@ -5,13 +5,13 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,11 +56,16 @@ import com.wenhao.record.R
 import com.wenhao.record.ui.designsystem.TrackBottomNavigationBar
 import com.wenhao.record.ui.designsystem.TrackBottomTab
 import com.wenhao.record.ui.designsystem.TrackInsetPanel
+import com.wenhao.record.ui.designsystem.TrackLiquidPanel
+import com.wenhao.record.ui.designsystem.TrackLiquidTone
 import com.wenhao.record.ui.designsystem.TrackPrimaryButton
 import com.wenhao.record.ui.designsystem.TrackRecordSpacing
 import com.wenhao.record.ui.designsystem.TrackRecordStatusColors
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.designsystem.TrackStatChip
+import com.wenhao.record.ui.designsystem.trackGlowPrimary
+import com.wenhao.record.ui.designsystem.trackInnerPanelSurface
+import com.wenhao.record.ui.designsystem.trackSecondarySurface
 
 enum class DashboardTone {
     ACTIVE,
@@ -89,21 +94,20 @@ fun DashboardComposeScreen(
     isSheetExpanded: Boolean,
     onRecordClick: () -> Unit,
     onHistoryClick: () -> Unit,
+    onBarometerClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showStatusDialog by rememberSaveable { mutableStateOf(false) }
 
-    Surface(
+    TrackLiquidPanel(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.985f),
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-        tonalElevation = 6.dp,
-        shadowElevation = 20.dp,
+        tone = TrackLiquidTone.STRONG,
+        shadowElevation = 10.dp,
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Box(
@@ -127,13 +131,10 @@ fun DashboardComposeScreen(
             )
 
             TrackBottomNavigationBar(
-                selectedTab = if (state.isRecordTabSelected) {
-                    TrackBottomTab.RECORD
-                } else {
-                    TrackBottomTab.HISTORY
-                },
+                selectedTab = TrackBottomTab.RECORD,
                 onRecordClick = onRecordClick,
                 onHistoryClick = onHistoryClick,
+                onBarometerClick = onBarometerClick,
                 recordLabel = stringResource(R.string.compose_dashboard_record),
                 historyLabel = stringResource(R.string.compose_dashboard_history),
             )
@@ -231,17 +232,14 @@ private fun DashboardMiniMetric(
     value: String,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    TrackLiquidPanel(
         modifier = modifier,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
         shape = RoundedCornerShape(22.dp),
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
-        ),
+        tone = TrackLiquidTone.SUBTLE,
+        shadowElevation = 0.dp,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             Text(
@@ -269,7 +267,7 @@ private fun DashboardStatusEntry(
     modifier: Modifier = Modifier,
 ) {
     val openHint = stringResource(R.string.compose_dashboard_status_entry_hint)
-    Surface(
+    TrackLiquidPanel(
         modifier = modifier
             .fillMaxWidth()
             .clickable(
@@ -282,15 +280,12 @@ private fun DashboardStatusEntry(
                 stateDescription = title
                 contentDescription = "$title，$badge，$openHint"
             },
-        color = statusContainerColor(tone).copy(alpha = 0.12f),
         shape = RoundedCornerShape(22.dp),
-        border = BorderStroke(
-            width = 1.dp,
-            color = statusContainerColor(tone).copy(alpha = 0.42f),
-        ),
+        tone = TrackLiquidTone.STANDARD,
+        shadowElevation = 0.dp,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -354,23 +349,18 @@ private fun DashboardStatusDialog(
             dismissOnClickOutside = true,
         ),
     ) {
-        Surface(
+        TrackLiquidPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
                 .imePadding(),
-            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.985f),
             shape = RoundedCornerShape(30.dp),
-            tonalElevation = 8.dp,
-            shadowElevation = 24.dp,
-            border = BorderStroke(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.24f),
-            ),
+            tone = TrackLiquidTone.STRONG,
+            shadowElevation = 18.dp,
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(TrackRecordSpacing.lg),
             ) {
                 Row(
@@ -420,7 +410,7 @@ private fun DashboardStatusDialog(
                         onClick = onDismiss,
                         modifier = Modifier.size(48.dp),
                         colors = IconButtonDefaults.filledIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            containerColor = MaterialTheme.colorScheme.trackInnerPanelSurface.copy(alpha = 0.78f),
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
                     ) {
@@ -506,7 +496,7 @@ private fun DialogInfoRow(
             modifier = Modifier
                 .size(40.dp)
                 .background(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                    color = MaterialTheme.colorScheme.trackInnerPanelSurface.copy(alpha = 0.76f),
                     shape = RoundedCornerShape(14.dp),
                 ),
             contentAlignment = Alignment.Center,
@@ -551,7 +541,7 @@ private fun DashboardStatusPanel(
             R.string.compose_dashboard_panel_expand_body
         }
     )
-    Surface(
+    TrackLiquidPanel(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(
@@ -562,15 +552,12 @@ private fun DashboardStatusPanel(
             .semantics(mergeDescendants = true) {
                 stateDescription = actionTitle
             },
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
         shape = RoundedCornerShape(22.dp),
-        border = BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f),
-        ),
+        tone = TrackLiquidTone.STANDARD,
+        shadowElevation = 0.dp,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -598,7 +585,7 @@ private fun DashboardStatusPanel(
                 } else {
                     stringResource(R.string.compose_dashboard_panel_expand_short)
                 },
-                containerColor = MaterialTheme.colorScheme.surface,
+                containerColor = MaterialTheme.colorScheme.trackSecondarySurface.copy(alpha = 0.78f),
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -660,9 +647,9 @@ private fun DashboardRecordIndicator(
                     alpha = haloAlphaState?.value ?: 0.28f
                 }
                 .background(
-                    color = accentColor.copy(alpha = 0.22f),
-                    shape = CircleShape,
-                ),
+            color = accentColor.copy(alpha = 0.18f),
+            shape = CircleShape,
+        ),
         )
         Canvas(modifier = Modifier.size(92.dp)) {
             drawCircle(
@@ -728,6 +715,7 @@ private fun DashboardComposeScreenPreview() {
             isSheetExpanded = true,
             onRecordClick = {},
             onHistoryClick = {},
+            onBarometerClick = {},
         )
     }
 }

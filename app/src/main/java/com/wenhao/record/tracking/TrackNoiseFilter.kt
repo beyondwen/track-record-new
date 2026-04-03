@@ -30,21 +30,22 @@ internal data class TrackNoiseResult(
 internal object TrackNoiseFilter {
     private const val MIN_ACCEPTED_POINT_DISTANCE_METERS = 5f
     private const val MAX_STATIONARY_JITTER_METERS = 25f
-    private const val MAX_POOR_ACCURACY_METERS = 45f
-    private const val MAX_POOR_ACCURACY_INITIAL_METERS = 70f
+    private const val MAX_POOR_ACCURACY_METERS = 35f
+    private const val MAX_POOR_ACCURACY_INITIAL_METERS = 35f
     private const val MAX_EXTREME_ACCURACY_METERS = 120f
+    private const val MAX_ACCEPTED_SPEED_METERS_PER_SECOND = 45f
     private const val LOW_SPEED_METERS_PER_SECOND = 2.0f
     private const val MAX_JUMP_DISTANCE_METERS = 180f
     private const val MAX_JUMP_SPEED_METERS_PER_SECOND = 55f
     private const val MIN_JUMP_TIME_DELTA_MS = 2_000L
     private const val MAX_JUMP_TIME_DELTA_MS = 20_000L
     private const val MAX_ACTIVE_LOCATION_AGE_MS = 20_000L
-    private const val MAX_SHARP_TURN_SPEED_METERS_PER_SECOND = 3.2f
-    private const val MAX_SHARP_TURN_WINDOW_MS = 18_000L
-    private const val MIN_SHARP_TURN_EDGE_METERS = 8f
-    private const val MAX_SHARP_TURN_EDGE_METERS = 65f
-    private const val MAX_SHARP_TURN_BRIDGE_METERS = 22f
-    private const val MAX_SHARP_TURN_ANGLE_DEGREES = 55.0
+    private const val MAX_SHARP_TURN_SPEED_METERS_PER_SECOND = 12.0f
+    private const val MAX_SHARP_TURN_WINDOW_MS = 30_000L
+    private const val MIN_SHARP_TURN_EDGE_METERS = 5f
+    private const val MAX_SHARP_TURN_EDGE_METERS = 150f
+    private const val MAX_SHARP_TURN_BRIDGE_METERS = 80f
+    private const val MAX_SHARP_TURN_ANGLE_DEGREES = 85.0
 
     private fun TrackPoint.hasValidCoordinate(): Boolean {
         if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) return false
@@ -66,6 +67,12 @@ internal object TrackNoiseFilter {
 
         val candidateAccuracy = candidatePoint.accuracyMeters ?: Float.MAX_VALUE
         val candidateSpeed = sample.speedMetersPerSecond
+        if (candidateSpeed > MAX_ACCEPTED_SPEED_METERS_PER_SECOND) {
+            return TrackNoiseResult(TrackNoiseAction.DROP_JUMP)
+        }
+        if (candidateAccuracy > MAX_POOR_ACCURACY_METERS) {
+            return TrackNoiseResult(TrackNoiseAction.DROP_DRIFT)
+        }
 
         if (lastPoint == null) {
             if (sample.locationAgeMs > MAX_ACTIVE_LOCATION_AGE_MS) {

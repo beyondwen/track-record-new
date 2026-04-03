@@ -79,7 +79,9 @@ object TrackQualityEvaluator {
         var adjacentPairCount = 0
 
         normalizedSegments.forEach { segment ->
-            segment.zipWithNext { previous, current ->
+            for (i in 0 until segment.size - 1) {
+                val previous = segment[i]
+                val current = segment[i + 1]
                 adjacentPairCount++
                 val deltaSeconds =
                     ((current.timestampMillis - previous.timestampMillis) / 1000.0).coerceAtLeast(1.0)

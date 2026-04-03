@@ -16,19 +16,23 @@ internal object TrackPolylineBuilder {
             if (segment.size < 2) {
                 emptyList()
             } else {
-                segment.zipWithNext().mapIndexed { pairIndex, (start, end) ->
-                    val averageAltitude = listOfNotNull(start.altitudeMeters, end.altitudeMeters)
-                        .average()
-                        .takeUnless { it.isNaN() }
-                    TrackMapPolyline(
-                        id = "$idPrefix-$segmentIndex-$pairIndex",
-                        points = listOf(start.toGeoCoordinate(), end.toGeoCoordinate()),
-                        colorArgb = TrackAltitudePalette
-                            .colorForAltitude(averageAltitude, altitudeRange)
-                            .toArgbOrFallback(fallbackColorArgb),
-                        width = width,
+                val polylines = ArrayList<TrackMapPolyline>(segment.size - 1)
+                for (pairIndex in 0 until segment.size - 1) {
+                    val start = segment[pairIndex]
+                    val end = segment[pairIndex + 1]
+                    val averageAltitude = averageAltitude(start, end)
+                    polylines.add(
+                        TrackMapPolyline(
+                            id = "$idPrefix-$segmentIndex-$pairIndex",
+                            points = listOf(start.toGeoCoordinate(), end.toGeoCoordinate()),
+                            colorArgb = TrackAltitudePalette
+                                .colorForAltitude(averageAltitude, altitudeRange)
+                                .toArgbOrFallback(fallbackColorArgb),
+                            width = width,
+                        )
                     )
                 }
+                polylines
             }
         }
     }
@@ -74,7 +78,9 @@ internal object TrackPolylineBuilder {
         var altitudeCount = 0
         var polylineIndex = 0
 
-        segment.zipWithNext().forEach { (start, end) ->
+        for (i in 0 until segment.size - 1) {
+            val start = segment[i]
+            val end = segment[i + 1]
             val pairAverageAltitude = averageAltitude(start, end)
             val bucket = altitudeBucketFor(pairAverageAltitude, altitudeRange, bucketCount)
             val startCoordinate = start.toGeoCoordinate()
@@ -88,7 +94,7 @@ internal object TrackPolylineBuilder {
                     altitudeSum += pairAverageAltitude
                     altitudeCount += 1
                 }
-                return@forEach
+                continue
             }
 
             if (bucket == currentBucket) {

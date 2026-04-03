@@ -17,31 +17,31 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val StoneBackground = Color(0xFFF4F1EB)
-private val StoneBackgroundDark = Color(0xFF111A1D)
-private val IvorySurface = Color(0xFFFFFCF7)
-private val SlateSurface = Color(0xFF182327)
-private val MistSurface = Color(0xFFE9F0EE)
-private val MistSurfaceDark = Color(0xFF213136)
-private val LakePrimary = Color(0xFF155E75)
-private val LakePrimaryDark = Color(0xFF7FD0E3)
-private val LakePrimaryContainer = Color(0xFFD7EEF3)
-private val LakePrimaryContainerDark = Color(0xFF0F4D5E)
-private val ForestSecondary = Color(0xFF4A6364)
-private val ForestSecondaryDark = Color(0xFFB8CCCA)
-private val ForestSecondaryContainer = Color(0xFFDCE8E6)
-private val ForestSecondaryContainerDark = Color(0xFF334849)
-private val AmberAccent = Color(0xFFC88719)
-private val AmberAccentDark = Color(0xFFF0C06E)
-private val Ink = Color(0xFF172026)
-private val InkDark = Color(0xFFF2F7F6)
-private val MutedInk = Color(0xFF66727A)
-private val MutedInkDark = Color(0xFFB9C4C8)
-private val Outline = Color(0xFFD3DDDA)
-private val OutlineDark = Color(0xFF405156)
-private val SuccessColor = Color(0xFF1E8F62)
-private val WarningColor = Color(0xFFC88719)
-private val ErrorColor = Color(0xFFB65050)
+private val StoneBackground = Color(0xFFD8D4F6)
+private val StoneBackgroundDark = Color(0xFF0A1028)
+private val IvorySurface = Color(0xFFF4F1FF)
+private val SlateSurface = Color(0xFF141B3A)
+private val MistSurface = Color(0xFFE6E6FF)
+private val MistSurfaceDark = Color(0xFF1F2954)
+private val LakePrimary = Color(0xFF5A66FF)
+private val LakePrimaryDark = Color(0xFFB8C2FF)
+private val LakePrimaryContainer = Color(0xFFDCE0FF)
+private val LakePrimaryContainerDark = Color(0xFF3240A5)
+private val ForestSecondary = Color(0xFF7A70E6)
+private val ForestSecondaryDark = Color(0xFFD1C8FF)
+private val ForestSecondaryContainer = Color(0xFFEAE4FF)
+private val ForestSecondaryContainerDark = Color(0xFF473E86)
+private val AmberAccent = Color(0xFFFF8AA8)
+private val AmberAccentDark = Color(0xFFFFB5C9)
+private val Ink = Color(0xFF1F2247)
+private val InkDark = Color(0xFFF4F3FF)
+private val MutedInk = Color(0xFF6C7099)
+private val MutedInkDark = Color(0xFFC2C6F4)
+private val Outline = Color(0xFFFCFBFF)
+private val OutlineDark = Color(0xFF5A6497)
+private val SuccessColor = Color(0xFF52D5B4)
+private val WarningColor = Color(0xFFFFB86B)
+private val ErrorColor = Color(0xFFFF8B9F)
 
 private val TrackRecordLightColors: ColorScheme = lightColorScheme(
     primary = LakePrimary,
@@ -223,16 +223,30 @@ object TrackRecordStatusColors {
 }
 
 object TrackRecordStyle {
-    val PageBackgroundLight: Color = Color(0xFFF6F7F8)
-    val PageBackgroundDark: Color = Color(0xFF0F171A)
-    val SoftSurfaceLight: Color = Color(0xFFF3F6F8)
-    val SoftSurfaceDark: Color = Color(0xFF1B272C)
-    val SoftAccentLight: Color = Color(0xFFE7F4F3)
-    val SoftAccentDark: Color = Color(0xFF16363A)
-    val SecondarySurfaceLight: Color = Color(0xFFE4EAF0)
-    val SecondarySurfaceDark: Color = Color(0xFF26353B)
-    val SoftOutlineLight: Color = Color(0xFFE6EBF0)
-    val SoftOutlineDark: Color = Color(0xFF314247)
+    val PageBackgroundLight: Color = Color(0xFFD9D5F8)
+    val PageBackgroundDark: Color = Color(0xFF0A1028)
+    val SoftSurfaceLight: Color = Color(0xA7E8E6FF)
+    val SoftSurfaceDark: Color = Color(0x8C1B234B)
+    val SoftAccentLight: Color = Color(0x99D8D1FF)
+    val SoftAccentDark: Color = Color(0xA6323C7E)
+    val SecondarySurfaceLight: Color = Color(0x99D7D8FF)
+    val SecondarySurfaceDark: Color = Color(0x8A222D5A)
+    val SoftOutlineLight: Color = Color(0x73F4F3FF)
+    val SoftOutlineDark: Color = Color(0x66E7E9FF)
+    val GlassSurfaceLight: Color = Color(0x96DFE1FF)
+    val GlassSurfaceDark: Color = Color(0x8C171E43)
+    val GlassStrongSurfaceLight: Color = Color(0xB6EEF0FF)
+    val GlassStrongSurfaceDark: Color = Color(0xB31B224B)
+    val GlassBorderLight: Color = Color(0x8AEFF0FF)
+    val GlassBorderDark: Color = Color(0x80F1F0FF)
+    val InnerPanelSurfaceLight: Color = Color(0x8BCED3FF)
+    val InnerPanelSurfaceDark: Color = Color(0xAA232F66)
+    val InnerPanelBorderLight: Color = Color(0x66EEF1FF)
+    val InnerPanelBorderDark: Color = Color(0x66C6CCFF)
+    val GlowPrimaryLight: Color = Color(0xFF6786FF)
+    val GlowPrimaryDark: Color = Color(0xFF8D9CFF)
+    val GlowSecondaryLight: Color = Color(0xFFFF92BC)
+    val GlowSecondaryDark: Color = Color(0xFFFFA7C8)
 }
 
 val ColorScheme.trackPageBackground: Color
@@ -268,6 +282,55 @@ val ColorScheme.trackSoftOutline: Color
         TrackRecordStyle.SoftOutlineLight
     } else {
         TrackRecordStyle.SoftOutlineDark
+    }
+
+val ColorScheme.trackGlassSurface: Color
+    get() = if (isLightTrackPalette()) {
+        TrackRecordStyle.GlassSurfaceLight
+    } else {
+        TrackRecordStyle.GlassSurfaceDark
+    }
+
+val ColorScheme.trackGlassStrongSurface: Color
+    get() = if (isLightTrackPalette()) {
+        TrackRecordStyle.GlassStrongSurfaceLight
+    } else {
+        TrackRecordStyle.GlassStrongSurfaceDark
+    }
+
+val ColorScheme.trackGlassBorder: Color
+    get() = if (isLightTrackPalette()) {
+        TrackRecordStyle.GlassBorderLight
+    } else {
+        TrackRecordStyle.GlassBorderDark
+    }
+
+val ColorScheme.trackInnerPanelSurface: Color
+    get() = if (isLightTrackPalette()) {
+        TrackRecordStyle.InnerPanelSurfaceLight
+    } else {
+        TrackRecordStyle.InnerPanelSurfaceDark
+    }
+
+val ColorScheme.trackInnerPanelBorder: Color
+    get() = if (isLightTrackPalette()) {
+        TrackRecordStyle.InnerPanelBorderLight
+    } else {
+        TrackRecordStyle.InnerPanelBorderDark
+    }
+
+val ColorScheme.trackGlowPrimary: Color
+    get() = if (isLightTrackPalette()) {
+        TrackRecordStyle.GlowPrimaryLight
+    } else {
+        TrackRecordStyle.GlowPrimaryDark
+    }
+
+val ColorScheme.trackGlowSecondary: Color
+    get() = if (isLightTrackPalette()) {
+        TrackRecordStyle.GlowSecondaryLight
+    } else {
+        TrackRecordStyle.GlowSecondaryDark
     }
 
 private fun ColorScheme.isLightTrackPalette(): Boolean = background == StoneBackground

@@ -232,12 +232,12 @@ object AdaptiveTrackSmoother {
 
     private fun processNoiseMeters(speedMetersPerSecond: Float, accuracyMeters: Double): Double {
         val speedNoise = when {
-            speedMetersPerSecond >= 12f -> 10.0
-            speedMetersPerSecond >= 6f -> 6.0
-            speedMetersPerSecond >= 2f -> 3.8
-            else -> 2.2
+            speedMetersPerSecond >= 12f -> 6.0
+            speedMetersPerSecond >= 6f -> 4.0
+            speedMetersPerSecond >= 2f -> 2.5
+            else -> 1.5
         }
-        return max(speedNoise, accuracyMeters * 0.12)
+        return max(speedNoise, accuracyMeters * 0.08)
     }
 
     private fun altitudeProcessNoiseVariance(speedMetersPerSecond: Float, accuracyMeters: Double): Double {

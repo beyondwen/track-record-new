@@ -25,10 +25,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -57,9 +54,13 @@ import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.ui.designsystem.TrackEmptyStateCard
 import com.wenhao.record.ui.designsystem.TrackBottomNavigationBar
 import com.wenhao.record.ui.designsystem.TrackBottomTab
+import com.wenhao.record.ui.designsystem.TrackLiquidPanel
+import com.wenhao.record.ui.designsystem.TrackLiquidTone
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.designsystem.TrackStatChip
-import com.wenhao.record.ui.designsystem.trackPageBackground
+import com.wenhao.record.ui.designsystem.TrackAtmosphericBackground
+import com.wenhao.record.ui.designsystem.trackInnerPanelBorder
+import com.wenhao.record.ui.designsystem.trackInnerPanelSurface
 import com.wenhao.record.ui.designsystem.trackSecondarySurface
 import com.wenhao.record.ui.designsystem.trackSoftAccent
 import com.wenhao.record.ui.designsystem.trackSoftOutline
@@ -81,6 +82,7 @@ data class HistoryScreenUiState(
 fun HistoryComposeScreen(
     state: HistoryScreenUiState,
     onRecordClick: () -> Unit,
+    onBarometerClick: () -> Unit,
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
     onHistoryClick: (HistoryDayItem) -> Unit,
@@ -99,10 +101,8 @@ fun HistoryComposeScreen(
         )
     }
 
-    Surface(
-        modifier = modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.trackPageBackground,
-    ) {
+    Box(modifier = modifier.fillMaxSize()) {
+        TrackAtmosphericBackground()
         Column(modifier = Modifier.fillMaxSize()) {
             LazyColumn(
                 modifier = Modifier.weight(1f),
@@ -167,8 +167,8 @@ fun HistoryComposeScreen(
             }
 
             HistoryBottomBar(
-                isRecordSelected = state.isRecordTabSelected,
                 onRecordClick = onRecordClick,
+                onBarometerClick = onBarometerClick,
             )
         }
     }
@@ -247,19 +247,26 @@ private fun HistoryActionButton(
     borderColor: Color,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    TrackLiquidPanel(
         modifier = modifier
             .height(56.dp)
             .clickable(
                 enabled = enabled,
                 onClick = onClick,
             ),
-                color = if (enabled) containerColor else containerColor.copy(alpha = 0.48f),
-        contentColor = if (enabled) contentColor else contentColor.copy(alpha = 0.52f),
         shape = RoundedCornerShape(20.dp),
-        border = BorderStroke(1.dp, borderColor),
-        shadowElevation = 4.dp,
-        tonalElevation = 1.dp,
+        tone = if (containerColor == MaterialTheme.colorScheme.primary) {
+            TrackLiquidTone.ACCENT
+        } else {
+            TrackLiquidTone.STANDARD
+        },
+        shadowElevation = 0.dp,
+        borderColor = if (borderColor == Color.Transparent) {
+            Color.Transparent
+        } else {
+            borderColor
+        },
+        contentPadding = PaddingValues(0.dp),
     ) {
         Row(
             modifier = Modifier
@@ -277,6 +284,7 @@ private fun HistoryActionButton(
                 text = text,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
+                color = if (enabled) contentColor else contentColor.copy(alpha = 0.52f),
             )
         }
     }
@@ -395,7 +403,7 @@ private fun HistoryDayCard(
         stringResource(R.string.compose_history_card_open)
     }
 
-    Card(
+    TrackLiquidPanel(
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
@@ -408,22 +416,17 @@ private fun HistoryDayCard(
                 onClick = onClick,
                 onLongClick = onLongClick,
             ),
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White,
-        ),
         shape = RoundedCornerShape(34.dp),
-        border = BorderStroke(
-            width = if (isSelected) 1.6.dp else 1.dp,
-            color = when {
-                isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
-                item.quality.level == TrackQualityLevel.LOW -> MaterialTheme.colorScheme.error.copy(alpha = 0.18f)
-                else -> MaterialTheme.colorScheme.trackSoftOutline
-            },
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isSelected) 14.dp else 8.dp),
+        tone = if (isSelected) TrackLiquidTone.ACCENT else TrackLiquidTone.STRONG,
+        borderColor = when {
+            isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+            item.quality.level == TrackQualityLevel.LOW -> MaterialTheme.colorScheme.error.copy(alpha = 0.16f)
+            else -> MaterialTheme.colorScheme.trackInnerPanelBorder.copy(alpha = 0.22f)
+        },
+        shadowElevation = if (isSelected) 10.dp else 4.dp,
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
         ) {
             Row(
@@ -468,27 +471,20 @@ private fun HistoryPreviewCard(
     item: HistoryDayItem,
     modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier = modifier
-            .background(
-                brush = Brush.linearGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.surface,
-                        MaterialTheme.colorScheme.trackSoftSurface,
-                    ),
-                ),
-                shape = RoundedCornerShape(28.dp),
-            )
-            .padding(14.dp),
+    TrackLiquidPanel(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        tone = TrackLiquidTone.SUBTLE,
+        borderColor = MaterialTheme.colorScheme.trackInnerPanelBorder.copy(alpha = 0.14f),
+        contentPadding = PaddingValues(8.dp),
     ) {
-        Box(
+        TrackLiquidPanel(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(270.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.trackSoftSurface,
-                    shape = RoundedCornerShape(26.dp),
-                ),
+                .height(270.dp),
+            shape = RoundedCornerShape(26.dp),
+            tone = TrackLiquidTone.STANDARD,
+            borderColor = MaterialTheme.colorScheme.trackInnerPanelBorder.copy(alpha = 0.1f),
         ) {
             Box(
                 modifier = Modifier
@@ -506,32 +502,28 @@ private fun HistoryPreviewCard(
 
 @Composable
 private fun HistoryBottomBar(
-    isRecordSelected: Boolean,
     onRecordClick: () -> Unit,
+    onBarometerClick: () -> Unit,
 ) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.985f),
-        tonalElevation = 6.dp,
-        shadowElevation = 20.dp,
+    TrackLiquidPanel(
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+        tone = TrackLiquidTone.STRONG,
+        shadowElevation = 0.dp,
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxWidth(),
         ) {
             TrackBottomNavigationBar(
-                selectedTab = if (isRecordSelected) {
-                    TrackBottomTab.RECORD
-                } else {
-                    TrackBottomTab.HISTORY
-                },
+                selectedTab = TrackBottomTab.HISTORY,
                 onRecordClick = onRecordClick,
                 onHistoryClick = {},
+                onBarometerClick = onBarometerClick,
                 recordLabel = stringResource(R.string.compose_history_record_tab),
                 historyLabel = stringResource(R.string.compose_history_list_tab),
-                recordEnabled = !isRecordSelected,
+                recordEnabled = true,
                 historyEnabled = false,
+                barometerEnabled = true,
             )
         }
     }
@@ -651,6 +643,7 @@ private fun HistoryComposeScreenPreview() {
                 totalCountText = "14 days",
             ),
             onRecordClick = {},
+            onBarometerClick = {},
             onExportClick = {},
             onImportClick = {},
             onHistoryClick = {},

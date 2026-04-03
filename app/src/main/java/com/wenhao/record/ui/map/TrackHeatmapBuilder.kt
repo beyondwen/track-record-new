@@ -90,10 +90,12 @@ internal object TrackHeatmapBuilder {
         if (segments.isEmpty()) return emptyList()
 
         return buildList {
-            segments.forEach { segment ->
-                if (segment.isEmpty()) return@forEach
+            for (segment in segments) {
+                if (segment.isEmpty()) continue
                 add(segment.first())
-                segment.zipWithNext { start, end ->
+                for (i in 0 until segment.size - 1) {
+                    val start = segment[i]
+                    val end = segment[i + 1]
                     val distanceMeters = GeoMath.distanceMeters(
                         start.latitude,
                         start.longitude,

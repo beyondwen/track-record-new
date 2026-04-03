@@ -9,6 +9,7 @@ class TrackNoiseFilterTest {
     @Test
     fun `drops stale first point with poor quality`() {
         val result = TrackNoiseFilter.evaluate(
+            previousPoint = null,
             lastPoint = null,
             sample = TrackNoiseSample(
                 point = TrackPoint(
@@ -28,6 +29,7 @@ class TrackNoiseFilterTest {
     @Test
     fun `merges tiny stationary jitter`() {
         val result = TrackNoiseFilter.evaluate(
+            previousPoint = null,
             lastPoint = TrackPoint(
                 latitude = 30.0,
                 longitude = 120.0,
@@ -52,6 +54,7 @@ class TrackNoiseFilterTest {
     @Test
     fun `drops impossible jump`() {
         val result = TrackNoiseFilter.evaluate(
+            previousPoint = null,
             lastPoint = TrackPoint(
                 latitude = 30.0,
                 longitude = 120.0,
@@ -66,6 +69,56 @@ class TrackNoiseFilterTest {
                     accuracyMeters = 5f
                 ),
                 speedMetersPerSecond = 3f,
+                locationAgeMs = 100L
+            )
+        )
+
+        assertEquals(TrackNoiseAction.DROP_JUMP, result.action)
+    }
+
+    @Test
+    fun `drops active point with poor accuracy above strict shield`() {
+        val result = TrackNoiseFilter.evaluate(
+            previousPoint = null,
+            lastPoint = TrackPoint(
+                latitude = 30.0,
+                longitude = 120.0,
+                timestampMillis = 1_000L,
+                accuracyMeters = 6f
+            ),
+            sample = TrackNoiseSample(
+                point = TrackPoint(
+                    latitude = 30.0003,
+                    longitude = 120.0003,
+                    timestampMillis = 6_000L,
+                    accuracyMeters = 36f
+                ),
+                speedMetersPerSecond = 1.2f,
+                locationAgeMs = 100L
+            )
+        )
+
+        assertEquals(TrackNoiseAction.DROP_DRIFT, result.action)
+    }
+
+    @Test
+    fun `drops active point with abnormal reported speed`() {
+        val result = TrackNoiseFilter.evaluate(
+            previousPoint = null,
+            lastPoint = TrackPoint(
+                latitude = 30.0,
+                longitude = 120.0,
+                timestampMillis = 1_000L,
+                accuracyMeters = 6f
+            ),
+            sample = TrackNoiseSample(
+                point = TrackPoint(
+                    latitude = 30.0003,
+                    longitude = 120.0003,
+                    timestampMillis = 6_000L,
+                    accuracyMeters = 6f
+                ),
+                speedMetersPerSecond = 46f,
                 locationAgeMs = 100L
             )
         )

@@ -49,6 +49,7 @@ enum class TrackMapMarkerKind {
     HOME,
     START,
     END,
+    CENTER,
 }
 
 sealed interface TrackMapViewportRequest {

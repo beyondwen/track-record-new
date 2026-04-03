@@ -2,6 +2,8 @@ package com.wenhao.record.ui.map
 
 import android.os.Handler
 import android.os.Looper
+import com.mapbox.android.gestures.MoveGestureDetector
+import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -13,6 +15,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
@@ -35,8 +38,11 @@ import com.mapbox.maps.extension.compose.annotation.IconImage
 import com.mapbox.maps.extension.style.layers.properties.generated.IconAnchor
 import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
 import com.mapbox.maps.plugin.gestures.generated.GesturesSettings
+import com.mapbox.maps.plugin.gestures.OnMoveListener
+import com.mapbox.maps.plugin.gestures.gestures
 import com.wenhao.record.R
 import com.wenhao.record.map.MapMarkerIconFactory
+import com.wenhao.record.ui.designsystem.TrackMapCenterIndicator
 import kotlinx.coroutines.flow.first
 
 @Composable
@@ -44,7 +50,9 @@ fun TrackMapboxCanvas(
     state: TrackMapSceneState,
     modifier: Modifier = Modifier,
     viewportPadding: TrackMapViewportPadding = TrackMapViewportPadding(),
+    showCenterIndicator: Boolean = false,
     interactive: Boolean = true,
+    onUserGestureMove: (() -> Unit)? = null,
     snapshotCacheKey: String? = null,
     onSnapshotCached: (() -> Unit)? = null,
 ) {
@@ -70,13 +78,31 @@ fun TrackMapboxCanvas(
     var snapshotRequested by remember(snapshotCacheKey) { mutableStateOf(false) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     val shouldCaptureSnapshot = !interactive && !snapshotCacheKey.isNullOrBlank()
+    val density = LocalDensity.current
+    val indicatorOffset = remember(viewportPadding, density) {
+        with(density) {
+            IntOffset(
+                x = ((viewportPadding.start - viewportPadding.end) / 2).roundToPx(),
+                y = ((viewportPadding.top - viewportPadding.bottom) / 2).roundToPx(),
+            )
+        }
+    }
     if (snapshotBitmap != null) {
-        Image(
-            bitmap = snapshotBitmap!!.asImageBitmap(),
-            contentDescription = null,
-            modifier = modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-        )
+        Box(modifier = modifier.fillMaxSize()) {
+            Image(
+                bitmap = snapshotBitmap!!.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+            )
+            if (showCenterIndicator) {
+                TrackMapCenterIndicator(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset { indicatorOffset },
+                )
+            }
+        }
         return
     }
 
@@ -105,7 +131,6 @@ fun TrackMapboxCanvas(
             pinchScrollEnabled = interactive
         }
     }
-    val density = LocalDensity.current
     val resolvedPadding = remember(viewportPadding, density) {
         with(density) {
             EdgeInsets(
@@ -125,72 +150,109 @@ fun TrackMapboxCanvas(
     val endIcon = remember(context) {
         IconImage(MapMarkerIconFactory.bitmapFromDrawableResource(context, R.drawable.ic_route_end_marker))
     }
+    val centerIcon = remember(context) {
+        IconImage(MapMarkerIconFactory.bitmapFromDrawableResource(context, R.drawable.ic_route_cluster_center))
+    }
 
-    MapboxMap(
-        modifier = modifier,
-        mapViewportState = mapViewportState,
-        mapState = mapState,
-        compass = {},
-        scaleBar = {},
-    ) {
-        state.polylines.forEach { polyline ->
-            key(polyline.id) {
-                PolylineAnnotation(points = polyline.points.map { it.toMapboxPoint() }) {
-                    lineColor = Color(polyline.colorArgb)
-                    lineWidth = polyline.width
-                    lineJoin = LineJoin.ROUND
-                    lineOpacity = 0.96
-                }
-            }
-        }
-
-        state.markers.forEach { marker ->
-            val icon = when (marker.kind) {
-                TrackMapMarkerKind.HOME -> homeIcon
-                TrackMapMarkerKind.START -> startIcon
-                TrackMapMarkerKind.END -> endIcon
-            }
-            key(marker.id) {
-                PointAnnotation(point = marker.coordinate.toMapboxPoint()) {
-                    iconImage = icon
-                    iconAnchor = IconAnchor.CENTER
-                    iconSize = when (marker.kind) {
-                        TrackMapMarkerKind.HOME -> 1.0
-                        TrackMapMarkerKind.START,
-                        TrackMapMarkerKind.END,
-                        -> 0.92
+    Box(modifier = modifier.fillMaxSize()) {
+        MapboxMap(
+            modifier = Modifier.fillMaxSize(),
+            mapViewportState = mapViewportState,
+            mapState = mapState,
+            compass = {},
+            scaleBar = {},
+        ) {
+            state.polylines.forEach { polyline ->
+                key(polyline.id) {
+                    val mapboxPoints = remember(polyline.points) {
+                        polyline.points.map { it.toMapboxPoint() }
+                    }
+                    PolylineAnnotation(points = mapboxPoints) {
+                        lineColor = Color(polyline.colorArgb)
+                        lineWidth = polyline.width
+                        lineJoin = LineJoin.ROUND
+                        lineOpacity = 0.96
                     }
                 }
             }
-        }
 
-        if (shouldCaptureSnapshot && snapshotRequested) {
-            MapEffect(snapshotCacheKey, snapshotRequested) { mapView ->
-                mapView.snapshot { bitmap ->
-                    if (bitmap != null && !snapshotCacheKey.isNullOrBlank()) {
-                        mainHandler.post {
-                            TrackMapSnapshotCache.put(snapshotCacheKey, bitmap)
-                            snapshotBitmap = bitmap
-                            onSnapshotCached?.invoke()
+            state.markers.forEach { marker ->
+                val icon = when (marker.kind) {
+                    TrackMapMarkerKind.HOME -> homeIcon
+                    TrackMapMarkerKind.START -> startIcon
+                    TrackMapMarkerKind.END -> endIcon
+                    TrackMapMarkerKind.CENTER -> centerIcon
+                }
+                key(marker.id) {
+                    PointAnnotation(point = marker.coordinate.toMapboxPoint()) {
+                        iconImage = icon
+                        iconAnchor = IconAnchor.CENTER
+                        iconSize = when (marker.kind) {
+                            TrackMapMarkerKind.HOME -> 1.0
+                            TrackMapMarkerKind.CENTER -> 0.92
+                            TrackMapMarkerKind.START,
+                            TrackMapMarkerKind.END,
+                            -> 0.92
                         }
                     }
                 }
             }
+
+            if (shouldCaptureSnapshot && snapshotRequested) {
+                MapEffect(snapshotCacheKey, snapshotRequested) { mapView ->
+                    mapView.snapshot { bitmap ->
+                        if (bitmap != null && !snapshotCacheKey.isNullOrBlank()) {
+                            mainHandler.post {
+                                TrackMapSnapshotCache.put(snapshotCacheKey, bitmap)
+                                snapshotBitmap = bitmap
+                                onSnapshotCached?.invoke()
+                            }
+                        }
+                    }
+                }
+            }
+
+            MapEffect(state.viewportRequest?.sequence, resolvedPadding) { mapView ->
+                val request = state.viewportRequest
+                if (request is TrackMapViewportRequest.Center) {
+                    mapView.mapboxMap.setCamera(
+                        cameraOptions {
+                            center(request.coordinate.toMapboxPoint())
+                            zoom(request.zoom)
+                            padding(resolvedPadding)
+                        }
+                    )
+                }
+            }
+
+            MapEffect(interactive, onUserGestureMove) { mapView ->
+                if (!interactive || onUserGestureMove == null) return@MapEffect
+                val moveListener = object : OnMoveListener {
+                    override fun onMoveBegin(detector: MoveGestureDetector) {
+                        onUserGestureMove()
+                    }
+
+                    override fun onMove(detector: MoveGestureDetector): Boolean = false
+
+                    override fun onMoveEnd(detector: MoveGestureDetector) = Unit
+                }
+                mapView.gestures.addOnMoveListener(moveListener)
+            }
+        }
+
+        if (showCenterIndicator) {
+            TrackMapCenterIndicator(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset { indicatorOffset },
+            )
         }
     }
 
     LaunchedEffect(state.viewportRequest?.sequence) {
         when (val request = state.viewportRequest) {
             null -> Unit
-            is TrackMapViewportRequest.Center -> {
-                mapViewportState.easeTo(
-                    cameraOptions {
-                        center(request.coordinate.toMapboxPoint())
-                        zoom(request.zoom)
-                        padding(resolvedPadding)
-                    }
-                )
-            }
+            is TrackMapViewportRequest.Center -> Unit
 
             is TrackMapViewportRequest.Fit -> {
                 val coordinates = request.coordinates

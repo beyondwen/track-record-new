@@ -80,9 +80,7 @@ class MapActivity : AppCompatActivity() {
         val generation = nextRenderGeneration()
         val appContext = applicationContext
         AppTaskExecutor.runOnIo {
-            val renderableSegments = TrackPathSanitizer.renderableSegments(item.segments)
-            val flattenedPoints = item.segments.flatten()
-            val viewportPoints = renderableSegments.flatten().ifEmpty { flattenedPoints }
+            val preparedGeometry = prepareHistoryGeometry(item.segments)
             val preparedState = MapScreenUiState(
                 title = item.displayTitle,
                 timeText = item.formattedDateDetail,
@@ -96,12 +94,10 @@ class MapActivity : AppCompatActivity() {
                 distanceText = item.formattedDistance,
                 durationText = item.formattedDurationDetail,
                 speedText = item.formattedSpeed,
-                altitudeLegend = buildAltitudeLegend(appContext, viewportPoints),
+                altitudeLegend = buildAltitudeLegend(appContext, preparedGeometry.viewportPoints),
                 mapState = historySceneState(
                     item = item,
-                    renderableSegments = renderableSegments,
-                    viewportPoints = viewportPoints,
-                    flattenedPoints = flattenedPoints,
+                    preparedGeometry = preparedGeometry,
                 ),
             )
             AppTaskExecutor.runOnMain {
@@ -122,46 +118,80 @@ class MapActivity : AppCompatActivity() {
 
     private fun historySceneState(
         item: HistoryDayItem,
-        renderableSegments: List<List<TrackPoint>>,
-        viewportPoints: List<TrackPoint>,
-        flattenedPoints: List<TrackPoint>,
+        preparedGeometry: PreparedHistoryGeometry,
     ): TrackMapSceneState {
         val markers = buildList {
-            val startPoint = renderableSegments.firstOrNull()?.firstOrNull() ?: flattenedPoints.firstOrNull()
-            val endPoint = renderableSegments.lastOrNull()?.lastOrNull() ?: flattenedPoints.lastOrNull()
-            startPoint?.let { point ->
-                add(
-                    TrackMapMarker(
-                        id = "history-start",
-                        coordinate = point.toGeoCoordinate(),
-                        kind = TrackMapMarkerKind.START,
+            if (preparedGeometry.renderableSegments.isNotEmpty()) {
+                val startPoint = preparedGeometry.renderableSegments.firstOrNull()?.firstOrNull()
+                val endPoint = preparedGeometry.renderableSegments.lastOrNull()?.lastOrNull()
+                startPoint?.let { point ->
+                    add(
+                        TrackMapMarker(
+                            id = "history-start",
+                            coordinate = point.toGeoCoordinate(),
+                            kind = TrackMapMarkerKind.START,
+                        )
                     )
-                )
-            }
-            endPoint?.let { point ->
-                add(
-                    TrackMapMarker(
-                        id = "history-end",
-                        coordinate = point.toGeoCoordinate(),
-                        kind = TrackMapMarkerKind.END,
+                }
+                endPoint?.let { point ->
+                    add(
+                        TrackMapMarker(
+                            id = "history-end",
+                            coordinate = point.toGeoCoordinate(),
+                            kind = TrackMapMarkerKind.END,
+                        )
                     )
-                )
+                }
             }
+            addAll(preparedGeometry.clusterMarkers)
         }
 
         return TrackMapSceneState(
             polylines = TrackPolylineBuilder.buildCompact(
-                segments = renderableSegments,
+                segments = preparedGeometry.renderableSegments,
                 idPrefix = "history",
                 width = 6.6,
             ),
             markers = markers,
             viewportRequest = TrackMapViewportRequest.Fit(
                 sequence = nextViewportSequence(),
-                coordinates = viewportCoordinates(viewportPoints),
+                coordinates = viewportCoordinates(preparedGeometry.viewportPoints),
                 singlePointZoom = 17.0,
                 maxZoom = 17.2,
             ),
+        )
+    }
+
+    private fun prepareHistoryGeometry(
+        sourceSegments: List<List<TrackPoint>>,
+    ): PreparedHistoryGeometry {
+        val collapsedSegments = mutableListOf<List<TrackPoint>>()
+        val clusterMarkers = mutableListOf<TrackMapMarker>()
+        sourceSegments.forEachIndexed { segmentIndex, segment ->
+            val collapsed = TrackRenderClusterCollapser.collapse(segment)
+            if (collapsed.points.size >= 2) {
+                collapsedSegments += collapsed.points
+            }
+            collapsed.clusterCenters.forEachIndexed { clusterIndex, point ->
+                clusterMarkers += TrackMapMarker(
+                    id = "history-cluster-$segmentIndex-$clusterIndex",
+                    coordinate = point.toGeoCoordinate(),
+                    kind = TrackMapMarkerKind.CENTER,
+                )
+            }
+        }
+
+        val renderableSegments = TrackPathSanitizer.renderableSegments(collapsedSegments)
+        val processedPoints = collapsedSegments.flatten()
+        val viewportPoints = renderableSegments.flatten()
+            .ifEmpty { clusterMarkers.map { it.coordinate }.map(::toTrackPoint) }
+            .ifEmpty { processedPoints }
+            .ifEmpty { sourceSegments.flatten() }
+
+        return PreparedHistoryGeometry(
+            renderableSegments = renderableSegments,
+            viewportPoints = viewportPoints,
+            clusterMarkers = clusterMarkers,
         )
     }
 
@@ -216,5 +246,20 @@ class MapActivity : AppCompatActivity() {
         renderGeneration += 1
         return renderGeneration
     }
+
+    private fun toTrackPoint(coordinate: GeoCoordinate): TrackPoint {
+        return TrackPoint(
+            latitude = coordinate.latitude,
+            longitude = coordinate.longitude,
+            wgs84Latitude = coordinate.latitude,
+            wgs84Longitude = coordinate.longitude,
+        )
+    }
+
+    private data class PreparedHistoryGeometry(
+        val renderableSegments: List<List<TrackPoint>>,
+        val viewportPoints: List<TrackPoint>,
+        val clusterMarkers: List<TrackMapMarker>,
+    )
 
 }
