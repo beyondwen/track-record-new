@@ -15,6 +15,11 @@ data class TrainingSampleRow(
     val startScore: Double,
     val stopScore: Double,
     val finalDecision: String,
+    val gpsQualityPass: Boolean,
+    val motionEvidencePass: Boolean,
+    val frequentPlaceClearPass: Boolean,
+    val feedbackEligible: Boolean,
+    val feedbackBlockedReason: String?,
     val features: Map<String, Double>,
     val feedbackLabel: String?,
 )
@@ -37,6 +42,11 @@ object TrainingSampleExporter {
                         startScore = event.startScore,
                         stopScore = event.stopScore,
                         finalDecision = event.finalDecision,
+                        gpsQualityPass = event.gpsQualityPass,
+                        motionEvidencePass = event.motionEvidencePass,
+                        frequentPlaceClearPass = event.frequentPlaceClearPass,
+                        feedbackEligible = event.feedbackEligible,
+                        feedbackBlockedReason = event.feedbackBlockedReason,
                         features = parseFeatures(event.featureJson),
                         feedbackLabel = feedbackByEventId[event.eventId],
                     )

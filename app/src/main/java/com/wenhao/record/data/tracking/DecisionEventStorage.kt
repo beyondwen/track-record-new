@@ -5,6 +5,7 @@ import com.wenhao.record.data.local.TrackDatabase
 import com.wenhao.record.data.local.decision.DecisionEventEntity
 import com.wenhao.record.data.local.decision.DecisionEventWithFeedbackRow
 import com.wenhao.record.tracking.decision.DecisionFrame
+import com.wenhao.record.tracking.decision.DecisionGateBlockReason
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -18,6 +19,8 @@ data class DecisionReviewItem(
     val startScore: Double,
     val stopScore: Double,
     val finalDecision: String,
+    val feedbackEligible: Boolean,
+    val feedbackBlockedReason: String?,
     val feedbackLabel: String?,
 )
 
@@ -28,6 +31,7 @@ object DecisionEventStorage {
     }
 
     fun saveFrame(context: Context, frame: DecisionFrame): Long {
+        val gateInput = frame.vector.gateInput
         val entity = DecisionEventEntity(
             timestampMillis = frame.vector.timestampMillis,
             phase = frame.vector.phase.name,
@@ -36,6 +40,16 @@ object DecisionEventStorage {
             stopScore = frame.stopScore,
             finalDecision = frame.finalDecision.name,
             featureJson = JSONObject(frame.vector.features).toString(),
+            gpsQualityPass = gateInput.gpsSampleCount30s >= 2.0 &&
+                gateInput.gpsAccuracyAvg30s in 0.0..35.0,
+            motionEvidencePass = gateInput.motionEvidence30s,
+            frequentPlaceClearPass = !gateInput.insideFrequentPlace,
+            feedbackEligible = when (frame.finalDecision) {
+                com.wenhao.record.tracking.decision.FinalDecision.START -> frame.gateResult.startFeedbackEligible
+                com.wenhao.record.tracking.decision.FinalDecision.STOP -> frame.gateResult.stopFeedbackEligible
+                com.wenhao.record.tracking.decision.FinalDecision.HOLD -> false
+            },
+            feedbackBlockedReason = frame.gateResult.feedbackBlockedReason?.name,
         )
         return runBlockingIo {
             TrackDatabase.getInstance(context.applicationContext)
@@ -65,6 +79,8 @@ object DecisionEventStorage {
             startScore = row.startScore,
             stopScore = row.stopScore,
             finalDecision = row.finalDecision,
+            feedbackEligible = row.feedbackEligible,
+            feedbackBlockedReason = row.feedbackBlockedReason,
             feedbackLabel = row.feedbackLabel,
         )
     }

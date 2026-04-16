@@ -1,5 +1,8 @@
 package com.wenhao.record.tracking.pipeline
 
+import com.wenhao.record.tracking.TrackingPhase
+import com.wenhao.record.tracking.decision.DecisionGateInput
+
 class FeatureWindowAggregator(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -19,11 +22,37 @@ class FeatureWindowAggregator(
         features["candidate_duration_seconds"] = latest.candidateStateDurationMillis / 1000.0
         features["protection_remaining_seconds"] = latest.protectionRemainingMillis / 1000.0
         features["is_recording"] = latest.isRecording.toBinaryDouble()
+        features["gps_sample_count_30s"] = snapshots
+            .filter { it.timestampMillis >= latest.timestampMillis - WINDOW_30S_MS }
+            .count { it.accuracyMeters != null }
+            .toDouble()
+        features["motion_evidence_30s"] = if (
+            snapshots
+                .filter { it.timestampMillis >= latest.timestampMillis - WINDOW_30S_MS }
+                .any { it.stepDelta > 0 || (it.accelerationMagnitude ?: 0f) >= MOTION_EVIDENCE_ACCELERATION_THRESHOLD }
+        ) {
+            1.0
+        } else {
+            0.0
+        }
+        features["inside_frequent_place_current"] = latest.insideFrequentPlace.toBinaryDouble()
+        val gateInput = DecisionGateInput(
+            gpsSampleCount30s = features.getValue("gps_sample_count_30s"),
+            gpsAccuracyAvg30s = features.getValue("accuracy_avg_30s"),
+            motionEvidence30s = features.getValue("motion_evidence_30s") >= 1.0,
+            insideFrequentPlace = latest.insideFrequentPlace,
+            isRecording = latest.isRecording,
+            startScore = 0.0,
+            stopScore = 0.0,
+            recordingDurationSeconds = latest.candidateStateDurationMillis / 1000.0,
+            stopObservationPassed = latest.phase == TrackingPhase.SUSPECT_STOPPING,
+        )
         return FeatureVector(
             timestampMillis = latest.timestampMillis,
             features = features,
             isRecording = latest.isRecording,
             phase = latest.phase,
+            gateInput = gateInput,
         )
     }
 
@@ -70,5 +99,6 @@ class FeatureWindowAggregator(
         const val WINDOW_30S_MS = 30_000L
         const val WINDOW_60S_MS = 60_000L
         const val WINDOW_180S_MS = 180_000L
+        const val MOTION_EVIDENCE_ACCELERATION_THRESHOLD = 0.85f
     }
 }

@@ -61,6 +61,11 @@ class BackgroundTrackingService : Service() {
         const val ACTION_RELOAD_DECISION_MODEL = "com.wenhao.record.action.RELOAD_DECISION_MODEL"
         private const val UNKNOWN_SSID_LITERAL = "<unknown ssid>"
 
+        internal enum class SessionFinalizationAction {
+            SCHEDULE,
+            CANCEL,
+        }
+
         private const val CHANNEL_ID = "smart_tracking"
         private const val NOTIFICATION_ID = 1107
 
@@ -126,6 +131,17 @@ class BackgroundTrackingService : Service() {
                 action = ACTION_RELOAD_DECISION_MODEL
             }
             context.startService(intent)
+        }
+
+        internal fun sessionFinalizationActionForPhase(
+            phase: TrackingPhase,
+        ): SessionFinalizationAction {
+            return when (phase) {
+                TrackingPhase.SUSPECT_STOPPING -> SessionFinalizationAction.SCHEDULE
+                TrackingPhase.IDLE,
+                TrackingPhase.SUSPECT_MOVING,
+                TrackingPhase.ACTIVE -> SessionFinalizationAction.CANCEL
+            }
         }
     }
 
@@ -297,6 +313,10 @@ class BackgroundTrackingService : Service() {
     private fun enterPhase(phase: TrackingPhase, reason: String, emitEvent: Boolean) {
         currentPhase = phase
         phaseEnteredAt = System.currentTimeMillis()
+        when (sessionFinalizationActionForPhase(phase)) {
+            SessionFinalizationAction.SCHEDULE -> scheduleFinalizeForCurrentSession()
+            SessionFinalizationAction.CANCEL -> trackingHandler.removeCallbacks(finalizeRunnable)
+        }
         updateWakeLockForPhase(phase)
         if (emitEvent) {
             AutoTrackDiagnosticsStorage.markEvent(this, "${phaseLabel(phase)}：$reason")
@@ -1080,6 +1100,7 @@ class BackgroundTrackingService : Service() {
                     startScore = frame.startScore,
                     stopScore = frame.stopScore,
                     finalDecision = frame.finalDecision.name,
+                    gateSummary = frame.gateResult.feedbackBlockedReason?.name ?: "PASS",
                 )
             },
         )

@@ -158,6 +158,7 @@ object AutoTrackDiagnosticsStorage {
         startScore: Double,
         stopScore: Double,
         finalDecision: String,
+        gateSummary: String? = null,
     ) {
         update(
             context = context,
@@ -166,7 +167,11 @@ object AutoTrackDiagnosticsStorage {
             current.copy(
                 lastStartScore = startScore,
                 lastStopScore = stopScore,
-                lastDecision = finalDecision,
+                lastDecision = if (gateSummary.isNullOrBlank()) {
+                    finalDecision
+                } else {
+                    "$finalDecision / $gateSummary"
+                },
             )
         }
     }

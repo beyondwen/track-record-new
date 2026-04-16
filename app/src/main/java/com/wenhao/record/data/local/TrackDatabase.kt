@@ -25,7 +25,7 @@ import com.wenhao.record.data.local.history.HistoryRecordEntity
         DecisionEventEntity::class,
         DecisionFeedbackEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 abstract class TrackDatabase : RoomDatabase() {
@@ -72,7 +72,12 @@ abstract class TrackDatabase : RoomDatabase() {
                         `startScore` REAL NOT NULL,
                         `stopScore` REAL NOT NULL,
                         `finalDecision` TEXT NOT NULL,
-                        `featureJson` TEXT NOT NULL
+                        `featureJson` TEXT NOT NULL,
+                        `gpsQualityPass` INTEGER NOT NULL DEFAULT 0,
+                        `motionEvidencePass` INTEGER NOT NULL DEFAULT 0,
+                        `frequentPlaceClearPass` INTEGER NOT NULL DEFAULT 0,
+                        `feedbackEligible` INTEGER NOT NULL DEFAULT 0,
+                        `feedbackBlockedReason` TEXT
                     )
                     """.trimIndent()
                 )
@@ -89,6 +94,26 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE decision_event ADD COLUMN gpsQualityPass INTEGER NOT NULL DEFAULT 0"
+                )
+                database.execSQL(
+                    "ALTER TABLE decision_event ADD COLUMN motionEvidencePass INTEGER NOT NULL DEFAULT 0"
+                )
+                database.execSQL(
+                    "ALTER TABLE decision_event ADD COLUMN frequentPlaceClearPass INTEGER NOT NULL DEFAULT 0"
+                )
+                database.execSQL(
+                    "ALTER TABLE decision_event ADD COLUMN feedbackEligible INTEGER NOT NULL DEFAULT 0"
+                )
+                database.execSQL(
+                    "ALTER TABLE decision_event ADD COLUMN feedbackBlockedReason TEXT"
+                )
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -99,7 +124,7 @@ abstract class TrackDatabase : RoomDatabase() {
                     TrackDatabase::class.java,
                     "track_record.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                     .also { instance = it }
             }

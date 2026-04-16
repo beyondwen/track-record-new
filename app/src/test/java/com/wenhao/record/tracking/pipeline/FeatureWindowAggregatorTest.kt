@@ -36,6 +36,9 @@ class FeatureWindowAggregatorTest {
         assertNotNull(vector)
         assertEquals(3.0, vector!!.features.getValue("steps_30s"), 0.0001)
         assertEquals(12.0, vector.features.getValue("accuracy_avg_30s"), 0.0001)
+        assertEquals(1.0, vector.features.getValue("gps_sample_count_30s"), 0.0001)
+        assertEquals(1.0, vector.features.getValue("motion_evidence_30s"), 0.0001)
+        assertEquals(1.0, vector.features.getValue("inside_frequent_place_current"), 0.0001)
         assertEquals(1.0, vector.features.getValue("inside_frequent_place_180s_ratio"), 0.0001)
     }
 }

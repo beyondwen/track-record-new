@@ -29,6 +29,8 @@ interface DecisionDao {
             e.startScore AS startScore,
             e.stopScore AS stopScore,
             e.finalDecision AS finalDecision,
+            e.feedbackEligible AS feedbackEligible,
+            e.feedbackBlockedReason AS feedbackBlockedReason,
             (
                 SELECT df.feedbackType
                 FROM decision_feedback df
@@ -38,6 +40,7 @@ interface DecisionDao {
             ) AS feedbackLabel
         FROM decision_event e
         WHERE e.finalDecision IN ('START', 'STOP')
+          AND e.feedbackEligible = 1
         ORDER BY e.timestampMillis DESC
         LIMIT :limit
         """

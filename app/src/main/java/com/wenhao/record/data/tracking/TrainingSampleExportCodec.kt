@@ -21,6 +21,11 @@ object TrainingSampleExportCodec {
             put("startScore", row.startScore)
             put("stopScore", row.stopScore)
             put("finalDecision", row.finalDecision)
+            put("gpsQualityPass", row.gpsQualityPass)
+            put("motionEvidencePass", row.motionEvidencePass)
+            put("frequentPlaceClearPass", row.frequentPlaceClearPass)
+            put("feedbackEligible", row.feedbackEligible)
+            put("feedbackBlockedReason", row.feedbackBlockedReason)
             put("features", JSONObject(row.features))
             put("feedbackLabel", row.feedbackLabel)
         }

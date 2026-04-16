@@ -14,6 +14,11 @@ data class DecisionEventEntity(
     val stopScore: Double,
     val finalDecision: String,
     val featureJson: String,
+    val gpsQualityPass: Boolean,
+    val motionEvidencePass: Boolean,
+    val frequentPlaceClearPass: Boolean,
+    val feedbackEligible: Boolean,
+    val feedbackBlockedReason: String?,
 )
 
 @Entity(tableName = "decision_feedback")
@@ -33,5 +38,7 @@ data class DecisionEventWithFeedbackRow(
     val startScore: Double,
     val stopScore: Double,
     val finalDecision: String,
+    val feedbackEligible: Boolean,
+    val feedbackBlockedReason: String?,
     val feedbackLabel: String?,
 )
