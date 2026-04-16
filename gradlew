@@ -88,6 +88,34 @@ APP_BASE_NAME=${0##*/}
 # Discard cd standard output in case $CDPATH is set (https://github.com/gradle/gradle/issues/25036)
 APP_HOME=$( cd -P "${APP_HOME:-./}" > /dev/null && printf '%s\n' "$PWD" ) || exit
 
+if [ -z "${ANDROID_HOME:-}" ] && [ -z "${ANDROID_SDK_ROOT:-}" ] ; then
+    for sdk_candidate in \
+        /mnt/d/data/AndroidSDK \
+        "$HOME/Android/Sdk" \
+        "$HOME/AndroidSDK"
+    do
+        if [ -d "$sdk_candidate" ] ; then
+            ANDROID_HOME=$sdk_candidate
+            ANDROID_SDK_ROOT=$sdk_candidate
+            export ANDROID_HOME ANDROID_SDK_ROOT
+            break
+        fi
+    done
+fi
+
+if [ -z "${GRADLE_USER_HOME:-}" ] ; then
+    for gradle_home_candidate in \
+        /mnt/d/data/GradleCache \
+        "$APP_HOME/.wsl-tools/gradle-user-home"
+    do
+        if [ -d "$gradle_home_candidate" ] ; then
+            GRADLE_USER_HOME=$gradle_home_candidate
+            export GRADLE_USER_HOME
+            break
+        fi
+    done
+fi
+
 # Use the maximum available, or set MAX_FD != -1 to use that value.
 MAX_FD=maximum
 

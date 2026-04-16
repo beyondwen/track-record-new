@@ -12,6 +12,9 @@ data class AutoTrackDiagnostics(
     val lastEventAt: Long = 0L,
     val lastLocationDecision: String = "\u6682\u672a\u6536\u5230\u5b9a\u4f4d",
     val lastLocationAt: Long = 0L,
+    val lastStartScore: Double? = null,
+    val lastStopScore: Double? = null,
+    val lastDecision: String? = null,
     val lastLocationAccuracyMeters: Float? = null,
     val acceptedPointCount: Int = 0,
     val lastSavedSummary: String? = null,
@@ -26,6 +29,9 @@ object AutoTrackDiagnosticsStorage {
     private const val KEY_LAST_EVENT_AT = "last_event_at"
     private const val KEY_LAST_LOCATION_DECISION = "last_location_decision"
     private const val KEY_LAST_LOCATION_AT = "last_location_at"
+    private const val KEY_LAST_START_SCORE = "last_start_score"
+    private const val KEY_LAST_STOP_SCORE = "last_stop_score"
+    private const val KEY_LAST_DECISION = "last_decision"
     private const val KEY_LAST_LOCATION_ACCURACY = "last_location_accuracy"
     private const val KEY_ACCEPTED_POINT_COUNT = "accepted_point_count"
     private const val KEY_LAST_SAVED_SUMMARY = "last_saved_summary"
@@ -71,6 +77,17 @@ object AutoTrackDiagnosticsStorage {
                 ).orEmpty()
             ),
             lastLocationAt = prefs.getLong(KEY_LAST_LOCATION_AT, 0L),
+            lastStartScore = if (prefs.contains(KEY_LAST_START_SCORE)) {
+                prefs.getFloat(KEY_LAST_START_SCORE, 0f).toDouble()
+            } else {
+                null
+            },
+            lastStopScore = if (prefs.contains(KEY_LAST_STOP_SCORE)) {
+                prefs.getFloat(KEY_LAST_STOP_SCORE, 0f).toDouble()
+            } else {
+                null
+            },
+            lastDecision = TrackingTextSanitizer.normalize(prefs.getString(KEY_LAST_DECISION, null)),
             lastLocationAccuracyMeters = if (prefs.contains(KEY_LAST_LOCATION_ACCURACY)) {
                 prefs.getFloat(KEY_LAST_LOCATION_ACCURACY, 0f)
             } else {
@@ -132,6 +149,24 @@ object AutoTrackDiagnosticsStorage {
                 lastLocationAt = now,
                 lastLocationAccuracyMeters = accuracyMeters,
                 acceptedPointCount = acceptedPointCount
+            )
+        }
+    }
+
+    fun markDecisionScores(
+        context: Context,
+        startScore: Double,
+        stopScore: Double,
+        finalDecision: String,
+    ) {
+        update(
+            context = context,
+            throttleWrites = true
+        ) { current ->
+            current.copy(
+                lastStartScore = startScore,
+                lastStopScore = stopScore,
+                lastDecision = finalDecision,
             )
         }
     }
@@ -226,6 +261,21 @@ object AutoTrackDiagnosticsStorage {
             putLong(KEY_LAST_EVENT_AT, diagnostics.lastEventAt)
             putString(KEY_LAST_LOCATION_DECISION, TrackingTextSanitizer.normalize(diagnostics.lastLocationDecision))
             putLong(KEY_LAST_LOCATION_AT, diagnostics.lastLocationAt)
+            if (diagnostics.lastStartScore != null) {
+                putFloat(KEY_LAST_START_SCORE, diagnostics.lastStartScore.toFloat())
+            } else {
+                remove(KEY_LAST_START_SCORE)
+            }
+            if (diagnostics.lastStopScore != null) {
+                putFloat(KEY_LAST_STOP_SCORE, diagnostics.lastStopScore.toFloat())
+            } else {
+                remove(KEY_LAST_STOP_SCORE)
+            }
+            if (diagnostics.lastDecision != null) {
+                putString(KEY_LAST_DECISION, TrackingTextSanitizer.normalize(diagnostics.lastDecision))
+            } else {
+                remove(KEY_LAST_DECISION)
+            }
             if (diagnostics.lastLocationAccuracyMeters != null) {
                 putFloat(KEY_LAST_LOCATION_ACCURACY, diagnostics.lastLocationAccuracyMeters)
             } else {

@@ -7,6 +7,8 @@
     <string name="compose_history_total_duration">累计 %1$s</string>
     <string name="compose_history_export">导出备份</string>
     <string name="compose_history_import">导入恢复</string>
+    <string name="compose_history_training_export">导出样本</string>
+    <string name="compose_history_model_import">导入模型</string>
     <string name="compose_history_empty_title">还没有历史记录</string>
     <string name="compose_history_empty_message">完成一次有效出行后，这里会自动沉淀当天的轨迹摘要与统计信息。</string>
     <string name="compose_history_empty_action">返回记录页</string>
@@ -36,4 +38,16 @@
     <string name="compose_history_log_title">行程日志</string>
     <string name="compose_history_view_all">查看全部</string>
     <string name="compose_history_card_meta">共 %1$d 段行程 · 最近 %2$s</string>
+    <string name="compose_history_feedback_title">开始 / 结束纠错</string>
+    <string name="compose_history_feedback_subtitle">这里展示最近的自动开始与自动结束决策，点进去可以补录人工反馈。</string>
+    <string name="compose_history_feedback_pending">待纠错</string>
+    <string name="compose_history_feedback_action">提交反馈</string>
+    <string name="compose_history_feedback_update_action">更新反馈</string>
+    <string name="compose_history_feedback_sheet_title">纠正这次自动判定</string>
+    <string name="compose_history_feedback_sheet_subtitle">选择更接近实际情况的反馈，后续可用于训练开始 / 结束决策模型。</string>
+    <string name="compose_history_feedback_start_early">开始太早</string>
+    <string name="compose_history_feedback_start_late">开始太晚</string>
+    <string name="compose_history_feedback_stop_early">结束太早</string>
+    <string name="compose_history_feedback_stop_late">结束太晚</string>
+    <string name="compose_history_feedback_correct">判定正确</string>
 </resources>

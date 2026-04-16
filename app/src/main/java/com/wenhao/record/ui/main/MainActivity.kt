@@ -35,12 +35,16 @@ import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
+import com.wenhao.record.data.tracking.DecisionFeedbackType
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
+import com.wenhao.record.data.tracking.TrainingSampleExportCodec
+import com.wenhao.record.data.tracking.TrainingSampleExporter
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.permissions.PermissionHelper
 import com.wenhao.record.stability.CrashLogStore
 import com.wenhao.record.tracking.BackgroundTrackingService
 import com.wenhao.record.tracking.LocationSelectionUtils
+import com.wenhao.record.tracking.model.DecisionModelRepository
 import com.wenhao.record.ui.dashboard.DashboardUiController
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.barometer.BarometerController
@@ -102,6 +106,26 @@ class MainActivity : AppCompatActivity() {
             setHistoryTransferBusy(false)
         } else {
             importHistoryFromUri(uri)
+        }
+    }
+
+    private val exportTrainingSamplesLauncher = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) {
+            setHistoryTransferBusy(false)
+        } else {
+            exportTrainingSamplesToUri(uri)
+        }
+    }
+
+    private val importDecisionModelLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) {
+            setHistoryTransferBusy(false)
+        } else {
+            importDecisionModelFromUri(uri)
         }
     }
 
@@ -168,6 +192,18 @@ class MainActivity : AppCompatActivity() {
                     onHistoryDelete = ::confirmDeleteHistoryDay,
                     onHistoryExport = ::requestHistoryExport,
                     onHistoryImport = ::requestHistoryImport,
+                    onTrainingSampleExport = ::requestTrainingSampleExport,
+                    onDecisionModelImport = ::requestDecisionModelImport,
+                    onHistoryDecisionFeedback = { eventId ->
+                        historyController.setDecisionFeedbackSheet(eventId = eventId, visible = true)
+                    },
+                    onHistoryFeedbackSubmit = { type ->
+                        historyController.submitFeedback(type)
+                        Toast.makeText(this, feedbackSavedText(type), Toast.LENGTH_SHORT).show()
+                    },
+                    onHistoryFeedbackDismiss = {
+                        historyController.setDecisionFeedbackSheet(eventId = 0L, visible = false)
+                    },
                 )
             }
         }
@@ -186,7 +222,6 @@ class MainActivity : AppCompatActivity() {
         currentTab = tab
         val isRecord = tab == MainTab.RECORD
         dashboardUiController.setRecordTabSelected(isRecord)
-        historyController.setTabSelected(isRecord)
 
         if (tab == MainTab.BAROMETER) {
             refreshPressureSensorCapability()
@@ -330,6 +365,7 @@ class MainActivity : AppCompatActivity() {
         val permissionSummary = buildPermissionSummarySafe()
         val eventSummary = buildTimedSummary(diagnostics.lastEventAt, diagnostics.lastEvent)
         val locationSummary = buildLocationSummary(diagnostics)
+        val decisionSummary = buildDecisionSummary(diagnostics)
         val saveSummary = diagnostics.lastSavedSummary?.let { summary ->
             buildTimedSummary(diagnostics.lastSavedAt, summary)
         } ?: "还没有自动保存过有效行程"
@@ -340,6 +376,7 @@ class MainActivity : AppCompatActivity() {
             append("服务：").append(diagnostics.serviceStatus).append('\n')
             append("最近事件：").append(eventSummary).append('\n')
             append("最近定位：").append(locationSummary).append('\n')
+            append("模型决策：").append(decisionSummary).append('\n')
             append("最近保存：").append(saveSummary)
             if (!crashSummary.isNullOrBlank()) {
                 append('\n').append("最近异常：").append(crashSummary)
@@ -355,6 +392,9 @@ class MainActivity : AppCompatActivity() {
                     "等待定位信号"
                 }
             )
+            if (decisionSummary.isNotBlank()) {
+                append('\n').append(decisionSummary)
+            }
             if (!crashSummary.isNullOrBlank()) {
                 append('\n').append(crashSummary)
             }
@@ -388,6 +428,29 @@ class MainActivity : AppCompatActivity() {
             diagnostics.lastLocationAccuracyMeters?.let { accuracy ->
                 append("，精度约 ").append(accuracy.toInt()).append(" 米")
             }
+        }
+    }
+
+    private fun buildDecisionSummary(diagnostics: AutoTrackDiagnostics): String {
+        val decision = diagnostics.lastDecision ?: return "尚未生成模型决策"
+        val parts = mutableListOf<String>()
+        parts += "最终判定 $decision"
+        diagnostics.lastStartScore?.let { score ->
+            parts += "开始 ${"%.2f".format(Locale.US, score)}"
+        }
+        diagnostics.lastStopScore?.let { score ->
+            parts += "结束 ${"%.2f".format(Locale.US, score)}"
+        }
+        return parts.joinToString("，")
+    }
+
+    private fun feedbackSavedText(type: DecisionFeedbackType): String {
+        return when (type) {
+            DecisionFeedbackType.START_TOO_EARLY -> "已标记为开始太早"
+            DecisionFeedbackType.START_TOO_LATE -> "已标记为开始太晚"
+            DecisionFeedbackType.STOP_TOO_EARLY -> "已标记为结束太早"
+            DecisionFeedbackType.STOP_TOO_LATE -> "已标记为结束太晚"
+            DecisionFeedbackType.CORRECT -> "已标记为判定正确"
         }
     }
 
@@ -470,6 +533,84 @@ class MainActivity : AppCompatActivity() {
         if (historyTransferBusy) return
         setHistoryTransferBusy(true)
         importHistoryLauncher.launch(arrayOf("application/json", "text/plain", "text/*"))
+    }
+
+    private fun requestTrainingSampleExport() {
+        if (historyTransferBusy) return
+        val rows = TrainingSampleExporter.exportRows(this)
+        if (rows.isEmpty()) {
+            Toast.makeText(this, "当前没有可导出的训练样本", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        setHistoryTransferBusy(true)
+        val filename = "track-record-training-samples-${
+            SimpleDateFormat("yyyyMMdd-HHmmss", Locale.CHINA).format(Date())
+        }.jsonl"
+        exportTrainingSamplesLauncher.launch(filename)
+    }
+
+    private fun exportTrainingSamplesToUri(uri: Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val rows = TrainingSampleExporter.exportRows(this@MainActivity)
+            if (rows.isEmpty()) {
+                AppTaskExecutor.runOnMain {
+                    with(this@MainActivity) {
+                        setHistoryTransferBusy(false)
+                        Toast.makeText(this, "当前没有可导出的训练样本", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                return@launch
+            }
+
+            val result = runCatching {
+                val payload = TrainingSampleExportCodec.encodeJsonLines(rows)
+                contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
+                    writer.write(payload)
+                } ?: error("Unable to open export stream")
+            }
+            AppTaskExecutor.runOnMain {
+                with(this@MainActivity) {
+                    setHistoryTransferBusy(false)
+                    Toast.makeText(
+                        this,
+                        if (result.isSuccess) "训练样本已导出" else "训练样本导出失败，请重试",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+        }
+    }
+
+    private fun requestDecisionModelImport() {
+        if (historyTransferBusy) return
+        setHistoryTransferBusy(true)
+        importDecisionModelLauncher.launch(arrayOf("application/json", "text/plain", "text/*"))
+    }
+
+    private fun importDecisionModelFromUri(uri: Uri) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                val payload = contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                    reader.readText()
+                } ?: error("Unable to read model bundle")
+                DecisionModelRepository.importBundle(this@MainActivity, payload)
+                if (AutoTrackStorage.isAutoTrackingEnabled(this@MainActivity)) {
+                    BackgroundTrackingService.reloadDecisionModel(this@MainActivity)
+                }
+            }
+
+            AppTaskExecutor.runOnMain {
+                with(this@MainActivity) {
+                    setHistoryTransferBusy(false)
+                    Toast.makeText(
+                        this,
+                        if (result.isSuccess) "决策模型已导入" else "决策模型导入失败，请确认文件格式",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            }
+        }
     }
 
     private fun importHistoryFromUri(uri: Uri) {

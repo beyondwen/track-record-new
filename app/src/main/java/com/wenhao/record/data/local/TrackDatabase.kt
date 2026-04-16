@@ -9,6 +9,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.wenhao.record.data.local.auto.AutoTrackDao
 import com.wenhao.record.data.local.auto.AutoTrackPointEntity
 import com.wenhao.record.data.local.auto.AutoTrackSessionEntity
+import com.wenhao.record.data.local.decision.DecisionDao
+import com.wenhao.record.data.local.decision.DecisionEventEntity
+import com.wenhao.record.data.local.decision.DecisionFeedbackEntity
 import com.wenhao.record.data.local.history.HistoryDao
 import com.wenhao.record.data.local.history.HistoryPointEntity
 import com.wenhao.record.data.local.history.HistoryRecordEntity
@@ -18,9 +21,11 @@ import com.wenhao.record.data.local.history.HistoryRecordEntity
         AutoTrackSessionEntity::class,
         AutoTrackPointEntity::class,
         HistoryRecordEntity::class,
-        HistoryPointEntity::class
+        HistoryPointEntity::class,
+        DecisionEventEntity::class,
+        DecisionFeedbackEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class TrackDatabase : RoomDatabase() {
@@ -28,6 +33,8 @@ abstract class TrackDatabase : RoomDatabase() {
     abstract fun autoTrackDao(): AutoTrackDao
 
     abstract fun historyDao(): HistoryDao
+
+    abstract fun decisionDao(): DecisionDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -53,6 +60,35 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `decision_event` (
+                        `eventId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `timestampMillis` INTEGER NOT NULL,
+                        `phase` TEXT NOT NULL,
+                        `isRecording` INTEGER NOT NULL,
+                        `startScore` REAL NOT NULL,
+                        `stopScore` REAL NOT NULL,
+                        `finalDecision` TEXT NOT NULL,
+                        `featureJson` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `decision_feedback` (
+                        `feedbackId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `eventId` INTEGER NOT NULL,
+                        `feedbackType` TEXT NOT NULL,
+                        `createdAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -63,9 +99,16 @@ abstract class TrackDatabase : RoomDatabase() {
                     TrackDatabase::class.java,
                     "track_record.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { instance = it }
+            }
+        }
+
+        fun closeInstance() {
+            synchronized(this) {
+                instance?.close()
+                instance = null
             }
         }
     }

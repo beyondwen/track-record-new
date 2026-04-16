@@ -7,32 +7,33 @@ import androidx.compose.runtime.setValue
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.tracking.DecisionEventStorage
+import com.wenhao.record.data.tracking.DecisionFeedbackStore
+import com.wenhao.record.data.tracking.DecisionFeedbackType
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 class HistoryController(
     private val context: Context,
 ) {
     private var historyItems: List<HistoryDayItem> = emptyList()
+    private var decisionFeedbackItems: List<HistoryDecisionFeedbackItem> = emptyList()
     private var cachedTotalDistanceKm = 0.0
     private var cachedTotalDurationSeconds = 0
     private var selectedDayStartMillis: Long? = null
+    private var feedbackEventId: Long? = null
+    private var feedbackSheetVisible = false
     private var transferBusy = false
-    private var recordTabSelected = true
 
     var uiState by mutableStateOf(
         HistoryScreenUiState(
             totalDistanceText = formatDistance(0.0),
             totalDurationText = formatDuration(0),
             totalCountText = context.getString(R.string.compose_history_days_value, 0),
-            isRecordTabSelected = true,
         )
     )
         private set
-
-    fun setTabSelected(isRecord: Boolean) {
-        recordTabSelected = isRecord
-        pushState()
-    }
 
     fun setTransferBusy(isBusy: Boolean) {
         transferBusy = isBusy
@@ -41,7 +42,9 @@ class HistoryController(
 
     fun reload() {
         historyItems = HistoryStorage.peekDaily(context)
+        decisionFeedbackItems = loadDecisionFeedbackItems()
         recalculateTotals()
+        updateContent()
     }
 
     fun updateContent() {
@@ -73,15 +76,31 @@ class HistoryController(
         pushState()
     }
 
+    fun setDecisionFeedbackSheet(eventId: Long, visible: Boolean) {
+        feedbackEventId = if (visible) eventId else null
+        feedbackSheetVisible = visible
+        pushState()
+    }
+
+    fun submitFeedback(type: DecisionFeedbackType) {
+        val eventId = feedbackEventId ?: return
+        DecisionFeedbackStore.save(context, eventId, type)
+        decisionFeedbackItems = loadDecisionFeedbackItems()
+        feedbackSheetVisible = false
+        feedbackEventId = null
+        pushState()
+    }
+
     private fun pushState() {
         uiState = HistoryScreenUiState(
             items = historyItems,
+            decisionFeedbackItems = decisionFeedbackItems,
             selectedDayStartMillis = selectedDayStartMillis,
+            isFeedbackSheetVisible = feedbackSheetVisible,
             totalDistanceText = formatDistance(cachedTotalDistanceKm),
             totalDurationText = formatDuration(cachedTotalDurationSeconds),
             totalCountText = context.getString(R.string.compose_history_days_value, historyItems.size),
             isTransferBusy = transferBusy,
-            isRecordTabSelected = recordTabSelected,
         )
     }
 
@@ -104,5 +123,36 @@ class HistoryController(
             totalMinutes > 0 -> "${totalMinutes}分钟"
             else -> "少于 1 分钟"
         }
+    }
+
+    private fun loadDecisionFeedbackItems(): List<HistoryDecisionFeedbackItem> {
+        return DecisionEventStorage.loadReviewItems(context).map { item ->
+            HistoryDecisionFeedbackItem(
+                eventId = item.eventId,
+                title = when (item.finalDecision) {
+                    "START" -> "自动开始记录"
+                    "STOP" -> "自动结束记录"
+                    else -> item.finalDecision
+                },
+                summary = buildString {
+                    append(formatEventTime(item.timestampMillis))
+                    append(" · 开始 ")
+                    append(formatScore(item.startScore))
+                    append(" / 结束 ")
+                    append(formatScore(item.stopScore))
+                    append(" · 阶段 ")
+                    append(item.phase)
+                },
+                feedbackLabel = item.feedbackLabel,
+            )
+        }
+    }
+
+    private fun formatEventTime(timestampMillis: Long): String {
+        return SimpleDateFormat("HH:mm", Locale.CHINA).format(Date(timestampMillis))
+    }
+
+    private fun formatScore(score: Double): String {
+        return String.format(Locale.US, "%.2f", score)
     }
 }

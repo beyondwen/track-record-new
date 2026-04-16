@@ -34,6 +34,7 @@ import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
+import com.wenhao.record.data.tracking.DecisionEventStorage
 import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.TrackPathSanitizer
@@ -42,6 +43,10 @@ import com.wenhao.record.data.tracking.FrequentPlaceAnchor
 import com.wenhao.record.data.tracking.FrequentPlaceStorage
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.map.CoordinateTransformUtils
+import com.wenhao.record.tracking.decision.DecisionRuntimeCoordinator
+import com.wenhao.record.tracking.model.DecisionModelRepository
+import com.wenhao.record.tracking.pipeline.FeatureWindowAggregator
+import com.wenhao.record.tracking.pipeline.SignalSnapshot
 import com.wenhao.record.util.AppTaskExecutor
 import com.wenhao.record.ui.main.MainActivity
 import java.util.Locale
@@ -53,6 +58,7 @@ class BackgroundTrackingService : Service() {
     companion object {
         const val ACTION_START = "com.wenhao.record.action.START_BACKGROUND_TRACKING"
         const val ACTION_STOP = "com.wenhao.record.action.STOP_BACKGROUND_TRACKING"
+        const val ACTION_RELOAD_DECISION_MODEL = "com.wenhao.record.action.RELOAD_DECISION_MODEL"
         private const val UNKNOWN_SSID_LITERAL = "<unknown ssid>"
 
         private const val CHANNEL_ID = "smart_tracking"
@@ -114,11 +120,20 @@ class BackgroundTrackingService : Service() {
             }
             context.startService(intent)
         }
+
+        fun reloadDecisionModel(context: Context) {
+            val intent = Intent(context, BackgroundTrackingService::class.java).apply {
+                action = ACTION_RELOAD_DECISION_MODEL
+            }
+            context.startService(intent)
+        }
     }
 
     private val motionConfidenceEngine = MotionConfidenceEngine()
+    private val featureWindowAggregator = FeatureWindowAggregator()
     private val wifiStayContext = WifiStayContext()
     private val accelerationWindow = ArrayDeque<Float>()
+    private lateinit var decisionCoordinator: DecisionRuntimeCoordinator
     private val locationListener = android.location.LocationListener(::handleLocationUpdate)
     private val finalizeRunnable = Runnable { finalizeCurrentSession() }
 
@@ -186,6 +201,8 @@ class BackgroundTrackingService : Service() {
     private var lastIdleScoutPoint: TrackPoint? = null
     private var lastIdleScoutSamplePoint: TrackPoint? = null
     private var currentWifiSnapshot = WifiSnapshot(false)
+    private var lastWifiChangedAt = 0L
+    private var latestAccelerationMagnitude: Float? = null
     private var lastNotificationUpdateMs = 0L
     private val distanceResultCache = object : ThreadLocal<FloatArray>() {
         override fun initialValue(): FloatArray = FloatArray(1)
@@ -206,6 +223,7 @@ class BackgroundTrackingService : Service() {
         accelerometerSensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         significantMotionSensor = sensorManager.getDefaultSensor(Sensor.TYPE_SIGNIFICANT_MOTION)
         currentSession = AutoTrackStorage.peekSession(this)
+        decisionCoordinator = buildDecisionCoordinator()
         AdaptiveTrackSmoother.seed(currentSession?.points?.lastOrNull())
         AutoTrackStorage.whenReady(this) { restoredSession ->
             if (restoredSession == null || currentSession != null) return@whenReady
@@ -234,6 +252,12 @@ class BackgroundTrackingService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
+            }
+
+            ACTION_RELOAD_DECISION_MODEL -> {
+                decisionCoordinator = buildDecisionCoordinator()
+                AutoTrackDiagnosticsStorage.markServiceStatus(this, "模型已更新", "已重新加载决策模型")
+                return START_STICKY
             }
 
             else -> {
@@ -436,6 +460,7 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun handleLocationUpdate(location: Location) {
+        appendDecisionSnapshot(location = location)
         if (currentSession == null) {
             if (shouldRefreshAnchorState(location, MAX_IDLE_ACCURACY_METERS)) {
                 updateInsideAnchorsFromLocation(location)
@@ -777,42 +802,6 @@ class BackgroundTrackingService : Service() {
                 )
             }
         }
-        return
-
-        val durationSeconds = currentSessionDurationSeconds(session)
-        val sanitizedTrack = TrackPathSanitizer.sanitize(session.points, sortByTimestamp = true)
-        val sanitizedDistanceKm = sanitizedTrack.totalDistanceKm
-        if (durationSeconds < MIN_USEFUL_DURATION_SECONDS && sanitizedDistanceKm < MIN_USEFUL_DISTANCE_KM) {
-            AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
-            AutoTrackDiagnosticsStorage.markSessionDiscarded(
-                this,
-                "本次行程未保存：时长 ${durationSeconds} 秒，距离 ${formatDistance(session.totalDistanceKm)}，低于保存阈值"
-            )
-            enterPhase(TrackingPhase.IDLE, "本段行程过短，已恢复待命", emitEvent = true)
-            return
-        }
-
-        val averageSpeedKmh = if (durationSeconds > 0) {
-            sanitizedDistanceKm / (durationSeconds / 3600.0)
-        } else {
-            0.0
-        }
-        val historyItem = HistoryItem(
-            id = HistoryStorage.nextHistoryId(this),
-            timestamp = session.startTimestamp,
-            distanceKm = sanitizedDistanceKm,
-            durationSeconds = durationSeconds,
-            averageSpeedKmh = averageSpeedKmh,
-            points = sanitizedTrack.points
-        )
-        HistoryStorage.add(this, historyItem)
-        scheduleFrequentPlacesRefresh()
-        AutoTrackStorage.saveUiState(this, AutoTrackUiState.SAVED_RECENTLY)
-        AutoTrackDiagnosticsStorage.markSessionSaved(
-            this,
-            "已保存 ${formatDistance(session.totalDistanceKm)} / ${durationSeconds / 60} 分钟"
-        )
-        enterPhase(TrackingPhase.IDLE, "本次行程已自动保存，继续后台待命", emitEvent = true)
     }
 
     private fun buildMotionSnapshot(
@@ -853,6 +842,12 @@ class BackgroundTrackingService : Service() {
                 enterPhase(TrackingPhase.SUSPECT_MOVING, "$reason，${snapshot.summary}", emitEvent = true)
             }
         }
+    }
+
+    private fun maybePromoteToStopping(reason: String) {
+        if (currentSession == null) return
+        if (currentPhase != TrackingPhase.ACTIVE) return
+        enterPhase(TrackingPhase.SUSPECT_STOPPING, reason, emitEvent = true)
     }
 
     private fun updateSensorRegistration() {
@@ -923,6 +918,7 @@ class BackgroundTrackingService : Service() {
         if (values.size < 3) return
         val magnitude = sqrt(values[0] * values[0] + values[1] * values[1] + values[2] * values[2])
         val linearAcceleration = abs(magnitude - SensorManager.GRAVITY_EARTH)
+        latestAccelerationMagnitude = linearAcceleration
         accelerationWindow.addLast(linearAcceleration)
         if (accelerationWindow.size > ACCELERATION_WINDOW_SIZE) {
             accelerationWindow.removeFirst()
@@ -935,6 +931,7 @@ class BackgroundTrackingService : Service() {
             .average()
             .toFloat()
         motionConfidenceEngine.noteAccelerationVariance(variance, System.currentTimeMillis())
+        appendDecisionSnapshot(location = null)
         if (variance >= 0.85f) {
             maybePromoteToSuspect("加速度波动明显")
         }
@@ -943,6 +940,7 @@ class BackgroundTrackingService : Service() {
     private fun handleStepCounterChanged(totalSteps: Float?) {
         totalSteps ?: return
         val delta = motionConfidenceEngine.noteStepCount(totalSteps, System.currentTimeMillis())
+        appendDecisionSnapshot(location = null)
         if (delta <= 0) return
         when {
             currentSession != null && currentPhase == TrackingPhase.SUSPECT_STOPPING -> {
@@ -1029,6 +1027,7 @@ class BackgroundTrackingService : Service() {
 
     @Suppress("DEPRECATION")
     private fun refreshWifiSnapshot() {
+        val previousSnapshot = currentWifiSnapshot
         val info = runCatching { wifiManager.connectionInfo }.getOrNull()
         val bssid = info?.bssid?.takeUnless { it.isNullOrBlank() || it == "02:00:00:00:00:00" }
         val ssid = info?.ssid
@@ -1040,7 +1039,50 @@ class BackgroundTrackingService : Service() {
             ssid = ssid,
             bssid = bssid
         )
+        if (currentWifiSnapshot != previousSnapshot) {
+            lastWifiChangedAt = System.currentTimeMillis()
+        }
         wifiStayContext.update(currentWifiSnapshot, insideAnchorIds.isNotEmpty())
+    }
+
+    private fun appendDecisionSnapshot(location: Location?) {
+        val now = System.currentTimeMillis()
+        featureWindowAggregator.append(
+            SignalSnapshot(
+                timestampMillis = now,
+                phase = currentPhase,
+                isRecording = currentSession != null,
+                latitude = location?.latitude,
+                longitude = location?.longitude,
+                accuracyMeters = location?.takeIf { it.hasAccuracy() }?.accuracy,
+                speedMetersPerSecond = location?.speed?.takeIf { it >= 0f },
+                stepDelta = motionConfidenceEngine.currentStepDelta(),
+                accelerationMagnitude = latestAccelerationMagnitude,
+                wifiChanged = now - lastWifiChangedAt <= 30_000L,
+                insideFrequentPlace = insideAnchorIds.isNotEmpty(),
+                candidateStateDurationMillis = (now - phaseEnteredAt).coerceAtLeast(0L),
+                protectionRemainingMillis = 0L,
+            )
+        )
+        val vector = featureWindowAggregator.buildVector() ?: return
+        decisionCoordinator.onVector(vector, nowMillis = now)
+    }
+
+    private fun buildDecisionCoordinator(): DecisionRuntimeCoordinator {
+        return DecisionRuntimeCoordinator(
+            engine = DecisionModelRepository.buildDecisionEngine(this),
+            onStart = { maybePromoteToSuspect("模型建议开始记录") },
+            onStop = { maybePromoteToStopping("模型建议结束记录") },
+            onFrame = { frame ->
+                DecisionEventStorage.saveFrame(this, frame)
+                AutoTrackDiagnosticsStorage.markDecisionScores(
+                    context = this,
+                    startScore = frame.startScore,
+                    stopScore = frame.stopScore,
+                    finalDecision = frame.finalDecision.name,
+                )
+            },
+        )
     }
 
     private fun registerNetworkCallback() {

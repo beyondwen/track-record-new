@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.wenhao.record.R
+import com.wenhao.record.data.tracking.DecisionFeedbackType
 import com.wenhao.record.ui.barometer.BarometerUiState
 import com.wenhao.record.ui.barometer.BarometerComposeScreen
 import com.wenhao.record.ui.dashboard.DashboardComposeScreen
@@ -99,6 +100,11 @@ fun MainComposeScreen(
     onHistoryDelete: (Long) -> Unit,
     onHistoryExport: () -> Unit,
     onHistoryImport: () -> Unit,
+    onTrainingSampleExport: () -> Unit,
+    onDecisionModelImport: () -> Unit,
+    onHistoryDecisionFeedback: (Long) -> Unit,
+    onHistoryFeedbackSubmit: (DecisionFeedbackType) -> Unit,
+    onHistoryFeedbackDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -111,8 +117,13 @@ fun MainComposeScreen(
                     onBarometerClick = onBarometerTabClick,
                     onExportClick = onHistoryExport,
                     onImportClick = onHistoryImport,
+                    onTrainingSampleExport = onTrainingSampleExport,
+                    onDecisionModelImport = onDecisionModelImport,
                     onHistoryClick = { onHistoryOpen(it.dayStartMillis) },
                     onHistoryLongClick = { onHistoryDelete(it.dayStartMillis) },
+                    onDecisionFeedback = onHistoryDecisionFeedback,
+                    onFeedbackSubmit = onHistoryFeedbackSubmit,
+                    onFeedbackDismiss = onHistoryFeedbackDismiss,
                 )
             }
 

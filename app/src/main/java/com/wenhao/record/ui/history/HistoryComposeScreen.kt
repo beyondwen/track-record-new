@@ -25,7 +25,10 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -50,6 +53,7 @@ import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.TrackQualityLevel
 import com.wenhao.record.data.history.buildHistoryDayItem
+import com.wenhao.record.data.tracking.DecisionFeedbackType
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.ui.designsystem.TrackEmptyStateCard
 import com.wenhao.record.ui.designsystem.TrackBottomNavigationBar
@@ -68,14 +72,23 @@ import com.wenhao.record.ui.designsystem.trackSoftSurface
 import java.util.Calendar
 
 @Immutable
+data class HistoryDecisionFeedbackItem(
+    val eventId: Long,
+    val title: String,
+    val summary: String,
+    val feedbackLabel: String? = null,
+)
+
+@Immutable
 data class HistoryScreenUiState(
     val items: List<HistoryDayItem> = emptyList(),
+    val decisionFeedbackItems: List<HistoryDecisionFeedbackItem> = emptyList(),
     val selectedDayStartMillis: Long? = null,
+    val isFeedbackSheetVisible: Boolean = false,
     val totalDistanceText: String = "",
     val totalDurationText: String = "",
     val totalCountText: String = "",
     val isTransferBusy: Boolean = false,
-    val isRecordTabSelected: Boolean = false,
 )
 
 @Composable
@@ -85,8 +98,13 @@ fun HistoryComposeScreen(
     onBarometerClick: () -> Unit,
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
+    onTrainingSampleExport: () -> Unit,
+    onDecisionModelImport: () -> Unit,
     onHistoryClick: (HistoryDayItem) -> Unit,
     onHistoryLongClick: (HistoryDayItem) -> Unit,
+    onDecisionFeedback: (Long) -> Unit,
+    onFeedbackSubmit: (DecisionFeedbackType) -> Unit,
+    onFeedbackDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -119,7 +137,33 @@ fun HistoryComposeScreen(
                         state = state,
                         onExportClick = onExportClick,
                         onImportClick = onImportClick,
+                        onTrainingSampleExport = onTrainingSampleExport,
+                        onDecisionModelImport = onDecisionModelImport,
                     )
+                }
+
+                if (state.decisionFeedbackItems.isNotEmpty()) {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            HistorySectionHeader(
+                                title = stringResource(R.string.compose_history_feedback_title),
+                                trailing = null,
+                            )
+                            Text(
+                                text = stringResource(R.string.compose_history_feedback_subtitle),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                state.decisionFeedbackItems.forEach { item ->
+                                    DecisionFeedbackCard(
+                                        item = item,
+                                        onClick = { onDecisionFeedback(item.eventId) },
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 if (state.items.isEmpty()) {
@@ -171,6 +215,156 @@ fun HistoryComposeScreen(
                 onBarometerClick = onBarometerClick,
             )
         }
+
+        if (state.isFeedbackSheetVisible) {
+            DecisionFeedbackBottomSheet(
+                onDismiss = onFeedbackDismiss,
+                onFeedbackSubmit = onFeedbackSubmit,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DecisionFeedbackCard(
+    item: HistoryDecisionFeedbackItem,
+    onClick: () -> Unit,
+) {
+    TrackLiquidPanel(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        tone = TrackLiquidTone.SUBTLE,
+        borderColor = MaterialTheme.colorScheme.trackInnerPanelBorder.copy(alpha = 0.18f),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = item.summary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TrackStatChip(
+                    text = if (item.feedbackLabel != null) {
+                        feedbackLabelText(item.feedbackLabel)
+                    } else {
+                        stringResource(R.string.compose_history_feedback_pending)
+                    },
+                    containerColor = if (item.feedbackLabel == null) {
+                        MaterialTheme.colorScheme.trackSoftSurface
+                    } else {
+                        MaterialTheme.colorScheme.trackSoftAccent
+                    },
+                    contentColor = if (item.feedbackLabel == null) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
+                )
+            }
+
+            Button(
+                onClick = onClick,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(
+                    text = if (item.feedbackLabel == null) {
+                        stringResource(R.string.compose_history_feedback_action)
+                    } else {
+                        stringResource(R.string.compose_history_feedback_update_action)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun feedbackLabelText(raw: String): String {
+    return when (raw) {
+        DecisionFeedbackType.START_TOO_EARLY.name -> stringResource(R.string.compose_history_feedback_start_early)
+        DecisionFeedbackType.START_TOO_LATE.name -> stringResource(R.string.compose_history_feedback_start_late)
+        DecisionFeedbackType.STOP_TOO_EARLY.name -> stringResource(R.string.compose_history_feedback_stop_early)
+        DecisionFeedbackType.STOP_TOO_LATE.name -> stringResource(R.string.compose_history_feedback_stop_late)
+        DecisionFeedbackType.CORRECT.name -> stringResource(R.string.compose_history_feedback_correct)
+        else -> raw
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DecisionFeedbackBottomSheet(
+    onDismiss: () -> Unit,
+    onFeedbackSubmit: (DecisionFeedbackType) -> Unit,
+) {
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.compose_history_feedback_sheet_title),
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = stringResource(R.string.compose_history_feedback_sheet_subtitle),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            DecisionFeedbackActionButton(
+                label = stringResource(R.string.compose_history_feedback_start_early),
+                onClick = { onFeedbackSubmit(DecisionFeedbackType.START_TOO_EARLY) },
+            )
+            DecisionFeedbackActionButton(
+                label = stringResource(R.string.compose_history_feedback_start_late),
+                onClick = { onFeedbackSubmit(DecisionFeedbackType.START_TOO_LATE) },
+            )
+            DecisionFeedbackActionButton(
+                label = stringResource(R.string.compose_history_feedback_stop_early),
+                onClick = { onFeedbackSubmit(DecisionFeedbackType.STOP_TOO_EARLY) },
+            )
+            DecisionFeedbackActionButton(
+                label = stringResource(R.string.compose_history_feedback_stop_late),
+                onClick = { onFeedbackSubmit(DecisionFeedbackType.STOP_TOO_LATE) },
+            )
+            DecisionFeedbackActionButton(
+                label = stringResource(R.string.compose_history_feedback_correct),
+                onClick = { onFeedbackSubmit(DecisionFeedbackType.CORRECT) },
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun DecisionFeedbackActionButton(
+    label: String,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Text(text = label)
     }
 }
 
@@ -179,6 +373,8 @@ private fun HistoryHeroSection(
     state: HistoryScreenUiState,
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
+    onTrainingSampleExport: () -> Unit,
+    onDecisionModelImport: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
         Row(
@@ -221,6 +417,32 @@ private fun HistoryHeroSection(
                 text = stringResource(R.string.compose_history_import),
                 iconMode = HistoryActionIconMode.DOWN,
                 onClick = onImportClick,
+                enabled = !state.isTransferBusy,
+                modifier = Modifier.weight(1f),
+                containerColor = MaterialTheme.colorScheme.trackSecondarySurface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                borderColor = Color.Transparent,
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            HistoryActionButton(
+                text = stringResource(R.string.compose_history_training_export),
+                iconMode = HistoryActionIconMode.UP,
+                onClick = onTrainingSampleExport,
+                enabled = !state.isTransferBusy && state.decisionFeedbackItems.isNotEmpty(),
+                modifier = Modifier.weight(1f),
+                containerColor = MaterialTheme.colorScheme.trackSecondarySurface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                borderColor = Color.Transparent,
+            )
+            HistoryActionButton(
+                text = stringResource(R.string.compose_history_model_import),
+                iconMode = HistoryActionIconMode.DOWN,
+                onClick = onDecisionModelImport,
                 enabled = !state.isTransferBusy,
                 modifier = Modifier.weight(1f),
                 containerColor = MaterialTheme.colorScheme.trackSecondarySurface,
@@ -646,8 +868,13 @@ private fun HistoryComposeScreenPreview() {
             onBarometerClick = {},
             onExportClick = {},
             onImportClick = {},
+            onTrainingSampleExport = {},
+            onDecisionModelImport = {},
             onHistoryClick = {},
             onHistoryLongClick = {},
+            onDecisionFeedback = {},
+            onFeedbackSubmit = {},
+            onFeedbackDismiss = {},
         )
     }
 }

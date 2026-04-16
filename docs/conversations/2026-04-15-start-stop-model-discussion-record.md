@@ -424,3 +424,132 @@
 ## 8. 备注
 
 本纪要的定位是「完整对话整理记录」，用于帮助后续回看决策路径。若需要进入实现阶段，应以正式设计规格和后续实现计划为准。
+
+## 9. 后续实现推进纪要（2026-04-16）
+
+### 9.1 环境与执行方式补充
+
+在上一轮方案确认之后，用户没有切换到其他开发分支，而是明确继续基于当前 `master` 分支推进实现。
+
+围绕实际开发环境，又补做了几项必要准备：
+
+- 在 WSL 内补齐了 `Gradle` 可用性，避免继续依赖宿主机上的图形化 IDE 才能执行构建。
+- 对 Java / Android 相关依赖做了可用性确认，使当前仓库可以直接在 WSL 中完成编译与测试。
+- 对宿主机残留问题做了确认，结论是本次主要开发活动与工具链落点仍以 WSL 和项目工作区为主，没有引入额外的宿主机杂散文件问题。
+
+这一步的意义在于，后续实现、测试、脚本回放和文档更新都可以在同一套命令行环境中完成，减少环境切换带来的干扰。
+
+### 9.2 按计划推进实现
+
+在正式进入开发后，又补写了实现计划文档，并据此按任务推进落地。
+
+首先完成了任务 2，对应模型运行时、决策平滑器和决策引擎的基础设施。这部分把设计稿中的双二分类模型、线性推理、平滑规则与最终 `start / stop / hold` 决策真正落到了 Kotlin 代码中。
+
+随后完成了任务 3，为 `decision_event`、反馈记录和训练样本导出建立持久化层。期间遇到两个实现层面的具体问题：
+
+- `DecisionEventStorageTest` 初始阶段存在 Robolectric / 环境配置问题，最终通过使用普通 `Application`、`manifest = Config.NONE` 和 `sdk = [35]` 的方式稳定了测试环境。
+- 部分 Room 访问最初落在主线程，后续将决策存储与导出访问显式切到 `Dispatchers.IO`，并通过 `runBlocking` 包住测试调用，消除了主线程数据库访问异常。
+
+在任务 4 中，新建了 `DecisionRuntimeCoordinator`，并把特征聚合、模型打分、平滑决策、事件落库和现有 `BackgroundTrackingService` 串接起来。同时把模型分数等诊断信息接入了调试面板，保证新链路在第一阶段仍然具备可观测性。
+
+### 9.3 历史页方案修正与工具链补齐
+
+任务 5 原计划是直接在历史页为既有记录增加人工纠错按钮，但实际接入时发现一个关键前提并不成立：当前历史页的数据模型并没有直接暴露可用于反馈提交的真实 `decision_event` 标识。
+
+因此，这一阶段没有生硬把反馈按钮挂到现有记录模型上，而是先修正实现方向：
+
+- 先补齐最近 `decision_event` 的真实查询能力。
+- 在历史页先把可关联的决策事件渲染出来。
+- 再把「开始太早 / 开始太晚 / 结束太早 / 结束太晚 / 本次正确」等反馈动作绑定到真实事件上。
+
+这次修正很重要，因为它说明设计稿中的闭环方向是正确的，但页面接入层还需要先补一层真实的数据映射，不能直接跳过事件实体。
+
+任务 6 则补齐了 WSL 侧训练与回放工具，包括：
+
+- `tools/decision-model/train_decision_models.py`
+- `tools/decision-model/replay_decision_run.py`
+- `tools/decision-model/requirements.txt`
+- `tools/decision-model/tests/test_train_decision_models.py`
+
+计划原本使用 `pytest` 做 Python 验证，但当时的 WSL 环境缺少 `pytest`、`pip` 与便捷安装路径，因此实际改为使用 Python 标准库 `unittest` 完成测试与验证。这属于执行层面的适配，不影响训练与回放工具本身的目标。
+
+### 9.4 验证结果
+
+在任务推进过程中，已经完成了多轮针对性验证，而不是只停留在代码提交层面。
+
+Android 侧已通过的关键测试包括：
+
+- `DecisionRuntimeCoordinatorTest`
+- `DecisionEventStorageTest`
+- `HistoryControllerTest`
+- `AutoTrackSessionPersistPolicyTest`
+- `TrackNoiseFilterTest`
+
+在后续清理阶段，又重新执行了若干组合测试，结果仍为 `BUILD SUCCESSFUL`，说明本轮重构和清理没有破坏核心链路。
+
+Python 工具侧也完成了训练与回放相关测试验证，采用的是标准库测试方式，而不是原计划中的 `pytest`。
+
+综合来看，设计稿中提出的窗口聚合、模型推理、平滑决策、事件落库、反馈入口、训练导出和回放工具，已经从纸面方案推进为可执行、可验证、可继续迭代的实现基础。
+
+### 9.5 冗余代码清理
+
+在用户提出「把冗余代码删除」之后，又对本轮新增与历史遗留代码做了一次收口清理。
+
+已确认完成的清理包括：
+
+- 删除 `BackgroundTrackingService` 中 `finalizeCurrentSession()` 里 `return` 之后的不可达代码。
+- 删除历史页控制器中不再使用的 `recordTabSelected` 状态及相关透传逻辑。
+- 删除 `HistoryScreenUiState` 中多余的 `feedbackEventId`、`lastSubmittedFeedbackEventId` 等状态字段，并同步收敛控制器与测试。
+
+这些清理本身不改变既有功能目标，但降低了状态冗余和后续维护成本，也让历史页纠错链路的真实数据来源更加清晰。
+
+### 9.6 最小完整闭环补充（2026-04-16）
+
+在上述基础能力已经具备之后，用户进一步提出了一个更明确的落地目标：优先打通「手机采样导出 -> WSL 训练 -> 手机导入模型 -> 后台直接使用新模型」的最小完整闭环，而不是继续扩展更复杂的训练策略。
+
+围绕这个目标，双方最终确认了以下执行约束：
+
+- 手机端在历史页 Hero 区域新增两个动作：`导出训练样本` 与 `导入决策模型`。
+- 手机导出格式优先采用 `jsonl`，每行只保留原始决策证据字段，不在端上硬编码训练标签规则。
+- WSL 训练脚本先增加预处理阶段，直接读取手机导出的 `jsonl`，再把 `feedbackLabel + finalDecision` 映射为 `start_target / stop_target`。
+- 第一版标签映射采用保守策略：`START + CORRECT`、`STOP + CORRECT` 作为正样本；`START + START_TOO_EARLY`、`STOP + STOP_TOO_EARLY` 作为负样本；`START_TOO_LATE / STOP_TOO_LATE` 先跳过；无反馈样本也先跳过。
+- 训练产物继续保留 `start_model.json`、`stop_model.json`、`feature_config.json`、`threshold_config.json` 这 4 个基础文件，同时额外输出一个手机导入使用的 `decision-model-bundle.json`。
+- Android 端新增统一的 `DecisionModelRepository`，优先读取用户导入的 bundle；若没有导入包，则回退到当前内置默认模型。
+
+这个决策本质上进一步收紧了第一阶段的范围：手机端只负责导出原始证据与导入模型，训练标签推断统一放在 WSL 侧处理，避免同一套规则被 Android 与训练脚本各自实现一遍，后续演进时也更容易保持一致。
+
+### 9.7 本轮闭环落地结果
+
+围绕上述最小闭环，已经完成的落地包括：
+
+- 新增 `TrainingSampleExportCodec`，用于把手机端决策事件导出为 `jsonl`。
+- 在 `MainActivity`、`MainComposeScreen`、`HistoryComposeScreen` 中补齐训练样本导出与模型导入入口，并复用现有历史页传输忙碌态控制。
+- 新增 `DecisionModelRepository`，负责 bundle 导入、私有目录持久化、默认模型回退与 `TrackingDecisionEngine` 构建。
+- 将 `BackgroundTrackingService` 改为统一从 `DecisionModelRepository` 构建决策引擎，并增加 `ACTION_RELOAD_DECISION_MODEL`，用于模型导入后的轻量热加载。
+- 更新 WSL 侧 `train_decision_models.py`，支持直接读取手机导出的原始 `jsonl`，执行保守标签映射，并输出包含 bundle 在内的 5 个模型文件。
+- 更新 `replay_decision_run.py`，使其兼容手机导出格式中的嵌套 `features` 与 `isRecording` 字段。
+- 补充并更新了对应的 Kotlin / Python 测试，以及模型导出契约和设计规格文档。
+
+到这一阶段为止，最小可用路径已经变为：
+
+1. 用户在手机上使用一段时间，并对自动开始 / 结束结果补充纠错反馈。
+2. 手机从历史页导出训练样本 `jsonl`。
+3. WSL 训练脚本读取该 `jsonl`，完成预处理与训练，并输出 `decision-model-bundle.json`。
+4. 手机从历史页导入 bundle。
+5. 后台服务后续决策优先使用导入模型；若当前自动记录服务已经启用，则导入后会触发一次模型 reload。
+
+### 9.8 本轮验证与边界说明
+
+为了避免只停留在代码修改层面，本轮还补做了针对性验证。
+
+已确认通过的验证包括：
+
+- Python 训练侧测试：`python3 -m unittest discover -s tools/decision-model/tests -p 'test_train_decision_models.py'`
+- Android 侧相关单元测试：`TrainingSampleExportCodecTest`、`DecisionModelRepositoryTest`、`HistoryControllerTest`
+
+相关测试在本轮均得到成功结果，其中 Android 侧组合测试最终为 `BUILD SUCCESSFUL`。
+
+同时也明确保留了两条第一阶段边界：
+
+- `START_TOO_LATE` 与 `STOP_TOO_LATE` 暂不进入第一版训练样本，避免在缺少理想边界时间的前提下引入高噪声标签。
+- 模型导入后的热加载采用轻量实现：若后台服务当前已运行，则通过 reload action 重新构建决策引擎；若服务当时未运行，则在下次服务启动时自然生效。
