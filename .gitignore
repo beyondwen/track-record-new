@@ -5,3 +5,10 @@
 /.vscode/
 /build/
 /app/build/
+/.codex
+/.wsl-tools/
+/D:\\data\\GradleCache/
+/HttpProbe.java
+/codex.txt
+**/__pycache__/
+*.pyc
