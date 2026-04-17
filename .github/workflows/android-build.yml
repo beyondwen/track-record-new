@@ -41,7 +41,7 @@ jobs:
 
       - name: Build debug APK
         env:
-          MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
+          ORG_GRADLE_PROJECT_MAPBOX_ACCESS_TOKEN: ${{ secrets.MAPBOX_ACCESS_TOKEN }}
         run: ./gradlew --no-daemon assembleDebug
 
       - name: Upload debug APK
