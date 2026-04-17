@@ -83,7 +83,7 @@ class MainActivity : AppCompatActivity() {
 
     private val updateService by lazy {
         GithubReleaseUpdateService(
-            owner = "wenhao",
+            owner = "beyondwen",
             repo = "track-record-new",
             authToken = BuildConfig.PRIVATE_RELEASE_TOKEN,
         )
