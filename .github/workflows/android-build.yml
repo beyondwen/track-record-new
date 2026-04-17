@@ -47,3 +47,49 @@ jobs:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
+
+      - name: Read app version
+        id: app_version
+        run: |
+          VERSION_CODE=$(python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('app/build.gradle').read_text()
+          print(re.search(r'versionCode\s*=\s*(\d+)', text).group(1))
+          PY
+          )
+          VERSION_NAME=$(python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('app/build.gradle').read_text()
+          print(re.search(r'versionName\s*=\s*"([^"]+)"', text).group(1))
+          PY
+          )
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Rename debug APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk ./app-debug.apk
+
+      - name: Write update metadata
+        run: |
+          cat > update.json <<EOF
+          {
+            "versionCode": ${{ steps.app_version.outputs.version_code }},
+            "versionName": "${{ steps.app_version.outputs.version_name }}",
+            "apkName": "app-debug.apk"
+          }
+          EOF
+
+      - name: Publish debug release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-latest
+          name: Debug Latest
+          prerelease: true
+          make_latest: false
+          files: |
+            app-debug.apk
+            update.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

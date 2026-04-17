@@ -91,10 +91,14 @@ fun MainComposeScreen(
     dashboardOverlayState: DashboardOverlayUiState,
     historyState: HistoryScreenUiState,
     barometerState: BarometerUiState,
+    aboutState: AboutUiState,
     dashboardMapState: TrackMapSceneState,
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
     onBarometerTabClick: () -> Unit,
+    onAboutTabClick: () -> Unit,
+    onAboutBackClick: () -> Unit,
+    onCheckUpdateClick: () -> Unit,
     onLocateClick: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
     onHistoryDelete: (Long) -> Unit,
@@ -136,6 +140,14 @@ fun MainComposeScreen(
                 )
             }
 
+            MainTab.ABOUT -> {
+                AboutComposeScreen(
+                    state = aboutState,
+                    onBackClick = onAboutBackClick,
+                    onCheckUpdateClick = onCheckUpdateClick,
+                )
+            }
+
             MainTab.RECORD -> {
                 DashboardRoot(
                     dashboardState = dashboardState,
@@ -144,6 +156,7 @@ fun MainComposeScreen(
                     onRecordTabClick = onRecordTabClick,
                     onHistoryTabClick = onHistoryTabClick,
                     onBarometerTabClick = onBarometerTabClick,
+                    onAboutTabClick = onAboutTabClick,
                     onLocateClick = onLocateClick,
                 )
             }
@@ -160,6 +173,7 @@ private fun DashboardRoot(
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
     onBarometerTabClick: () -> Unit,
+    onAboutTabClick: () -> Unit,
     onLocateClick: () -> Unit,
 ) {
     var showOverlayStatusDialog by rememberSaveable { mutableStateOf(false) }
@@ -251,11 +265,23 @@ private fun DashboardRoot(
                 )
 
                 TrackTopOverlayColumn {
-                    MapStatusCollapsedEntry(
-                        title = overlayState.gpsLabel.ifBlank { dashboardState.statusLabel },
-                        accentColor = overlayAccentColor(dashboardState.statusTone),
-                        onClick = { showOverlayStatusDialog = true },
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        MapStatusCollapsedEntry(
+                            title = overlayState.gpsLabel.ifBlank { dashboardState.statusLabel },
+                            accentColor = overlayAccentColor(dashboardState.statusTone),
+                            onClick = { showOverlayStatusDialog = true },
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(modifier = Modifier.size(12.dp))
+                        TrackPrimaryButton(
+                            text = "关于",
+                            onClick = onAboutTabClick,
+                        )
+                    }
                 }
 
                 if (overlayState.locateVisible) {
@@ -290,6 +316,7 @@ enum class MainTab {
     RECORD,
     HISTORY,
     BAROMETER,
+    ABOUT,
 }
 
 @Composable

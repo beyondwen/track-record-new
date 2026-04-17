@@ -2,7 +2,9 @@ package com.wenhao.record.ui.main
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.Settings
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -26,6 +28,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryStorage
@@ -45,6 +48,10 @@ import com.wenhao.record.stability.CrashLogStore
 import com.wenhao.record.tracking.BackgroundTrackingService
 import com.wenhao.record.tracking.LocationSelectionUtils
 import com.wenhao.record.tracking.model.DecisionModelRepository
+import com.wenhao.record.update.ApkDownloadInstaller
+import com.wenhao.record.update.AppUpdateInfo
+import com.wenhao.record.update.GithubReleaseUpdateService
+import com.wenhao.record.update.UpdateCheckResult
 import com.wenhao.record.ui.dashboard.DashboardUiController
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.barometer.BarometerController
@@ -74,6 +81,13 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    private val updateService by lazy {
+        GithubReleaseUpdateService(
+            owner = "wenhao",
+            repo = "track-record-new",
+        )
+    }
+    private val apkDownloadInstaller by lazy { ApkDownloadInstaller(this) }
     private lateinit var dashboardUiController: DashboardUiController
     private lateinit var barometerController: BarometerController
     private lateinit var homeMapController: HomeMapPort
@@ -140,6 +154,9 @@ class MainActivity : AppCompatActivity() {
     private var previewAltitudeMeters: Double? = null
     private var historyTransferBusy = false
     private var currentTab by mutableStateOf(MainTab.RECORD)
+    private var aboutState by mutableStateOf(
+        AboutUiState(appVersionLabel = buildVersionLabel())
+    )
 
     private val defaultLatLng = GeoCoordinate(39.9042, 116.4074)
     private val dataChangeListener = object : TrackDataChangeNotifier.Listener {
@@ -181,10 +198,14 @@ class MainActivity : AppCompatActivity() {
                     dashboardOverlayState = dashboardUiController.overlayState,
                     historyState = historyController.uiState,
                     barometerState = barometerController.uiState,
+                    aboutState = aboutState,
                     dashboardMapState = homeMapController.renderState,
                     onRecordTabClick = { showTab(MainTab.RECORD) },
                     onHistoryTabClick = { showTab(MainTab.HISTORY) },
                     onBarometerTabClick = { showTab(MainTab.BAROMETER) },
+                    onAboutTabClick = { showTab(MainTab.ABOUT) },
+                    onAboutBackClick = { showTab(MainTab.RECORD) },
+                    onCheckUpdateClick = ::checkForAppUpdate,
                     onLocateClick = ::handleLocateAction,
                     onHistoryOpen = { dayStartMillis ->
                         startActivity(MapActivity.createHistoryIntent(this, dayStartMillis))
@@ -240,6 +261,74 @@ class MainActivity : AppCompatActivity() {
         if (tab == MainTab.RECORD) {
             syncRecordTabToCurrentLocation()
             refreshDashboardContent()
+        }
+    }
+
+    private fun buildVersionLabel(): String {
+        return "当前版本：${BuildConfig.VERSION_NAME} (${BuildConfig.APP_VERSION_CODE})"
+    }
+
+    private fun checkForAppUpdate() {
+        aboutState = aboutState.copy(isCheckingUpdate = true, statusMessage = null)
+        lifecycleScope.launch(Dispatchers.IO) {
+            val result = updateService.checkForUpdate(currentVersionCode = BuildConfig.APP_VERSION_CODE)
+            launch(Dispatchers.Main) {
+                aboutState = aboutState.copy(isCheckingUpdate = false)
+                when (result) {
+                    is UpdateCheckResult.UpToDate -> {
+                        aboutState = aboutState.copy(statusMessage = "当前已是最新版本")
+                    }
+                    is UpdateCheckResult.Failure -> {
+                        aboutState = aboutState.copy(statusMessage = result.message)
+                    }
+                    is UpdateCheckResult.UpdateAvailable -> {
+                        aboutState = aboutState.copy(statusMessage = "发现新版本：${result.info.versionName}")
+                        showUpdateConfirmDialog(result.info)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun showUpdateConfirmDialog(info: AppUpdateInfo) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle("发现新版本")
+            .setMessage("检测到新版本 ${info.versionName}，是否下载并安装？")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("更新") { _, _ ->
+                downloadAndInstallUpdate(info)
+            }
+            .show()
+    }
+
+    private fun downloadAndInstallUpdate(info: AppUpdateInfo) {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O &&
+            !packageManager.canRequestPackageInstalls()
+        ) {
+            aboutState = aboutState.copy(statusMessage = "请先允许安装未知应用")
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName")
+                )
+            )
+            return
+        }
+
+        aboutState = aboutState.copy(statusMessage = "正在下载更新…")
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val apkFile = apkDownloadInstaller.download(info.apkUrl, info.apkName)
+                val intent = apkDownloadInstaller.createInstallIntent(apkFile)
+                launch(Dispatchers.Main) {
+                    aboutState = aboutState.copy(statusMessage = "下载完成，正在打开安装器")
+                    startActivity(intent)
+                }
+            } catch (_: Exception) {
+                launch(Dispatchers.Main) {
+                    aboutState = aboutState.copy(statusMessage = "下载失败")
+                }
+            }
         }
     }
 
