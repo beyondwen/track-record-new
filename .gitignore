@@ -12,5 +12,6 @@
 /HttpProbe.java
 /codex.txt
 /local.properties
+/.track-record-release.jks
 **/__pycache__/
 *.pyc

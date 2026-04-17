@@ -89,6 +89,7 @@ data class HistoryScreenUiState(
     val totalDurationText: String = "",
     val totalCountText: String = "",
     val isTransferBusy: Boolean = false,
+    val canExportTrainingSamples: Boolean = false,
 )
 
 @Composable
@@ -433,7 +434,7 @@ private fun HistoryHeroSection(
                 text = stringResource(R.string.compose_history_training_export),
                 iconMode = HistoryActionIconMode.UP,
                 onClick = onTrainingSampleExport,
-                enabled = !state.isTransferBusy && state.decisionFeedbackItems.isNotEmpty(),
+                enabled = !state.isTransferBusy && state.canExportTrainingSamples,
                 modifier = Modifier.weight(1f),
                 containerColor = MaterialTheme.colorScheme.trackSecondarySurface,
                 contentColor = MaterialTheme.colorScheme.onSurface,

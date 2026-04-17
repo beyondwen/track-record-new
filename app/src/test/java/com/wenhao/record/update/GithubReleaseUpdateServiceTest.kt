@@ -85,4 +85,39 @@ class GithubReleaseUpdateServiceTest {
         result as UpdateCheckResult.Failure
         assertEquals("更新信息不完整", result.message)
     }
+
+    @Test
+    fun `uses authenticated asset api urls when token is configured`() {
+        val service = GithubReleaseUpdateService(
+            owner = "wenhao",
+            repo = "track-record-new",
+            authToken = "token",
+            releaseJsonFetcher = {
+                """
+                {
+                  "assets": [
+                    {"name": "update.json", "url": "https://api.github.com/assets/update", "browser_download_url": "https://example.com/update.json"},
+                    {"name": "app-debug.apk", "url": "https://api.github.com/assets/apk", "browser_download_url": "https://example.com/app-debug.apk"}
+                  ]
+                }
+                """.trimIndent()
+            },
+            updateJsonFetcher = { url ->
+                assertEquals("https://api.github.com/assets/update", url)
+                """
+                {
+                  "versionCode": 16,
+                  "versionName": "1.0.15",
+                  "apkName": "app-debug.apk"
+                }
+                """.trimIndent()
+            },
+        )
+
+        val result = service.checkForUpdate(currentVersionCode = 15)
+
+        assertTrue(result is UpdateCheckResult.UpdateAvailable)
+        result as UpdateCheckResult.UpdateAvailable
+        assertEquals("https://api.github.com/assets/apk", result.info.apkUrl)
+    }
 }

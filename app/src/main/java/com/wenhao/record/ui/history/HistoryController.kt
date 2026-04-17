@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.wenhao.record.data.history.TrackRecordSource
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryStorage
@@ -25,6 +26,7 @@ class HistoryController(
     private var feedbackEventId: Long? = null
     private var feedbackSheetVisible = false
     private var transferBusy = false
+    private var canExportTrainingSamples = false
 
     var uiState by mutableStateOf(
         HistoryScreenUiState(
@@ -43,6 +45,12 @@ class HistoryController(
     fun reload() {
         historyItems = HistoryStorage.peekDaily(context)
         decisionFeedbackItems = loadDecisionFeedbackItems()
+        canExportTrainingSamples = HistoryStorage.peek(context).any { item ->
+            item.startSource == TrackRecordSource.MANUAL &&
+                item.stopSource == TrackRecordSource.MANUAL &&
+                item.manualStartAt != null &&
+                item.manualStopAt != null
+        }
         recalculateTotals()
         updateContent()
     }
@@ -101,6 +109,7 @@ class HistoryController(
             totalDurationText = formatDuration(cachedTotalDurationSeconds),
             totalCountText = context.getString(R.string.compose_history_days_value, historyItems.size),
             isTransferBusy = transferBusy,
+            canExportTrainingSamples = canExportTrainingSamples,
         )
     }
 
