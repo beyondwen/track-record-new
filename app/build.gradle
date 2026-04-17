@@ -77,9 +77,9 @@ android {
         applicationId = "com.wenhao.record"
         minSdk = 24
         targetSdk = 36
-        versionCode = 15
-        versionName = "1.0.14"
-        buildConfigField "int", "APP_VERSION_CODE", "15"
+        versionCode = 16
+        versionName = "1.0.15"
+        buildConfigField "int", "APP_VERSION_CODE", "16"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         resValue "string", "mapbox_access_token", "\"${mapboxAccessToken.replace("\\", "\\\\").replace("\"", "\\\"")}\""
         buildConfigField "String", "MAPBOX_ACCESS_TOKEN", "\"${mapboxAccessToken.replace("\\", "\\\\").replace("\"", "\\\"")}\""
