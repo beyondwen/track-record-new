@@ -3,6 +3,7 @@
 /.idea/
 /.kotlin/
 /.vscode/
+/.qwen/
 /build/
 /app/build/
 /.codex
