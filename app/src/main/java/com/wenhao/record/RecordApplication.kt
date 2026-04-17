@@ -10,6 +10,7 @@ class RecordApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLogStore.install(this)
+        AutoTrackStorage.setAutoTrackingEnabled(this, false)
         AutoTrackStorage.warmUp(this)
         HistoryStorage.warmUp(this)
         DecisionEventStorage.warmUp(this)

@@ -73,6 +73,8 @@ class DashboardUiController(
                 R.drawable.ic_play_dashboard
             },
             isPulseActive = state == AutoTrackUiState.TRACKING || state == AutoTrackUiState.PREPARING,
+            controlTitle = controlTitleForState(state),
+            controlBody = controlBodyForState(state),
         )
     }
 
@@ -136,42 +138,41 @@ class DashboardUiController(
 
     private fun titleForState(state: AutoTrackUiState): String = when (state) {
         AutoTrackUiState.TRACKING -> context.getString(R.string.compose_dashboard_title_tracking)
-        AutoTrackUiState.PREPARING -> context.getString(R.string.compose_dashboard_title_preparing)
-        AutoTrackUiState.PAUSED_STILL -> context.getString(R.string.compose_dashboard_title_paused)
         AutoTrackUiState.SAVED_RECENTLY -> context.getString(R.string.compose_dashboard_title_saved)
         AutoTrackUiState.WAITING_PERMISSION -> context.getString(R.string.compose_dashboard_title_waiting_permission)
-        AutoTrackUiState.DISABLED -> context.getString(R.string.compose_dashboard_title_disabled)
         else -> context.getString(R.string.compose_dashboard_title_idle)
     }
 
     private fun metaForState(state: AutoTrackUiState): String = when (state) {
         AutoTrackUiState.TRACKING -> context.getString(R.string.compose_dashboard_meta_tracking)
-        AutoTrackUiState.PREPARING -> context.getString(R.string.compose_dashboard_meta_preparing)
-        AutoTrackUiState.PAUSED_STILL -> context.getString(R.string.compose_dashboard_meta_paused)
         AutoTrackUiState.SAVED_RECENTLY -> context.getString(R.string.compose_dashboard_meta_saved)
         AutoTrackUiState.WAITING_PERMISSION -> context.getString(R.string.compose_dashboard_meta_waiting_permission)
-        AutoTrackUiState.DISABLED -> context.getString(R.string.compose_dashboard_meta_disabled)
         else -> context.getString(R.string.compose_dashboard_meta_idle)
     }
 
     private fun statusForState(state: AutoTrackUiState): String = when (state) {
         AutoTrackUiState.TRACKING -> context.getString(R.string.compose_dashboard_status_tracking)
-        AutoTrackUiState.PREPARING -> context.getString(R.string.compose_dashboard_status_preparing)
-        AutoTrackUiState.PAUSED_STILL -> context.getString(R.string.compose_dashboard_status_paused)
         AutoTrackUiState.SAVED_RECENTLY -> context.getString(R.string.compose_dashboard_status_saved)
         AutoTrackUiState.WAITING_PERMISSION -> context.getString(R.string.compose_dashboard_status_waiting_permission)
-        AutoTrackUiState.DISABLED -> context.getString(R.string.compose_dashboard_status_disabled)
         else -> context.getString(R.string.compose_dashboard_status_idle)
     }
 
     private fun toneForState(state: AutoTrackUiState): DashboardTone = when (state) {
-        AutoTrackUiState.TRACKING,
-        AutoTrackUiState.PREPARING -> DashboardTone.ACTIVE
-        AutoTrackUiState.PAUSED_STILL,
-        AutoTrackUiState.WAITING_PERMISSION,
-        AutoTrackUiState.DISABLED -> DashboardTone.WARNING
+        AutoTrackUiState.TRACKING -> DashboardTone.ACTIVE
+        AutoTrackUiState.WAITING_PERMISSION -> DashboardTone.WARNING
         AutoTrackUiState.SAVED_RECENTLY -> DashboardTone.SUCCESS
         else -> DashboardTone.MUTED
+    }
+
+    private fun controlTitleForState(state: AutoTrackUiState): String = when (state) {
+        AutoTrackUiState.TRACKING -> "结束记录"
+        else -> "开始记录"
+    }
+
+    private fun controlBodyForState(state: AutoTrackUiState): String = when (state) {
+        AutoTrackUiState.TRACKING -> "手动结束后，这一整段会作为高置信样本保留下来。"
+        AutoTrackUiState.WAITING_PERMISSION -> "先授予定位权限，再由你手动开始和结束记录。"
+        else -> "当前阶段已停用自动记录，只保留手动开始和手动结束。"
     }
 
 }

@@ -15,6 +15,7 @@ object TrainingSampleExportCodec {
     private fun encodeRow(row: TrainingSampleRow): JSONObject {
         return JSONObject().apply {
             put("eventId", row.eventId)
+            put("recordId", row.recordId)
             put("timestampMillis", row.timestampMillis)
             put("phase", row.phase)
             put("isRecording", row.isRecording)
@@ -28,6 +29,10 @@ object TrainingSampleExportCodec {
             put("feedbackBlockedReason", row.feedbackBlockedReason)
             put("features", JSONObject(row.features))
             put("feedbackLabel", row.feedbackLabel)
+            put("startSource", row.startSource)
+            put("stopSource", row.stopSource)
+            put("manualStartAt", row.manualStartAt)
+            put("manualStopAt", row.manualStopAt)
         }
     }
 }

@@ -60,6 +60,45 @@ class TrainDecisionModelsTest(unittest.TestCase):
         self.assertEqual(0, labeled[1]["start_target"])
         self.assertEqual(0, labeled[1]["stop_target"])
 
+    def test_build_training_rows_labels_manual_boundary_windows(self):
+        rows = [
+            {
+                "recordId": 1,
+                "timestampMillis": 20_000,
+                "startSource": "MANUAL",
+                "stopSource": "MANUAL",
+                "manualStartAt": 30_000,
+                "manualStopAt": 180_000,
+                "features": {"steps_30s": 4.0, "speed_avg_30s": 1.6},
+            },
+            {
+                "recordId": 1,
+                "timestampMillis": 170_000,
+                "startSource": "MANUAL",
+                "stopSource": "MANUAL",
+                "manualStartAt": 30_000,
+                "manualStopAt": 180_000,
+                "features": {"steps_30s": 0.0, "speed_avg_30s": 0.1},
+            },
+            {
+                "recordId": 1,
+                "timestampMillis": 95_000,
+                "startSource": "MANUAL",
+                "stopSource": "MANUAL",
+                "manualStartAt": 30_000,
+                "manualStopAt": 180_000,
+                "features": {"steps_30s": 2.0, "speed_avg_30s": 0.8},
+            },
+        ]
+
+        labeled = build_training_rows(rows)
+
+        self.assertEqual(2, len(labeled))
+        self.assertEqual(1, labeled[0]["start_target"])
+        self.assertEqual(0, labeled[0]["stop_target"])
+        self.assertEqual(0, labeled[1]["start_target"])
+        self.assertEqual(1, labeled[1]["stop_target"])
+
     def test_replay_rows_emits_scores_and_final_decision(self):
         rows = [
             {

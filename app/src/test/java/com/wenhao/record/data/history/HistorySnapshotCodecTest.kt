@@ -17,6 +17,10 @@ class HistorySnapshotCodecTest {
                 durationSeconds = 890,
                 averageSpeedKmh = 49.9,
                 title = "通勤",
+                startSource = TrackRecordSource.MANUAL,
+                stopSource = TrackRecordSource.MANUAL,
+                manualStartAt = 1_717_171_700_000L,
+                manualStopAt = 1_717_172_000_000L,
                 points = listOf(
                     TrackPoint(30.1, 120.1, timestampMillis = 1_000L, accuracyMeters = 8f),
                     TrackPoint(30.2, 120.2, timestampMillis = 2_000L, accuracyMeters = 9f)

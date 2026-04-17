@@ -99,6 +99,7 @@ fun MainComposeScreen(
     onAboutTabClick: () -> Unit,
     onAboutBackClick: () -> Unit,
     onCheckUpdateClick: () -> Unit,
+    onManualRecordClick: () -> Unit,
     onLocateClick: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
     onHistoryDelete: (Long) -> Unit,
@@ -157,6 +158,7 @@ fun MainComposeScreen(
                     onHistoryTabClick = onHistoryTabClick,
                     onBarometerTabClick = onBarometerTabClick,
                     onAboutTabClick = onAboutTabClick,
+                    onManualRecordClick = onManualRecordClick,
                     onLocateClick = onLocateClick,
                 )
             }
@@ -174,6 +176,7 @@ private fun DashboardRoot(
     onHistoryTabClick: () -> Unit,
     onBarometerTabClick: () -> Unit,
     onAboutTabClick: () -> Unit,
+    onManualRecordClick: () -> Unit,
     onLocateClick: () -> Unit,
 ) {
     var showOverlayStatusDialog by rememberSaveable { mutableStateOf(false) }
@@ -232,16 +235,7 @@ private fun DashboardRoot(
                 DashboardComposeScreen(
                     state = dashboardState,
                     overlayState = overlayState,
-                    isSheetExpanded = sheetState.currentValue == SheetValue.Expanded,
-                    onRecordClick = {
-                        coroutineScope.launch {
-                            if (sheetState.currentValue == SheetValue.Expanded) {
-                                sheetState.partialExpand()
-                            } else {
-                                sheetState.expand()
-                            }
-                        }
-                    },
+                    onManualRecordClick = onManualRecordClick,
                     onHistoryClick = onHistoryTabClick,
                     onBarometerClick = onBarometerTabClick,
                     modifier = Modifier

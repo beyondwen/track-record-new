@@ -11,7 +11,11 @@ data class HistoryRecordEntity(
     val distanceKm: Double,
     val durationSeconds: Int,
     val averageSpeedKmh: Double,
-    val title: String?
+    val title: String?,
+    val startSource: String,
+    val stopSource: String,
+    val manualStartAt: Long?,
+    val manualStopAt: Long?,
 )
 
 @Entity(

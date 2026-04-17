@@ -13,7 +13,11 @@ data class HistoryItem(
     val durationSeconds: Int,
     val averageSpeedKmh: Double,
     val title: String? = null,
-    val points: List<TrackPoint> = emptyList()
+    val points: List<TrackPoint> = emptyList(),
+    val startSource: TrackRecordSource = TrackRecordSource.UNKNOWN,
+    val stopSource: TrackRecordSource = TrackRecordSource.UNKNOWN,
+    val manualStartAt: Long? = null,
+    val manualStopAt: Long? = null,
 ) {
     val quality: TrackQuality by lazy(LazyThreadSafetyMode.NONE) {
         TrackQualityEvaluator.evaluate(this)

@@ -99,7 +99,7 @@ class MainActivity : AppCompatActivity() {
             onRefreshGpsStatus = ::refreshGpsStatus,
             onLocateGranted = ::centerOnCurrentLocation,
             onRefreshDashboard = ::refreshDashboardContent,
-            onStartBackgroundTracking = { BackgroundTrackingService.start(this) },
+            onManualRecordReady = ::startManualRecording,
         )
     }
 
@@ -206,6 +206,7 @@ class MainActivity : AppCompatActivity() {
                     onAboutTabClick = { showTab(MainTab.ABOUT) },
                     onAboutBackClick = { showTab(MainTab.RECORD) },
                     onCheckUpdateClick = ::checkForAppUpdate,
+                    onManualRecordClick = ::handleManualRecordToggle,
                     onLocateClick = ::handleLocateAction,
                     onHistoryOpen = { dayStartMillis ->
                         startActivity(MapActivity.createHistoryIntent(this, dayStartMillis))
@@ -236,7 +237,6 @@ class MainActivity : AppCompatActivity() {
         refreshDashboardContent()
         showTab(MainTab.RECORD)
         refreshGpsStatus()
-        permissionHelper.ensureSmartTrackingEnabled()
     }
 
     private fun showTab(tab: MainTab) {
@@ -357,6 +357,29 @@ class MainActivity : AppCompatActivity() {
         centerOnCurrentLocation()
     }
 
+    private fun handleManualRecordToggle() {
+        if (AutoTrackStorage.peekSession(this) != null) {
+            BackgroundTrackingService.stop(this)
+            Toast.makeText(this, "已结束手动记录", Toast.LENGTH_SHORT).show()
+            return
+        }
+        startManualRecording()
+    }
+
+    private fun startManualRecording() {
+        if (!permissionHelper.hasLocationPermission()) {
+            permissionHelper.requestManualRecordPermissionOrRun()
+            return
+        }
+        if (!isLocationEnabled()) {
+            refreshGpsStatus()
+            Toast.makeText(this, R.string.location_service_disabled, Toast.LENGTH_SHORT).show()
+            return
+        }
+        BackgroundTrackingService.start(this)
+        Toast.makeText(this, "已开始手动记录", Toast.LENGTH_SHORT).show()
+    }
+
     private fun configureHomeMap() {
         homeMapController.configure(
             previewLocation = loadPreviewLocation(forceRefresh = true),
@@ -435,17 +458,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun currentDashboardState(session: AutoTrackSession?): AutoTrackUiState {
-        if (!permissionHelper.hasSmartTrackingBasePermissions() ||
-            permissionHelper.needsBackgroundLocationPermission()
-        ) {
+        if (!permissionHelper.hasLocationPermission()) {
             return AutoTrackUiState.WAITING_PERMISSION
         }
 
         val savedState = AutoTrackStorage.loadUiState(this)
-        return if (session != null && savedState == AutoTrackUiState.IDLE) {
+        return if (session != null) {
             AutoTrackUiState.TRACKING
         } else {
-            savedState
+            when (savedState) {
+                AutoTrackUiState.TRACKING,
+                AutoTrackUiState.PREPARING,
+                AutoTrackUiState.PAUSED_STILL,
+                AutoTrackUiState.DISABLED,
+                -> AutoTrackUiState.IDLE
+                else -> savedState
+            }
         }
     }
 
@@ -457,7 +485,7 @@ class MainActivity : AppCompatActivity() {
         val decisionSummary = buildDecisionSummary(diagnostics)
         val saveSummary = diagnostics.lastSavedSummary?.let { summary ->
             buildTimedSummary(diagnostics.lastSavedAt, summary)
-        } ?: "还没有自动保存过有效行程"
+        } ?: "还没有手动结束并保存过有效记录"
         val crashSummary = CrashLogStore.latestSummary(this)
 
         val body = buildString {
@@ -497,11 +525,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildPermissionSummarySafe(): String = when {
         !permissionHelper.hasLocationPermission() -> "缺少定位权限"
-        !permissionHelper.hasActivityRecognitionPermission() -> "缺少活动识别权限"
-        permissionHelper.needsBackgroundLocationPermission() -> "缺少“始终允许定位”"
-        permissionHelper.shouldRequestIgnoreBatteryOptimizations() -> {
-            getString(R.string.battery_optimization_settings_title)
-        }
         permissionHelper.needsNotificationPermission() -> "通知权限未开启"
         else -> "权限完整"
     }
@@ -684,7 +707,7 @@ class MainActivity : AppCompatActivity() {
                     reader.readText()
                 } ?: error("Unable to read model bundle")
                 DecisionModelRepository.importBundle(this@MainActivity, payload)
-                if (AutoTrackStorage.isAutoTrackingEnabled(this@MainActivity)) {
+                if (AutoTrackStorage.peekSession(this@MainActivity) != null) {
                     BackgroundTrackingService.reloadDecisionModel(this@MainActivity)
                 }
             }
@@ -1065,7 +1088,6 @@ class MainActivity : AppCompatActivity() {
         historyController.updateContent()
         homeMapController.shouldRefit = true
         refreshDashboardContent()
-        permissionHelper.startBackgroundTrackingServiceIfReady()
     }
 
     override fun onPause() {

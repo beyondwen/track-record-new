@@ -13,6 +13,7 @@ class TrainingSampleExportCodecTest {
             listOf(
                 TrainingSampleRow(
                     eventId = 7L,
+                    recordId = 3L,
                     timestampMillis = 123_000L,
                     phase = "SUSPECT_MOVING",
                     isRecording = false,
@@ -29,6 +30,10 @@ class TrainingSampleExportCodecTest {
                         "speed_avg_30s" to 1.6,
                     ),
                     feedbackLabel = "CORRECT",
+                    startSource = "MANUAL",
+                    stopSource = "MANUAL",
+                    manualStartAt = 100_000L,
+                    manualStopAt = 180_000L,
                 )
             )
         )
@@ -37,6 +42,7 @@ class TrainingSampleExportCodecTest {
         val json = JSONObject(line)
 
         assertEquals(7L, json.getLong("eventId"))
+        assertEquals(3L, json.getLong("recordId"))
         assertEquals(123_000L, json.getLong("timestampMillis"))
         assertEquals("START", json.getString("finalDecision"))
         assertEquals(0.82, json.getDouble("startScore"), 0.0001)
@@ -45,6 +51,10 @@ class TrainingSampleExportCodecTest {
         assertTrue(json.getBoolean("motionEvidencePass"))
         assertTrue(json.getBoolean("feedbackEligible"))
         assertEquals("CORRECT", json.getString("feedbackLabel"))
+        assertEquals("MANUAL", json.getString("startSource"))
+        assertEquals("MANUAL", json.getString("stopSource"))
+        assertEquals(100_000L, json.getLong("manualStartAt"))
+        assertEquals(180_000L, json.getLong("manualStopAt"))
         assertTrue(json.getJSONObject("features").has("steps_30s"))
         assertEquals(4.0, json.getJSONObject("features").getDouble("steps_30s"), 0.0001)
     }

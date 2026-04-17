@@ -25,7 +25,7 @@ import com.wenhao.record.data.local.history.HistoryRecordEntity
         DecisionEventEntity::class,
         DecisionFeedbackEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class TrackDatabase : RoomDatabase() {
@@ -114,6 +114,23 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE history_record ADD COLUMN startSource TEXT NOT NULL DEFAULT 'UNKNOWN'"
+                )
+                database.execSQL(
+                    "ALTER TABLE history_record ADD COLUMN stopSource TEXT NOT NULL DEFAULT 'UNKNOWN'"
+                )
+                database.execSQL(
+                    "ALTER TABLE history_record ADD COLUMN manualStartAt INTEGER"
+                )
+                database.execSQL(
+                    "ALTER TABLE history_record ADD COLUMN manualStopAt INTEGER"
+                )
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -124,7 +141,14 @@ abstract class TrackDatabase : RoomDatabase() {
                     TrackDatabase::class.java,
                     "track_record.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6,
+                        MIGRATION_6_7,
+                    )
                     .build()
                     .also { instance = it }
             }

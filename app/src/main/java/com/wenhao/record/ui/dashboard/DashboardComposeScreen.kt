@@ -85,14 +85,15 @@ data class DashboardScreenUiState(
     val statusTone: DashboardTone = DashboardTone.MUTED,
     val recordIconRes: Int = R.drawable.ic_play_dashboard,
     val isPulseActive: Boolean = false,
+    val controlTitle: String = "",
+    val controlBody: String = "",
 )
 
 @Composable
 fun DashboardComposeScreen(
     state: DashboardScreenUiState,
     overlayState: DashboardOverlayUiState,
-    isSheetExpanded: Boolean,
-    onRecordClick: () -> Unit,
+    onManualRecordClick: () -> Unit,
     onHistoryClick: () -> Unit,
     onBarometerClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -126,13 +127,13 @@ fun DashboardComposeScreen(
             )
 
             DashboardStatusPanel(
-                isSheetExpanded = isSheetExpanded,
-                onClick = onRecordClick,
+                state = state,
+                onClick = onManualRecordClick,
             )
 
             TrackBottomNavigationBar(
                 selectedTab = TrackBottomTab.RECORD,
-                onRecordClick = onRecordClick,
+                onRecordClick = {},
                 onHistoryClick = onHistoryClick,
                 onBarometerClick = onBarometerClick,
                 recordLabel = stringResource(R.string.compose_dashboard_record),
@@ -524,33 +525,19 @@ private fun DialogInfoRow(
 
 @Composable
 private fun DashboardStatusPanel(
-    isSheetExpanded: Boolean,
+    state: DashboardScreenUiState,
     onClick: () -> Unit,
 ) {
-    val actionTitle = stringResource(
-        if (isSheetExpanded) {
-            R.string.compose_dashboard_panel_collapse_title
-        } else {
-            R.string.compose_dashboard_panel_expand_title
-        }
-    )
-    val actionBody = stringResource(
-        if (isSheetExpanded) {
-            R.string.compose_dashboard_panel_collapse_body
-        } else {
-            R.string.compose_dashboard_panel_expand_body
-        }
-    )
     TrackLiquidPanel(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(
                 role = Role.Button,
-                onClickLabel = actionTitle,
+                onClickLabel = state.controlTitle,
                 onClick = onClick,
             )
             .semantics(mergeDescendants = true) {
-                stateDescription = actionTitle
+                stateDescription = state.controlTitle
             },
         shape = RoundedCornerShape(22.dp),
         tone = TrackLiquidTone.STANDARD,
@@ -571,20 +558,16 @@ private fun DashboardStatusPanel(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = actionBody,
+                    text = state.controlBody,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
 
             TrackStatChip(
-                text = if (isSheetExpanded) {
-                    stringResource(R.string.compose_dashboard_panel_collapse_short)
-                } else {
-                    stringResource(R.string.compose_dashboard_panel_expand_short)
-                },
+                text = state.controlTitle,
                 containerColor = MaterialTheme.colorScheme.trackSecondarySurface.copy(alpha = 0.78f),
                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -712,8 +695,7 @@ private fun DashboardComposeScreenPreview() {
                 diagnosticsTitle = "Recording diagnostics",
                 diagnosticsCompactBody = "Background tracking is active and waiting for clear movement.",
             ),
-            isSheetExpanded = true,
-            onRecordClick = {},
+            onManualRecordClick = {},
             onHistoryClick = {},
             onBarometerClick = {},
         )

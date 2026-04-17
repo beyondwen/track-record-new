@@ -132,7 +132,11 @@ object HistoryStorage {
                         distanceKm = item.distanceKm,
                         durationSeconds = item.durationSeconds,
                         averageSpeedKmh = item.averageSpeedKmh,
-                        title = item.title
+                        title = item.title,
+                        startSource = item.startSource.name,
+                        stopSource = item.stopSource.name,
+                        manualStartAt = item.manualStartAt,
+                        manualStopAt = item.manualStopAt,
                     )
                 },
                 points = normalizedItems.flatMap { item ->
@@ -393,7 +397,11 @@ object HistoryStorage {
                     distanceKm = item.distanceKm,
                     durationSeconds = item.durationSeconds,
                     averageSpeedKmh = item.averageSpeedKmh,
-                    title = item.title
+                    title = item.title,
+                    startSource = item.startSource.name,
+                    stopSource = item.stopSource.name,
+                    manualStartAt = item.manualStartAt,
+                    manualStopAt = item.manualStopAt,
                 )
             },
             points = legacyItems.flatMap { item ->
@@ -452,7 +460,11 @@ object HistoryStorage {
                     wgs84Latitude = point.wgs84Latitude,
                     wgs84Longitude = point.wgs84Longitude
                 )
-            }
+            },
+            startSource = TrackRecordSource.fromStorage(record.startSource),
+            stopSource = TrackRecordSource.fromStorage(record.stopSource),
+            manualStartAt = record.manualStartAt,
+            manualStopAt = record.manualStopAt,
         )
     }
 
@@ -463,7 +475,11 @@ object HistoryStorage {
             distanceKm = distanceKm,
             durationSeconds = durationSeconds,
             averageSpeedKmh = averageSpeedKmh,
-            title = title
+            title = title,
+            startSource = startSource.name,
+            stopSource = stopSource.name,
+            manualStartAt = manualStartAt,
+            manualStopAt = manualStopAt,
         )
     }
 

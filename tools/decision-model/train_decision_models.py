@@ -131,6 +131,11 @@ def build_training_rows(rows):
     labeled_rows = []
     for row in rows:
         flattened = flatten_row(row)
+        labeled = label_manual_boundary_row(flattened)
+        if labeled is not None:
+            labeled_rows.append(labeled)
+            continue
+
         if "start_target" in flattened and "stop_target" in flattened:
             labeled_rows.append(flattened)
             continue
@@ -178,6 +183,32 @@ def label_row(row):
     if feedback_label == "STOP_TOO_EARLY" and final_decision == "STOP":
         labeled["start_target"] = 0
         labeled["stop_target"] = 0
+        return labeled
+
+    return None
+
+
+def label_manual_boundary_row(row):
+    start_source = row.get("startSource") or row.get("start_source")
+    stop_source = row.get("stopSource") or row.get("stop_source")
+    manual_start_at = row.get("manualStartAt") or row.get("manual_start_at")
+    manual_stop_at = row.get("manualStopAt") or row.get("manual_stop_at")
+    timestamp = row.get("timestampMillis") or row.get("timestamp_millis")
+
+    if start_source != "MANUAL" or stop_source != "MANUAL":
+        return None
+    if manual_start_at in (None, 0.0) or manual_stop_at in (None, 0.0) or timestamp in (None, 0.0):
+        return None
+
+    labeled = dict(row)
+    if manual_start_at - 30_000 <= timestamp <= manual_start_at + 60_000:
+        labeled["start_target"] = 1
+        labeled["stop_target"] = 0
+        return labeled
+
+    if manual_stop_at - 30_000 <= timestamp <= manual_stop_at + 60_000:
+        labeled["start_target"] = 0
+        labeled["stop_target"] = 1
         return labeled
 
     return None

@@ -16,10 +16,11 @@ class PermissionHelper(
     private val onRefreshGpsStatus: () -> Unit,
     private val onLocateGranted: () -> Unit,
     private val onRefreshDashboard: () -> Unit,
-    private val onStartBackgroundTracking: () -> Unit
+    private val onManualRecordReady: () -> Unit,
 ) {
     private enum class PendingPermissionAction {
-        LOCATE
+        LOCATE,
+        MANUAL_RECORD,
     }
 
     private var pendingPermissionAction: PendingPermissionAction? = null
@@ -43,6 +44,7 @@ class PermissionHelper(
         onRefreshGpsStatus()
         when (action) {
             PendingPermissionAction.LOCATE -> onLocateGranted()
+            PendingPermissionAction.MANUAL_RECORD -> onManualRecordReady()
             null -> Unit
         }
     }
@@ -95,23 +97,11 @@ class PermissionHelper(
     }
 
     fun ensureSmartTrackingEnabled() {
-        if (!hasSmartTrackingBasePermissions()) {
-            smartTrackingPermissionLauncher.launch(buildSmartTrackingPermissionList())
-            return
-        }
-
-        if (needsBackgroundLocationPermission()) {
-            showBackgroundLocationSettingsPrompt()
-            return
-        }
-
-        startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
+        onRefreshDashboard()
     }
 
     fun startBackgroundTrackingServiceIfReady() {
-        if (!hasSmartTrackingBasePermissions()) return
-        if (needsBackgroundLocationPermission()) return
-        startBackgroundTrackingWithPrompts(promptBatteryOptimization = false)
+        onRefreshDashboard()
     }
 
     fun requestLocatePermissionOrRun() {
@@ -125,6 +115,21 @@ class PermissionHelper(
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
+    }
+
+    fun requestManualRecordPermissionOrRun() {
+        if (hasLocationPermission()) {
+            onManualRecordReady()
+            return
+        }
+
+        pendingPermissionAction = PendingPermissionAction.MANUAL_RECORD
+        locationPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
             )
         )
     }
@@ -188,7 +193,7 @@ class PermissionHelper(
     }
 
     private fun startBackgroundTrackingWithPrompts(promptBatteryOptimization: Boolean) {
-        onStartBackgroundTracking()
+        onManualRecordReady()
         maybeShowNotificationPermissionHint()
         if (promptBatteryOptimization) {
             maybeShowBatteryOptimizationPrompt()

@@ -9,6 +9,21 @@
 - `tools/decision-model/train_decision_models.py`
 - `tools/decision-model/replay_decision_run.py`
 
+当前过渡阶段，训练样本输入还会额外携带手动闭环打标元数据：
+
+- `recordId`
+- `startSource`
+- `stopSource`
+- `manualStartAt`
+- `manualStopAt`
+
+当 `startSource = MANUAL` 且 `stopSource = MANUAL` 时，训练脚本按以下窗口打标签：
+
+- `start` 正样本窗口：`manualStartAt - 30000` 到 `manualStartAt + 60000`
+- `stop` 正样本窗口：`manualStopAt - 30000` 到 `manualStopAt + 60000`
+
+窗口外样本在当前阶段不强制视为负样本。
+
 ## 文件清单
 
 训练脚本输出目录至少包含以下 5 个文件：

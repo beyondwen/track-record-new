@@ -32,6 +32,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryItem
+import com.wenhao.record.data.history.TrackRecordSource
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.DecisionEventStorage
@@ -245,11 +246,8 @@ class BackgroundTrackingService : Service() {
             if (restoredSession == null || currentSession != null) return@whenReady
             currentSession = restoredSession
             AdaptiveTrackSmoother.seed(restoredSession.points.lastOrNull())
-            if (AutoTrackStorage.isAutoTrackingEnabled(this)) {
-                motionConfidenceEngine.onActiveEntered()
-                enterPhase(TrackingPhase.ACTIVE, "异步恢复上一次未结束的行程", emitEvent = true)
-                scheduleFinalizeForCurrentSession()
-            }
+            motionConfidenceEngine.onActiveEntered()
+            enterPhase(TrackingPhase.ACTIVE, "已恢复上一次未结束的手动记录", emitEvent = true)
         }
         stayAnchors = FrequentPlaceStorage.loadAnchors(this)
         insideAnchorIds = FrequentPlaceStorage.loadInsideAnchorIds(this).toMutableSet()
@@ -261,12 +259,18 @@ class BackgroundTrackingService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
             ACTION_STOP -> {
-                AutoTrackStorage.setAutoTrackingEnabled(this, false)
-                AutoTrackStorage.saveUiState(this, AutoTrackUiState.DISABLED)
-                AutoTrackDiagnosticsStorage.markServiceStatus(this, "已关闭", "后台智能记录已停止")
-                stopAllTracking(clearSession = false)
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                if (currentSession != null) {
+                    finalizeCurrentSession(
+                        stopSource = TrackRecordSource.MANUAL,
+                        manualStopAt = System.currentTimeMillis(),
+                        stopServiceAfterFinalize = true,
+                    )
+                } else {
+                    AutoTrackDiagnosticsStorage.markServiceStatus(this, "已停止", "当前没有进行中的手动记录")
+                    stopAllTracking(clearSession = false)
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
                 return START_NOT_STICKY
             }
 
@@ -278,16 +282,18 @@ class BackgroundTrackingService : Service() {
 
             else -> {
                 ensureForeground()
-                AutoTrackStorage.setAutoTrackingEnabled(this, true)
+                AutoTrackStorage.setAutoTrackingEnabled(this, false)
                 scheduleFrequentPlacesRefresh()
                 refreshInsideAnchorsFromLastKnownLocation()
                 refreshWifiSnapshot()
+                motionConfidenceEngine.onActiveEntered()
                 if (currentSession != null) {
-                    motionConfidenceEngine.onActiveEntered()
-                    enterPhase(TrackingPhase.ACTIVE, "已恢复上一次未结束的行程", emitEvent = true)
-                    scheduleFinalizeForCurrentSession()
+                    enterPhase(TrackingPhase.ACTIVE, "继续当前手动记录", emitEvent = true)
                 } else {
-                    enterPhase(TrackingPhase.IDLE, "后台等待自动识别出行", emitEvent = true)
+                    beginActiveTracking(
+                        reason = "已手动开始记录",
+                        firstLocation = loadBestLastKnownLocation()?.takeUnless(::isLocationTooOld),
+                    )
                 }
             }
         }
@@ -331,8 +337,8 @@ class BackgroundTrackingService : Service() {
                 AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
                 AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(phase), reason)
                 updateNotification(
-                    title = "智能轨迹已开启",
-                    content = "正在后台低功耗待命，检测到移动后会自动开始。"
+                    title = "手动记录待开始",
+                    content = "自动记录已停用，当前仅保留手动开始与手动结束。"
                 )
             }
 
@@ -341,8 +347,8 @@ class BackgroundTrackingService : Service() {
                 AutoTrackStorage.saveUiState(this, AutoTrackUiState.PREPARING)
                 AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(phase), reason)
                 updateNotification(
-                    title = "正在确认是否开始出行",
-                    content = "检测到运动迹象，正在提升采样频率确认是否出行。"
+                    title = "手动记录待开始",
+                    content = "自动记录已停用，等待你手动开始。"
                 )
             }
 
@@ -359,8 +365,8 @@ class BackgroundTrackingService : Service() {
                 AutoTrackStorage.saveUiState(this, AutoTrackUiState.PAUSED_STILL)
                 AutoTrackDiagnosticsStorage.markServiceStatus(this, phaseLabel(phase), reason)
                 updateNotification(
-                    title = "正在判断本次行程是否结束",
-                    content = "检测到你可能已经停止移动，若持续静止将自动保存。"
+                    title = "等待手动结束",
+                    content = "自动结束已停用，需要你手动结束这段记录。"
                 )
             }
         }
@@ -664,17 +670,19 @@ class BackgroundTrackingService : Service() {
             !motionConfidenceEngine.hasRecentSignificantMotion(now)
         val lowSpeed = (location.speed.takeIf { it >= 0f } ?: 0f) < 0.9f
 
-        when {
-            currentPhase == TrackingPhase.ACTIVE &&
-                quietForMillis >= STOPPING_CONFIRM_DELAY_MS &&
-                sensorsQuiet &&
-                lowSpeed -> {
-                enterPhase(TrackingPhase.SUSPECT_STOPPING, "速度和传感器都趋于静止，开始观察是否结束", emitEvent = true)
-            }
+        if (shouldAutoFinalizeSessions()) {
+            when {
+                currentPhase == TrackingPhase.ACTIVE &&
+                    quietForMillis >= STOPPING_CONFIRM_DELAY_MS &&
+                    sensorsQuiet &&
+                    lowSpeed -> {
+                    enterPhase(TrackingPhase.SUSPECT_STOPPING, "速度和传感器都趋于静止，开始观察是否结束", emitEvent = true)
+                }
 
-            currentPhase == TrackingPhase.SUSPECT_STOPPING &&
-                quietForMillis < STOPPING_CONFIRM_DELAY_MS / 2 -> {
-                enterPhase(TrackingPhase.ACTIVE, "检测到新的运动证据，恢复正常记录", emitEvent = true)
+                currentPhase == TrackingPhase.SUSPECT_STOPPING &&
+                    quietForMillis < STOPPING_CONFIRM_DELAY_MS / 2 -> {
+                    enterPhase(TrackingPhase.ACTIVE, "检测到新的运动证据，恢复正常记录", emitEvent = true)
+                }
             }
         }
     }
@@ -742,7 +750,8 @@ class BackgroundTrackingService : Service() {
             location.accuracy.takeIf { location.hasAccuracy() }
         )
 
-        if (noiseResult.action == TrackNoiseAction.ACCEPT &&
+        if (shouldAutoFinalizeSessions() &&
+            noiseResult.action == TrackNoiseAction.ACCEPT &&
             !stationaryDecision.shouldSuppressAcceptedPoint
         ) {
             scheduleFinalizeForCurrentSession()
@@ -753,13 +762,18 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun scheduleFinalizeForCurrentSession() {
+        if (!shouldAutoFinalizeSessions()) return
         val session = currentSession ?: return
         trackingHandler.removeCallbacks(finalizeRunnable)
         val delayMs = max(15_000L, session.lastMotionTimestamp + STILL_STOP_DELAY_MS - System.currentTimeMillis())
         trackingHandler.postDelayed(finalizeRunnable, delayMs)
     }
 
-    private fun finalizeCurrentSession() {
+    private fun finalizeCurrentSession(
+        stopSource: TrackRecordSource = TrackRecordSource.AUTO,
+        manualStopAt: Long? = null,
+        stopServiceAfterFinalize: Boolean = false,
+    ) {
         val session = currentSession ?: return
         trackingHandler.removeCallbacks(finalizeRunnable)
         currentSession = null
@@ -768,16 +782,23 @@ class BackgroundTrackingService : Service() {
         AutoTrackStorage.clearSession(this)
         stopLocationUpdates()
         AutoTrackStorage.saveUiState(this, AutoTrackUiState.IDLE)
-        enterPhase(TrackingPhase.IDLE, "Session finalizing in background", emitEvent = true)
+        if (!stopServiceAfterFinalize) {
+            enterPhase(TrackingPhase.IDLE, "Session finalizing in background", emitEvent = true)
+        } else {
+            stopAllTracking(clearSession = false)
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
 
         val appContext = applicationContext
         AppTaskExecutor.runOnIo {
             runCatching {
+                val isManualStop = stopSource == TrackRecordSource.MANUAL
                 val durationSeconds = currentSessionDurationSeconds(session)
                 val sanitizedTrack = TrackPathSanitizer.sanitize(session.points, sortByTimestamp = true)
                 val sanitizedDistanceKm = sanitizedTrack.totalDistanceKm
 
-                if (sanitizedDistanceKm < 0.05 || sanitizedTrack.points.size < 2) {
+                if (!isManualStop && (sanitizedDistanceKm < 0.05 || sanitizedTrack.points.size < 2)) {
                     AutoTrackDiagnosticsStorage.markSessionDiscarded(
                         appContext,
                         "Session dropped after sanitize: ${formatDistance(sanitizedDistanceKm)}"
@@ -785,7 +806,8 @@ class BackgroundTrackingService : Service() {
                     return@runCatching
                 }
 
-                if (durationSeconds < MIN_USEFUL_DURATION_SECONDS &&
+                if (!isManualStop &&
+                    durationSeconds < MIN_USEFUL_DURATION_SECONDS &&
                     sanitizedDistanceKm < MIN_USEFUL_DISTANCE_KM
                 ) {
                     AutoTrackDiagnosticsStorage.markSessionDiscarded(
@@ -806,7 +828,11 @@ class BackgroundTrackingService : Service() {
                     distanceKm = sanitizedDistanceKm,
                     durationSeconds = durationSeconds,
                     averageSpeedKmh = averageSpeedKmh,
-                    points = sanitizedTrack.points
+                    points = sanitizedTrack.points,
+                    startSource = if (isManualStop) TrackRecordSource.MANUAL else TrackRecordSource.AUTO,
+                    stopSource = stopSource,
+                    manualStartAt = session.startTimestamp.takeIf { isManualStop },
+                    manualStopAt = manualStopAt,
                 )
                 HistoryStorage.add(appContext, historyItem)
                 AutoTrackStorage.saveUiState(appContext, AutoTrackUiState.SAVED_RECENTLY)
@@ -846,6 +872,7 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun maybePromoteToSuspect(reason: String) {
+        if (!isAutoDecisionEnabled()) return
         val snapshot = buildMotionSnapshot(
             effectiveDistanceMeters = 0f,
             reportedSpeedMetersPerSecond = 0f,
@@ -865,6 +892,7 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun maybePromoteToStopping(reason: String) {
+        if (!isAutoDecisionEnabled()) return
         if (currentSession == null) return
         if (currentPhase != TrackingPhase.ACTIVE) return
         enterPhase(TrackingPhase.SUSPECT_STOPPING, reason, emitEvent = true)
@@ -1091,8 +1119,8 @@ class BackgroundTrackingService : Service() {
     private fun buildDecisionCoordinator(): DecisionRuntimeCoordinator {
         return DecisionRuntimeCoordinator(
             engine = DecisionModelRepository.buildDecisionEngine(this),
-            onStart = { maybePromoteToSuspect("模型建议开始记录") },
-            onStop = { maybePromoteToStopping("模型建议结束记录") },
+            onStart = {},
+            onStop = {},
             onFrame = { frame ->
                 DecisionEventStorage.saveFrame(this, frame)
                 AutoTrackDiagnosticsStorage.markDecisionScores(
@@ -1105,6 +1133,10 @@ class BackgroundTrackingService : Service() {
             },
         )
     }
+
+    private fun isAutoDecisionEnabled(): Boolean = false
+
+    private fun shouldAutoFinalizeSessions(): Boolean = false
 
     private fun registerNetworkCallback() {
         if (networkCallbackRegistered) return
@@ -1464,10 +1496,10 @@ class BackgroundTrackingService : Service() {
         val manager = getSystemService(NotificationManager::class.java)
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "智能轨迹记录",
+            "手动轨迹记录",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "用于在后台持续守候你的出行"
+            description = "用于在手动记录期间持续采集轨迹"
         }
         manager.createNotificationChannel(channel)
     }
@@ -1515,21 +1547,21 @@ class BackgroundTrackingService : Service() {
 
     private fun resolvedNotificationTitle(): String {
         return if (currentSession != null) {
-            "正在智能记录行程"
+            "正在手动记录行程"
         } else {
-            "智能轨迹已开启"
+            "手动记录待开始"
         }
     }
 
     private fun resolvedNotificationContent(): String {
         return when (currentPhase) {
-            TrackingPhase.IDLE -> "正在后台低功耗待命，检测到移动后会自动开始。"
-            TrackingPhase.SUSPECT_MOVING -> "检测到运动迹象，正在提升采样频率确认是否出行。"
+            TrackingPhase.IDLE -> "自动记录已停用，开始和结束都由你手动控制。"
+            TrackingPhase.SUSPECT_MOVING -> "自动记录已停用，等待你手动开始。"
             TrackingPhase.ACTIVE -> {
                 val distance = currentSession?.totalDistanceKm ?: 0.0
-                "已记录 ${String.format(Locale.getDefault(), "%.2f", distance)} 公里，静止后会自动保存。"
+                "已记录 ${String.format(Locale.getDefault(), "%.2f", distance)} 公里，结束时请手动停止。"
             }
-            TrackingPhase.SUSPECT_STOPPING -> "正在判断本次行程是否结束，若持续静止将自动保存。"
+            TrackingPhase.SUSPECT_STOPPING -> "等待你手动结束当前记录。"
         }
     }
 

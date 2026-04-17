@@ -17,11 +17,19 @@ object HistorySnapshotCodec {
                 .append(""","distanceKm":""").append(item.distanceKm)
                 .append(""","durationSeconds":""").append(item.durationSeconds)
                 .append(""","averageSpeedKmh":""").append(item.averageSpeedKmh)
-            
+                .append(""","startSource":""").append(JSONObject.quote(item.startSource.name))
+                .append(""","stopSource":""").append(JSONObject.quote(item.stopSource.name))
+
             if (!item.title.isNullOrEmpty()) {
                 builder.append(""","title":""").append(JSONObject.quote(item.title))
             }
-            
+            if (item.manualStartAt != null) {
+                builder.append(""","manualStartAt":""").append(item.manualStartAt)
+            }
+            if (item.manualStopAt != null) {
+                builder.append(""","manualStopAt":""").append(item.manualStopAt)
+            }
+
             builder.append(""","points":[""")
             val points = item.points
             for (p in points.indices) {
@@ -92,12 +100,24 @@ object HistorySnapshotCodec {
                         durationSeconds = obj.getInt("durationSeconds"),
                         averageSpeedKmh = obj.getDouble("averageSpeedKmh"),
                         title = obj.optString("title").takeIf { it.isNotBlank() },
-                        points = points
+                        points = points,
+                        startSource = TrackRecordSource.fromStorage(obj.optStringOrNull("startSource")),
+                        stopSource = TrackRecordSource.fromStorage(obj.optStringOrNull("stopSource")),
+                        manualStartAt = obj.optLongOrNull("manualStartAt"),
+                        manualStopAt = obj.optLongOrNull("manualStopAt"),
                     )
                 )
             }
             items.sortWith(compareByDescending<HistoryItem> { it.timestamp }.thenByDescending { it.id })
             items
         }.getOrDefault(emptyList())
+    }
+
+    private fun JSONObject.optLongOrNull(key: String): Long? {
+        return if (has(key) && !isNull(key)) optLong(key) else null
+    }
+
+    private fun JSONObject.optStringOrNull(key: String): String? {
+        return if (has(key) && !isNull(key)) optString(key) else null
     }
 }
