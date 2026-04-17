@@ -2,6 +2,7 @@ package com.wenhao.record.ui.map
 
 import android.os.Handler
 import android.os.Looper
+import androidx.compose.foundation.BorderStroke
 import com.mapbox.android.gestures.MoveGestureDetector
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
@@ -14,9 +15,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
@@ -40,10 +44,15 @@ import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
 import com.mapbox.maps.plugin.gestures.generated.GesturesSettings
 import com.mapbox.maps.plugin.gestures.OnMoveListener
 import com.mapbox.maps.plugin.gestures.gestures
+import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
 import com.wenhao.record.map.MapMarkerIconFactory
 import com.wenhao.record.ui.designsystem.TrackMapCenterIndicator
 import kotlinx.coroutines.flow.first
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun TrackMapboxCanvas(
@@ -69,6 +78,11 @@ fun TrackMapboxCanvas(
                 style = MaterialTheme.typography.titleMedium,
             )
         }
+        return
+    }
+
+    if (!isMapboxAccessTokenConfigured(BuildConfig.MAPBOX_ACCESS_TOKEN)) {
+        MapboxUnavailablePlaceholder(modifier = modifier)
         return
     }
 
@@ -287,4 +301,48 @@ fun TrackMapboxCanvas(
             snapshotRequested = true
         }
     }
+}
+
+@Composable
+private fun MapboxUnavailablePlaceholder(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            shape = RoundedCornerShape(24.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+            tonalElevation = 2.dp,
+            shadowElevation = 0.dp,
+            modifier = Modifier.padding(horizontal = 24.dp),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = "地图暂不可用",
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = "当前构建未配置 Mapbox Token，已自动跳过地图初始化，避免启动闪退。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+internal fun isMapboxAccessTokenConfigured(token: String): Boolean {
+    val normalized = token.trim()
+    if (normalized.isEmpty()) return false
+    return !normalized.equals("YOUR_MAPBOX_ACCESS_TOKEN", ignoreCase = true)
 }
