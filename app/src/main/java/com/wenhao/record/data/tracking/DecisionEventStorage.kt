@@ -70,6 +70,19 @@ object DecisionEventStorage {
         }
     }
 
+    fun deleteUploadedEvents(
+        context: Context,
+        eventIds: List<Long>,
+    ) {
+        val sanitizedEventIds = eventIds.distinct().filter { it > 0L }
+        if (sanitizedEventIds.isEmpty()) return
+        runBlockingIo {
+            val dao = TrackDatabase.getInstance(context.applicationContext).decisionDao()
+            dao.deleteFeedbackForEventIds(sanitizedEventIds)
+            dao.deleteEventsByIds(sanitizedEventIds)
+        }
+    }
+
     private fun toReviewItem(row: DecisionEventWithFeedbackRow): DecisionReviewItem {
         return DecisionReviewItem(
             eventId = row.eventId,

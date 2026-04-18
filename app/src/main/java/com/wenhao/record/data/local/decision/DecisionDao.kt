@@ -21,6 +21,30 @@ interface DecisionDao {
 
     @Query(
         """
+        SELECT * FROM decision_event
+        WHERE timestampMillis BETWEEN :startMillis AND :endMillis
+        ORDER BY eventId DESC
+        """
+    )
+    fun getEventsBetween(startMillis: Long, endMillis: Long): List<DecisionEventEntity>
+
+    @Query(
+        """
+        SELECT * FROM decision_feedback
+        WHERE eventId IN (:eventIds)
+        ORDER BY feedbackId ASC
+        """
+    )
+    fun getFeedbackForEventIds(eventIds: List<Long>): List<DecisionFeedbackEntity>
+
+    @Query("DELETE FROM decision_feedback WHERE eventId IN (:eventIds)")
+    fun deleteFeedbackForEventIds(eventIds: List<Long>): Int
+
+    @Query("DELETE FROM decision_event WHERE eventId IN (:eventIds)")
+    fun deleteEventsByIds(eventIds: List<Long>): Int
+
+    @Query(
+        """
         SELECT
             e.eventId AS eventId,
             e.timestampMillis AS timestampMillis,

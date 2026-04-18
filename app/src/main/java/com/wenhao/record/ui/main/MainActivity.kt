@@ -39,6 +39,7 @@ import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.wenhao.record.data.tracking.DecisionFeedbackType
+import com.wenhao.record.data.tracking.DecisionEventStorage
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrainingSampleExportCodec
 import com.wenhao.record.data.tracking.TrainingSampleExporter
@@ -403,6 +404,10 @@ class MainActivity : AppCompatActivity() {
 
                 when (uploadResult) {
                     is TrainingSampleUploadResult.Success -> {
+                        DecisionEventStorage.deleteUploadedEvents(
+                            context = this@MainActivity,
+                            eventIds = uploadResult.acceptedEventIds,
+                        )
                         UploadedTrainingSampleStore.markUploaded(
                             context = this@MainActivity,
                             eventIds = uploadResult.acceptedEventIds,

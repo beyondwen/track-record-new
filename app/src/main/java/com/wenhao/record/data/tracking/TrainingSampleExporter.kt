@@ -5,6 +5,7 @@ import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.history.TrackRecordSource
 import com.wenhao.record.data.local.TrackDatabase
+import com.wenhao.record.data.local.decision.DecisionDao
 import com.wenhao.record.data.local.decision.DecisionEventEntity
 import org.json.JSONObject
 import kotlinx.coroutines.Dispatchers
@@ -36,16 +37,20 @@ data class TrainingSampleRow(
 object TrainingSampleExporter {
     private const val START_WINDOW_LEAD_MS = 30_000L
     private const val STOP_WINDOW_TRAIL_MS = 60_000L
+    private const val SQLITE_IN_LIMIT_SAFE_CHUNK = 900
 
     fun exportRows(context: Context): List<TrainingSampleRow> {
         return runBlocking {
             withContext(Dispatchers.IO) {
                 val dao = TrackDatabase.getInstance(context.applicationContext).decisionDao()
-                val feedbackByEventId = dao.getFeedback()
-                    .associateBy({ it.eventId }, { it.feedbackType })
                 val manualItems = filterManualBoundaryItems(HistoryStorage.load(context.applicationContext))
+                if (manualItems.isEmpty()) {
+                    return@withContext emptyList()
+                }
+                val events = loadEventsForManualItems(dao, manualItems)
+                val feedbackByEventId = loadFeedbackByEventId(dao, events.map { it.eventId })
                 attachManualBoundaryMetadata(
-                    events = dao.getEvents(),
+                    events = events,
                     feedbackByEventId = feedbackByEventId,
                     manualItems = manualItems,
                 )
@@ -60,6 +65,41 @@ object TrainingSampleExporter {
                 item.manualStartAt != null &&
                 item.manualStopAt != null
         }.sortedBy { it.manualStartAt }
+    }
+
+    internal data class ManualSampleWindow(
+        val startMillis: Long,
+        val endMillis: Long,
+    )
+
+    internal fun mergeManualSampleWindows(
+        manualItems: List<HistoryItem>,
+    ): List<ManualSampleWindow> {
+        if (manualItems.isEmpty()) return emptyList()
+
+        val windows = manualItems.mapNotNull { item ->
+            val manualStartAt = item.manualStartAt ?: return@mapNotNull null
+            val manualStopAt = item.manualStopAt ?: return@mapNotNull null
+            ManualSampleWindow(
+                startMillis = manualStartAt - START_WINDOW_LEAD_MS,
+                endMillis = manualStopAt + STOP_WINDOW_TRAIL_MS,
+            )
+        }.sortedBy { it.startMillis }
+
+        if (windows.isEmpty()) return emptyList()
+
+        val merged = mutableListOf(windows.first())
+        for (window in windows.drop(1)) {
+            val lastWindow = merged.last()
+            if (window.startMillis <= lastWindow.endMillis) {
+                merged[merged.lastIndex] = lastWindow.copy(
+                    endMillis = maxOf(lastWindow.endMillis, window.endMillis)
+                )
+            } else {
+                merged += window
+            }
+        }
+        return merged
     }
 
     internal fun attachManualBoundaryMetadata(
@@ -107,5 +147,34 @@ object TrainingSampleExporter {
                 put(key, json.optDouble(key))
             }
         }
+    }
+
+    private fun loadEventsForManualItems(
+        dao: DecisionDao,
+        manualItems: List<HistoryItem>,
+    ): List<DecisionEventEntity> {
+        val windows = mergeManualSampleWindows(manualItems)
+        if (windows.isEmpty()) return emptyList()
+
+        val byEventId = linkedMapOf<Long, DecisionEventEntity>()
+        for (window in windows) {
+            dao.getEventsBetween(window.startMillis, window.endMillis).forEach { event ->
+                byEventId.putIfAbsent(event.eventId, event)
+            }
+        }
+        return byEventId.values.toList()
+    }
+
+    private fun loadFeedbackByEventId(
+        dao: DecisionDao,
+        eventIds: List<Long>,
+    ): Map<Long, String> {
+        val sanitizedEventIds = eventIds.distinct().filter { it > 0L }
+        if (sanitizedEventIds.isEmpty()) return emptyMap()
+
+        return sanitizedEventIds
+            .chunked(SQLITE_IN_LIMIT_SAFE_CHUNK)
+            .flatMap { chunk -> dao.getFeedbackForEventIds(chunk) }
+            .associateBy({ it.eventId }, { it.feedbackType })
     }
 }
