@@ -10,5 +10,6 @@ data class AboutUiState(
     val uploadTokenInput: String = "",
     val hasConfiguredSampleUpload: Boolean = false,
     val isUploadingSamples: Boolean = false,
+    val isUploadingHistories: Boolean = false,
     val isTestingWorkerConnectivity: Boolean = false,
 )

@@ -4,6 +4,9 @@ import type { Connection } from "mysql2/promise";
 
 import type {
   Env,
+  HistoryPersistence,
+  HistoryRecord,
+  PersistHistoriesResult,
   PersistSamplesResult,
   SamplePersistence,
   TrainingSample
@@ -21,6 +24,18 @@ function getAcceptedEventIds(samples: TrainingSample[]): number[] {
   return [...new Set(samples.map((sample) => sample.eventId))];
 }
 
+function dedupeHistoriesById(histories: HistoryRecord[]): HistoryRecord[] {
+  const byHistoryId = new Map<number, HistoryRecord>();
+  for (const history of histories) {
+    byHistoryId.set(history.historyId, history);
+  }
+  return [...byHistoryId.values()];
+}
+
+function getAcceptedHistoryIds(histories: HistoryRecord[]): number[] {
+  return [...new Set(histories.map((history) => history.historyId))];
+}
+
 export function buildPersistSamplesResult(
   rawSamples: TrainingSample[],
   insertedCount: number
@@ -34,6 +49,19 @@ export function buildPersistSamplesResult(
   };
 }
 
+export function buildPersistHistoriesResult(
+  rawHistories: HistoryRecord[],
+  insertedCount: number
+): PersistHistoriesResult {
+  const acceptedHistoryIds = getAcceptedHistoryIds(rawHistories);
+
+  return {
+    insertedCount,
+    dedupedCount: rawHistories.length - insertedCount,
+    acceptedHistoryIds
+  };
+}
+
 function toConnection(env: Env): mysql.ConnectionOptions {
   return {
     host: env.HYPERDRIVE.host,
@@ -42,6 +70,80 @@ function toConnection(env: Env): mysql.ConnectionOptions {
     password: env.HYPERDRIVE.password,
     database: env.HYPERDRIVE.database,
     disableEval: true
+  };
+}
+
+export function createMysqlHistoryPersistence(): HistoryPersistence {
+  return {
+    async persistHistories(
+      deviceId: string,
+      appVersion: string,
+      histories: HistoryRecord[],
+      env: Env
+    ): Promise<PersistHistoriesResult> {
+      const uniqueHistories = dedupeHistoriesById(histories);
+      if (uniqueHistories.length === 0) {
+        return buildPersistHistoriesResult(histories, 0);
+      }
+
+      const rowPlaceholders = uniqueHistories
+        .map(() => "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .join(", ");
+      const sql = `
+        INSERT IGNORE INTO uploaded_histories
+          (
+            device_id,
+            history_id,
+            app_version,
+            timestamp_millis,
+            distance_km,
+            duration_seconds,
+            average_speed_kmh,
+            title,
+            start_source,
+            stop_source,
+            manual_start_at,
+            manual_stop_at,
+            points_json
+          )
+        VALUES ${rowPlaceholders}
+      `;
+
+      const params: Array<number | string | null> = [];
+      for (const history of uniqueHistories) {
+        params.push(
+          deviceId,
+          history.historyId,
+          appVersion,
+          history.timestampMillis,
+          history.distanceKm,
+          history.durationSeconds,
+          history.averageSpeedKmh,
+          history.title,
+          history.startSource,
+          history.stopSource,
+          history.manualStartAt,
+          history.manualStopAt,
+          JSON.stringify(history.points)
+        );
+      }
+
+      let connection: Connection | undefined;
+      try {
+        connection = await mysql.createConnection(toConnection(env));
+        const [result] = await connection.query<ResultSetHeader>(sql, params);
+        const insertedCount = result.affectedRows ?? 0;
+        return buildPersistHistoriesResult(histories, insertedCount);
+      } finally {
+        if (connection) {
+          try {
+            await connection.end();
+          } catch (error) {
+            console.warn("Failed to close MySQL connection cleanly", error);
+          }
+        }
+      }
+    }
   };
 }
 

@@ -1,22 +1,32 @@
 import { authenticateRequest } from "./auth";
-import { createMysqlSamplePersistence } from "./mysql";
+import {
+  createMysqlHistoryPersistence,
+  createMysqlSamplePersistence
+} from "./mysql";
 import type {
   Env,
   ErrorResponseBody,
+  HistoryPersistence,
+  HistorySuccessResponseBody,
   SamplePersistence,
-  SuccessResponseBody
+  SampleSuccessResponseBody
 } from "./types";
-import { ValidationError, validateBatchRequest } from "./validation";
+import {
+  ValidationError,
+  validateBatchRequest,
+  validateHistoryBatchRequest
+} from "./validation";
 
-export type { SamplePersistence } from "./types";
+export type { HistoryPersistence, SamplePersistence } from "./types";
 
 interface AppDependencies {
   samplePersistence?: SamplePersistence;
+  historyPersistence?: HistoryPersistence;
 }
 
 function jsonResponse(
   status: number,
-  body: SuccessResponseBody | ErrorResponseBody
+  body: SampleSuccessResponseBody | HistorySuccessResponseBody | ErrorResponseBody
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -39,11 +49,13 @@ function ensureJsonContentType(request: Request): ErrorResponseBody | null {
 
 export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
   const samplePersistence = deps.samplePersistence ?? createMysqlSamplePersistence();
+  const historyPersistence =
+    deps.historyPersistence ?? createMysqlHistoryPersistence();
 
   return {
     async fetch(request, env): Promise<Response> {
       const url = new URL(request.url);
-      if (url.pathname !== "/samples/batch") {
+      if (url.pathname !== "/samples/batch" && url.pathname !== "/histories/batch") {
         return jsonResponse(404, {
           ok: false,
           message: "Not found"
@@ -81,9 +93,26 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
       }
 
       try {
-        const validated = validateBatchRequest(payload);
-        const persisted = await samplePersistence.persistSamples(
-          validated.samples,
+        if (url.pathname === "/samples/batch") {
+          const validated = validateBatchRequest(payload);
+          const persisted = await samplePersistence.persistSamples(
+            validated.samples,
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            insertedCount: persisted.insertedCount,
+            dedupedCount: persisted.dedupedCount,
+            acceptedEventIds: persisted.acceptedEventIds
+          });
+        }
+
+        const validated = validateHistoryBatchRequest(payload);
+        const persisted = await historyPersistence.persistHistories(
+          validated.deviceId,
+          validated.appVersion,
+          validated.histories,
           env
         );
 
@@ -91,7 +120,7 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           ok: true,
           insertedCount: persisted.insertedCount,
           dedupedCount: persisted.dedupedCount,
-          acceptedEventIds: persisted.acceptedEventIds
+          acceptedHistoryIds: persisted.acceptedHistoryIds
         });
       } catch (error) {
         if (error instanceof ValidationError) {
@@ -105,7 +134,12 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           error instanceof Error && error.message.trim().length > 0
             ? error.message
             : "Internal server error";
-        console.error("Failed to persist training samples", error);
+        console.error(
+          url.pathname === "/samples/batch"
+            ? "Failed to persist training samples"
+            : "Failed to persist histories",
+          error
+        );
 
         return jsonResponse(500, {
           ok: false,

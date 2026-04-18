@@ -33,6 +33,11 @@ import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.history.HistoryTransferCodec
+import com.wenhao.record.data.history.HistoryBatchUploadResult
+import com.wenhao.record.data.history.HistoryBatchUploader
+import com.wenhao.record.data.history.HistoryUploadRow
+import com.wenhao.record.data.history.HistoryUploadService
+import com.wenhao.record.data.history.UploadedHistoryStore
 import com.wenhao.record.data.tracking.AutoTrackDiagnostics
 import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.AutoTrackSession
@@ -100,6 +105,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
     private val trainingSampleUploadService by lazy { TrainingSampleUploadService() }
+    private val historyUploadService by lazy { HistoryUploadService() }
     private val workerConnectivityService by lazy { WorkerConnectivityService() }
     private val apkDownloadInstaller by lazy { ApkDownloadInstaller(this) }
     private lateinit var dashboardUiController: DashboardUiController
@@ -232,6 +238,7 @@ class MainActivity : AppCompatActivity() {
                     onSampleUploadConfigClearClick = ::clearSampleUploadConfig,
                     onWorkerConnectivityTestClick = ::testWorkerConnectivity,
                     onSampleUploadClick = ::uploadPendingTrainingSamples,
+                    onHistoryUploadClick = ::uploadPendingHistories,
                     onManualRecordClick = ::handleManualRecordToggle,
                     onLocateClick = ::handleLocateAction,
                     onHistoryOpen = { dayStartMillis ->
@@ -367,6 +374,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun uploadPendingTrainingSamples() {
         if (aboutState.isUploadingSamples) return
+        if (aboutState.isUploadingHistories) {
+            aboutState = aboutState.copy(statusMessage = "历史轨迹上传进行中，请稍后再试")
+            return
+        }
         if (aboutState.isCheckingUpdate) {
             aboutState = aboutState.copy(statusMessage = "检查更新进行中，请稍后再试")
             return
@@ -502,6 +513,140 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun uploadPendingHistories() {
+        if (aboutState.isUploadingHistories) return
+        if (aboutState.isUploadingSamples) {
+            aboutState = aboutState.copy(statusMessage = "样本上传进行中，请稍后再试")
+            return
+        }
+        if (aboutState.isCheckingUpdate) {
+            aboutState = aboutState.copy(statusMessage = "检查更新进行中，请稍后再试")
+            return
+        }
+        if (aboutState.isTestingWorkerConnectivity) {
+            aboutState = aboutState.copy(statusMessage = "Worker 连通性测试进行中，请稍后再试")
+            return
+        }
+
+        val config = TrainingSampleUploadConfigStorage.load(this)
+        if (!hasConfiguredSampleUpload(config)) {
+            aboutState = aboutState.copy(statusMessage = "未配置上传信息")
+            return
+        }
+        aboutState = aboutState.copy(
+            isUploadingHistories = true,
+            statusMessage = "准备上传历史轨迹…",
+        )
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val uploadedHistoryIds = UploadedHistoryStore.load(this@MainActivity)
+                val pendingRows = HistoryStorage.load(this@MainActivity)
+                    .filterNot { item -> uploadedHistoryIds.contains(item.id) }
+                    .map(HistoryUploadRow::from)
+                if (pendingRows.isEmpty()) {
+                    launch(Dispatchers.Main) {
+                        aboutState = aboutState.copy(statusMessage = "当前没有可上传的新历史轨迹")
+                    }
+                    return@launch
+                }
+
+                launch(Dispatchers.Main) {
+                    aboutState = aboutState.copy(
+                        statusMessage = "正在上传 ${pendingRows.size} 条历史轨迹…",
+                    )
+                }
+
+                Log.i(TAG, "Start uploading ${pendingRows.size} histories")
+                val batchUploader = HistoryBatchUploader { batchRows ->
+                    historyUploadService.upload(
+                        config = config,
+                        appVersion = BuildConfig.VERSION_NAME,
+                        deviceId = uploadDeviceId(),
+                        rows = batchRows,
+                    )
+                }
+                val uploadResult = batchUploader.upload(
+                    rows = pendingRows,
+                    batchSize = HistoryBatchUploader.DEFAULT_BATCH_SIZE,
+                    onBatchStart = { progress ->
+                        launch(Dispatchers.Main) {
+                            aboutState = aboutState.copy(
+                                statusMessage = buildString {
+                                    append("正在上传第 ")
+                                    append(progress.batchIndex + 1)
+                                    append("/")
+                                    append(progress.totalBatches)
+                                    append(" 批历史轨迹（")
+                                    append(progress.batchSize)
+                                    append(" 条）…")
+                                },
+                            )
+                        }
+                        Log.i(
+                            TAG,
+                            "Uploading history batch ${progress.batchIndex + 1}/${progress.totalBatches} size=${progress.batchSize}"
+                        )
+                    },
+                )
+
+                when (uploadResult) {
+                    is HistoryBatchUploadResult.Success -> {
+                        UploadedHistoryStore.markUploaded(
+                            context = this@MainActivity,
+                            historyIds = uploadResult.acceptedHistoryIds,
+                        )
+                        launch(Dispatchers.Main) {
+                            aboutState = aboutState.copy(
+                                statusMessage = "历史轨迹上传成功：${uploadResult.acceptedHistoryIds.size} 条",
+                            )
+                        }
+                        Log.i(
+                            TAG,
+                            "History upload succeeded accepted=${uploadResult.acceptedHistoryIds.size} inserted=${uploadResult.insertedCount} deduped=${uploadResult.dedupedCount}"
+                        )
+                    }
+
+                    is HistoryBatchUploadResult.Failure -> {
+                        UploadedHistoryStore.markUploaded(
+                            context = this@MainActivity,
+                            historyIds = uploadResult.acceptedHistoryIds,
+                        )
+                        launch(Dispatchers.Main) {
+                            aboutState = aboutState.copy(
+                                statusMessage = buildString {
+                                    append("历史轨迹上传失败：")
+                                    append(uploadResult.message)
+                                    if (uploadResult.totalBatches > 1) {
+                                        append("（第 ")
+                                        append(uploadResult.failedBatchIndex + 1)
+                                        append("/")
+                                        append(uploadResult.totalBatches)
+                                        append(" 批）")
+                                    }
+                                },
+                            )
+                        }
+                        Log.e(
+                            TAG,
+                            "History upload failed at batch ${uploadResult.failedBatchIndex + 1}/${uploadResult.totalBatches} message=${uploadResult.message} acceptedBeforeFailure=${uploadResult.acceptedHistoryIds.size}"
+                        )
+                    }
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "History upload crashed", error)
+                launch(Dispatchers.Main) {
+                    val message = error.message?.takeIf { it.isNotBlank() } ?: "上传失败，请稍后重试"
+                    aboutState = aboutState.copy(statusMessage = "历史轨迹上传失败：$message")
+                }
+            } finally {
+                launch(Dispatchers.Main) {
+                    aboutState = aboutState.copy(isUploadingHistories = false)
+                }
+            }
+        }
+    }
+
     private fun hasConfiguredSampleUpload(config: TrainingSampleUploadConfig): Boolean {
         return config.workerBaseUrl.isNotBlank() && config.uploadToken.isNotBlank()
     }
@@ -510,6 +655,10 @@ class MainActivity : AppCompatActivity() {
         if (aboutState.isTestingWorkerConnectivity) return
         if (aboutState.isUploadingSamples) {
             aboutState = aboutState.copy(statusMessage = "样本上传进行中，请稍后再测试")
+            return
+        }
+        if (aboutState.isUploadingHistories) {
+            aboutState = aboutState.copy(statusMessage = "历史轨迹上传进行中，请稍后再测试")
             return
         }
         if (aboutState.isCheckingUpdate) {
@@ -570,6 +719,10 @@ class MainActivity : AppCompatActivity() {
     private fun checkForAppUpdate() {
         if (aboutState.isUploadingSamples) {
             aboutState = aboutState.copy(statusMessage = "样本上传进行中，请稍后再检查更新")
+            return
+        }
+        if (aboutState.isUploadingHistories) {
+            aboutState = aboutState.copy(statusMessage = "历史轨迹上传进行中，请稍后再检查更新")
             return
         }
         if (aboutState.isTestingWorkerConnectivity) {

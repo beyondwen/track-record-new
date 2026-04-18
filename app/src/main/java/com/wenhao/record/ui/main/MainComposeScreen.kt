@@ -109,6 +109,7 @@ fun MainComposeScreen(
     onSampleUploadConfigClearClick: () -> Unit,
     onWorkerConnectivityTestClick: () -> Unit,
     onSampleUploadClick: () -> Unit,
+    onHistoryUploadClick: () -> Unit,
     onManualRecordClick: () -> Unit,
     onLocateClick: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
@@ -165,6 +166,7 @@ fun MainComposeScreen(
                     onSampleUploadConfigClearClick = onSampleUploadConfigClearClick,
                     onWorkerConnectivityTestClick = onWorkerConnectivityTestClick,
                     onSampleUploadClick = onSampleUploadClick,
+                    onHistoryUploadClick = onHistoryUploadClick,
                 )
             }
 
