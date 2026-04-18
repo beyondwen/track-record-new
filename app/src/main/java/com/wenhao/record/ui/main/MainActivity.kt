@@ -42,6 +42,11 @@ import com.wenhao.record.data.tracking.DecisionFeedbackType
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrainingSampleExportCodec
 import com.wenhao.record.data.tracking.TrainingSampleExporter
+import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
+import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
+import com.wenhao.record.data.tracking.TrainingSampleUploadResult
+import com.wenhao.record.data.tracking.TrainingSampleUploadService
+import com.wenhao.record.data.tracking.UploadedTrainingSampleStore
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.permissions.PermissionHelper
 import com.wenhao.record.stability.CrashLogStore
@@ -90,6 +95,7 @@ class MainActivity : AppCompatActivity() {
             repo = "track-record-new",
         )
     }
+    private val trainingSampleUploadService by lazy { TrainingSampleUploadService() }
     private val apkDownloadInstaller by lazy { ApkDownloadInstaller(this) }
     private lateinit var dashboardUiController: DashboardUiController
     private lateinit var barometerController: BarometerController
@@ -185,7 +191,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        restoreMapboxTokenState()
+        restoreAboutState()
 
         dashboardUiController = DashboardUiController(this)
         barometerController = BarometerController()
@@ -215,6 +221,11 @@ class MainActivity : AppCompatActivity() {
                     onMapboxTokenChange = ::updateMapboxTokenInput,
                     onMapboxTokenSaveClick = ::saveMapboxToken,
                     onMapboxTokenClearClick = ::clearMapboxToken,
+                    onWorkerBaseUrlChange = ::updateWorkerBaseUrlInput,
+                    onUploadTokenChange = ::updateUploadTokenInput,
+                    onSampleUploadConfigSaveClick = ::saveSampleUploadConfig,
+                    onSampleUploadConfigClearClick = ::clearSampleUploadConfig,
+                    onSampleUploadClick = ::uploadPendingTrainingSamples,
                     onManualRecordClick = ::handleManualRecordToggle,
                     onLocateClick = ::handleLocateAction,
                     onHistoryOpen = { dayStartMillis ->
@@ -277,13 +288,17 @@ class MainActivity : AppCompatActivity() {
         return "当前版本：${BuildConfig.VERSION_NAME} (${BuildConfig.APP_VERSION_CODE})"
     }
 
-    private fun restoreMapboxTokenState() {
+    private fun restoreAboutState() {
         val savedToken = MapboxTokenStorage.load(this)
+        val uploadConfig = TrainingSampleUploadConfigStorage.load(this)
         mapboxAccessToken = savedToken
         aboutState = AboutUiState(
             appVersionLabel = buildVersionLabel(),
             mapboxTokenInput = savedToken,
             hasConfiguredMapboxToken = isMapboxAccessTokenConfigured(savedToken),
+            workerBaseUrlInput = uploadConfig.workerBaseUrl,
+            uploadTokenInput = uploadConfig.uploadToken,
+            hasConfiguredSampleUpload = hasConfiguredSampleUpload(uploadConfig),
         )
     }
 
@@ -311,7 +326,133 @@ class MainActivity : AppCompatActivity() {
         Toast.makeText(this, "已清空当前设备上的 Mapbox Token", Toast.LENGTH_SHORT).show()
     }
 
+    private fun updateWorkerBaseUrlInput(value: String) {
+        aboutState = aboutState.copy(workerBaseUrlInput = value)
+    }
+
+    private fun updateUploadTokenInput(value: String) {
+        aboutState = aboutState.copy(uploadTokenInput = value)
+    }
+
+    private fun saveSampleUploadConfig() {
+        val newConfig = TrainingSampleUploadConfig(
+            workerBaseUrl = aboutState.workerBaseUrlInput,
+            uploadToken = aboutState.uploadTokenInput,
+        )
+        TrainingSampleUploadConfigStorage.save(this, newConfig)
+        val savedConfig = TrainingSampleUploadConfigStorage.load(this)
+        aboutState = aboutState.copy(
+            workerBaseUrlInput = savedConfig.workerBaseUrl,
+            uploadTokenInput = savedConfig.uploadToken,
+            hasConfiguredSampleUpload = hasConfiguredSampleUpload(savedConfig),
+        )
+        Toast.makeText(this, "训练样本上传配置已保存", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun clearSampleUploadConfig() {
+        TrainingSampleUploadConfigStorage.clear(this)
+        aboutState = aboutState.copy(
+            workerBaseUrlInput = "",
+            uploadTokenInput = "",
+            hasConfiguredSampleUpload = false,
+        )
+        Toast.makeText(this, "训练样本上传配置已清空", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun uploadPendingTrainingSamples() {
+        if (aboutState.isUploadingSamples) return
+        if (aboutState.isCheckingUpdate) {
+            aboutState = aboutState.copy(statusMessage = "检查更新进行中，请稍后再试")
+            return
+        }
+
+        val config = TrainingSampleUploadConfigStorage.load(this)
+        if (!hasConfiguredSampleUpload(config)) {
+            aboutState = aboutState.copy(statusMessage = "未配置上传信息")
+            return
+        }
+        aboutState = aboutState.copy(
+            isUploadingSamples = true,
+            statusMessage = "准备上传样本…",
+        )
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val uploadedEventIds = UploadedTrainingSampleStore.load(this@MainActivity)
+                val pendingRows = TrainingSampleExporter.exportRows(this@MainActivity)
+                    .filterNot { row -> uploadedEventIds.contains(row.eventId) }
+                if (pendingRows.isEmpty()) {
+                    launch(Dispatchers.Main) {
+                        aboutState = aboutState.copy(statusMessage = "当前没有可上传的新样本")
+                    }
+                    return@launch
+                }
+
+                launch(Dispatchers.Main) {
+                    aboutState = aboutState.copy(
+                        statusMessage = "正在上传 ${pendingRows.size} 条样本…",
+                    )
+                }
+
+                val uploadResult = trainingSampleUploadService.upload(
+                    config = config,
+                    appVersion = BuildConfig.VERSION_NAME,
+                    deviceId = uploadDeviceId(),
+                    rows = pendingRows,
+                )
+
+                when (uploadResult) {
+                    is TrainingSampleUploadResult.Success -> {
+                        UploadedTrainingSampleStore.markUploaded(
+                            context = this@MainActivity,
+                            eventIds = uploadResult.acceptedEventIds,
+                        )
+                        launch(Dispatchers.Main) {
+                            aboutState = aboutState.copy(
+                                statusMessage = "上传成功：${uploadResult.acceptedEventIds.size} 条",
+                            )
+                        }
+                    }
+
+                    is TrainingSampleUploadResult.Failure -> {
+                        launch(Dispatchers.Main) {
+                            aboutState = aboutState.copy(
+                                statusMessage = "上传失败：${uploadResult.message}",
+                            )
+                        }
+                    }
+                }
+            } catch (error: Exception) {
+                launch(Dispatchers.Main) {
+                    val message = error.message?.takeIf { it.isNotBlank() } ?: "上传失败，请稍后重试"
+                    aboutState = aboutState.copy(statusMessage = "上传失败：$message")
+                }
+            } finally {
+                launch(Dispatchers.Main) {
+                    aboutState = aboutState.copy(isUploadingSamples = false)
+                }
+            }
+        }
+    }
+
+    private fun hasConfiguredSampleUpload(config: TrainingSampleUploadConfig): Boolean {
+        return config.workerBaseUrl.isNotBlank() && config.uploadToken.isNotBlank()
+    }
+
+    private fun uploadDeviceId(): String {
+        val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
+        return if (androidId.isNullOrBlank()) {
+            packageName
+        } else {
+            androidId
+        }
+    }
+
     private fun checkForAppUpdate() {
+        if (aboutState.isUploadingSamples) {
+            aboutState = aboutState.copy(statusMessage = "样本上传进行中，请稍后再检查更新")
+            return
+        }
         aboutState = aboutState.copy(isCheckingUpdate = true, statusMessage = null)
         lifecycleScope.launch(Dispatchers.IO) {
             val result = updateService.checkForUpdate(currentVersionCode = BuildConfig.APP_VERSION_CODE)

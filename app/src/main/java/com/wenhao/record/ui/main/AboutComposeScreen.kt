@@ -11,6 +11,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.wenhao.record.ui.designsystem.TrackPrimaryButton
 
@@ -22,6 +23,11 @@ fun AboutComposeScreen(
     onMapboxTokenChange: (String) -> Unit,
     onMapboxTokenSaveClick: () -> Unit,
     onMapboxTokenClearClick: () -> Unit,
+    onWorkerBaseUrlChange: (String) -> Unit,
+    onUploadTokenChange: (String) -> Unit,
+    onSampleUploadConfigSaveClick: () -> Unit,
+    onSampleUploadConfigClearClick: () -> Unit,
+    onSampleUploadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -61,10 +67,61 @@ fun AboutComposeScreen(
             enabled = state.hasConfiguredMapboxToken || state.mapboxTokenInput.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
         )
+        OutlinedTextField(
+            value = state.workerBaseUrlInput,
+            onValueChange = onWorkerBaseUrlChange,
+            label = { Text("Worker 地址") },
+            placeholder = { Text("例如：https://your-worker.workers.dev") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = state.uploadTokenInput,
+            onValueChange = onUploadTokenChange,
+            label = { Text("上传 Token") },
+            placeholder = { Text("请输入上传鉴权 Token") },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = if (state.hasConfiguredSampleUpload) {
+                "训练样本上传配置已保存到当前设备。"
+            } else {
+                "当前设备未配置训练样本上传信息。"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TrackPrimaryButton(
+            text = "保存上传配置",
+            onClick = onSampleUploadConfigSaveClick,
+            enabled = !state.isUploadingSamples &&
+                state.workerBaseUrlInput.isNotBlank() &&
+                state.uploadTokenInput.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        TrackPrimaryButton(
+            text = "清空上传配置",
+            onClick = onSampleUploadConfigClearClick,
+            enabled = !state.isUploadingSamples &&
+                (
+                    state.hasConfiguredSampleUpload ||
+                        state.workerBaseUrlInput.isNotBlank() ||
+                        state.uploadTokenInput.isNotBlank()
+                    ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        TrackPrimaryButton(
+            text = if (state.isUploadingSamples) "上传中..." else "上传未上传样本",
+            onClick = onSampleUploadClick,
+            enabled = !state.isUploadingSamples && !state.isCheckingUpdate,
+            modifier = Modifier.fillMaxWidth(),
+        )
         TrackPrimaryButton(
             text = if (state.isCheckingUpdate) "检查中..." else "检查更新",
             onClick = onCheckUpdateClick,
-            enabled = !state.isCheckingUpdate,
+            enabled = !state.isCheckingUpdate && !state.isUploadingSamples,
             modifier = Modifier.fillMaxWidth(),
         )
         if (state.isCheckingUpdate) {

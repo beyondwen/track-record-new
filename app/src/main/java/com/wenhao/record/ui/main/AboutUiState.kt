@@ -6,4 +6,8 @@ data class AboutUiState(
     val statusMessage: String? = null,
     val mapboxTokenInput: String = "",
     val hasConfiguredMapboxToken: Boolean = false,
+    val workerBaseUrlInput: String = "",
+    val uploadTokenInput: String = "",
+    val hasConfiguredSampleUpload: Boolean = false,
+    val isUploadingSamples: Boolean = false,
 )

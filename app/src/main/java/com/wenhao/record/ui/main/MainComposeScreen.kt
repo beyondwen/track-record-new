@@ -103,6 +103,11 @@ fun MainComposeScreen(
     onMapboxTokenChange: (String) -> Unit,
     onMapboxTokenSaveClick: () -> Unit,
     onMapboxTokenClearClick: () -> Unit,
+    onWorkerBaseUrlChange: (String) -> Unit,
+    onUploadTokenChange: (String) -> Unit,
+    onSampleUploadConfigSaveClick: () -> Unit,
+    onSampleUploadConfigClearClick: () -> Unit,
+    onSampleUploadClick: () -> Unit,
     onManualRecordClick: () -> Unit,
     onLocateClick: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
@@ -153,6 +158,11 @@ fun MainComposeScreen(
                     onMapboxTokenChange = onMapboxTokenChange,
                     onMapboxTokenSaveClick = onMapboxTokenSaveClick,
                     onMapboxTokenClearClick = onMapboxTokenClearClick,
+                    onWorkerBaseUrlChange = onWorkerBaseUrlChange,
+                    onUploadTokenChange = onUploadTokenChange,
+                    onSampleUploadConfigSaveClick = onSampleUploadConfigSaveClick,
+                    onSampleUploadConfigClearClick = onSampleUploadConfigClearClick,
+                    onSampleUploadClick = onSampleUploadClick,
                 )
             }
 
