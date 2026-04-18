@@ -42,10 +42,11 @@ import com.wenhao.record.data.tracking.DecisionFeedbackType
 import com.wenhao.record.data.tracking.DecisionEventStorage
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrainingSampleExportCodec
+import com.wenhao.record.data.tracking.TrainingSampleBatchUploadResult
+import com.wenhao.record.data.tracking.TrainingSampleBatchUploader
 import com.wenhao.record.data.tracking.TrainingSampleExporter
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
-import com.wenhao.record.data.tracking.TrainingSampleUploadResult
 import com.wenhao.record.data.tracking.TrainingSampleUploadService
 import com.wenhao.record.data.tracking.UploadedTrainingSampleStore
 import com.wenhao.record.map.GeoCoordinate
@@ -395,15 +396,41 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
 
-                val uploadResult = trainingSampleUploadService.upload(
-                    config = config,
-                    appVersion = BuildConfig.VERSION_NAME,
-                    deviceId = uploadDeviceId(),
+                Log.i(TAG, "Start uploading ${pendingRows.size} training samples")
+                val batchUploader = TrainingSampleBatchUploader { batchRows ->
+                    trainingSampleUploadService.upload(
+                        config = config,
+                        appVersion = BuildConfig.VERSION_NAME,
+                        deviceId = uploadDeviceId(),
+                        rows = batchRows,
+                    )
+                }
+                val uploadResult = batchUploader.upload(
                     rows = pendingRows,
+                    batchSize = TrainingSampleBatchUploader.DEFAULT_BATCH_SIZE,
+                    onBatchStart = { progress ->
+                        launch(Dispatchers.Main) {
+                            aboutState = aboutState.copy(
+                                statusMessage = buildString {
+                                    append("正在上传第 ")
+                                    append(progress.batchIndex + 1)
+                                    append("/")
+                                    append(progress.totalBatches)
+                                    append(" 批（")
+                                    append(progress.batchSize)
+                                    append(" 条）…")
+                                },
+                            )
+                        }
+                        Log.i(
+                            TAG,
+                            "Uploading training sample batch ${progress.batchIndex + 1}/${progress.totalBatches} size=${progress.batchSize}"
+                        )
+                    },
                 )
 
                 when (uploadResult) {
-                    is TrainingSampleUploadResult.Success -> {
+                    is TrainingSampleBatchUploadResult.Success -> {
                         DecisionEventStorage.deleteUploadedEvents(
                             context = this@MainActivity,
                             eventIds = uploadResult.acceptedEventIds,
@@ -417,17 +444,44 @@ class MainActivity : AppCompatActivity() {
                                 statusMessage = "上传成功：${uploadResult.acceptedEventIds.size} 条",
                             )
                         }
+                        Log.i(
+                            TAG,
+                            "Training sample upload succeeded accepted=${uploadResult.acceptedEventIds.size} inserted=${uploadResult.insertedCount} deduped=${uploadResult.dedupedCount}"
+                        )
                     }
 
-                    is TrainingSampleUploadResult.Failure -> {
+                    is TrainingSampleBatchUploadResult.Failure -> {
+                        DecisionEventStorage.deleteUploadedEvents(
+                            context = this@MainActivity,
+                            eventIds = uploadResult.acceptedEventIds,
+                        )
+                        UploadedTrainingSampleStore.markUploaded(
+                            context = this@MainActivity,
+                            eventIds = uploadResult.acceptedEventIds,
+                        )
                         launch(Dispatchers.Main) {
                             aboutState = aboutState.copy(
-                                statusMessage = "上传失败：${uploadResult.message}",
+                                statusMessage = buildString {
+                                    append("上传失败：")
+                                    append(uploadResult.message)
+                                    if (uploadResult.totalBatches > 1) {
+                                        append("（第 ")
+                                        append(uploadResult.failedBatchIndex + 1)
+                                        append("/")
+                                        append(uploadResult.totalBatches)
+                                        append(" 批）")
+                                    }
+                                },
                             )
                         }
+                        Log.e(
+                            TAG,
+                            "Training sample upload failed at batch ${uploadResult.failedBatchIndex + 1}/${uploadResult.totalBatches} message=${uploadResult.message} acceptedBeforeFailure=${uploadResult.acceptedEventIds.size}"
+                        )
                     }
                 }
             } catch (error: Exception) {
+                Log.e(TAG, "Training sample upload crashed", error)
                 launch(Dispatchers.Main) {
                     val message = error.message?.takeIf { it.isNotBlank() } ?: "上传失败，请稍后重试"
                     aboutState = aboutState.copy(statusMessage = "上传失败：$message")
