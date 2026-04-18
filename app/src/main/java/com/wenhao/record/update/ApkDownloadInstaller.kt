@@ -1,5 +1,6 @@
 package com.wenhao.record.update
 
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -31,10 +32,15 @@ class ApkDownloadInstaller(
             "${context.packageName}.fileprovider",
             apkFile,
         )
-        return Intent(Intent.ACTION_VIEW).apply {
-            setDataAndType(contentUri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
+        return buildInstallIntent(contentUri)
+    }
+}
+
+internal fun buildInstallIntent(contentUri: Uri): Intent {
+    return Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
+        data = contentUri
+        clipData = ClipData.newRawUri("apk", contentUri)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
 }

@@ -361,10 +361,16 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val apkFile = apkDownloadInstaller.download(info.apkUrl, info.apkName)
-                val intent = apkDownloadInstaller.createInstallIntent(apkFile)
                 launch(Dispatchers.Main) {
-                    aboutState = aboutState.copy(statusMessage = "下载完成，正在打开安装器")
-                    startActivity(intent)
+                    runCatching {
+                        val intent = apkDownloadInstaller.createInstallIntent(apkFile)
+                        aboutState = aboutState.copy(statusMessage = "下载完成，正在打开安装器")
+                        startActivity(intent)
+                    }.onFailure { error ->
+                        Log.e(TAG, "Failed to open package installer", error)
+                        aboutState = aboutState.copy(statusMessage = "打开安装器失败")
+                        Toast.makeText(this@MainActivity, "打开安装器失败", Toast.LENGTH_SHORT).show()
+                    }
                 }
             } catch (_: Exception) {
                 launch(Dispatchers.Main) {
