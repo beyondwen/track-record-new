@@ -267,6 +267,43 @@ describe("POST /samples/batch", () => {
     });
   });
 
+  it("returns underlying persistence error message for 500 response", async () => {
+    const app = createApp({
+      samplePersistence: {
+        async persistSamples() {
+          throw new Error("Table 'track_record.training_samples' doesn't exist");
+        }
+      }
+    });
+
+    const response = await invokeApp(
+      app,
+      requestFor(
+        JSON.stringify({
+          samples: [
+            {
+              eventId: 101,
+              timestampMillis: 1700000000000,
+              phase: "tracking",
+              finalDecision: "allow",
+              features: { score: 0.91 }
+            }
+          ]
+        }),
+        {
+          token: "correct-token",
+          contentType: "application/json"
+        }
+      )
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      message: "Table 'track_record.training_samples' doesn't exist"
+    });
+  });
+
   it("returns deduped result when request contains duplicated event ids", async () => {
     const app = createApp({
       samplePersistence: createSemanticMockPersistence()

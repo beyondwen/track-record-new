@@ -101,9 +101,15 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           });
         }
 
+        const message =
+          error instanceof Error && error.message.trim().length > 0
+            ? error.message
+            : "Internal server error";
+        console.error("Failed to persist training samples", error);
+
         return jsonResponse(500, {
           ok: false,
-          message: "Internal server error"
+          message
         });
       }
     }
