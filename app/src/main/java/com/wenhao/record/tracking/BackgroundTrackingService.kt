@@ -157,8 +157,18 @@ class BackgroundTrackingService : Service() {
     private val sensorListener = object : SensorEventListener {
         override fun onSensorChanged(event: SensorEvent) {
             when (event.sensor.type) {
-                Sensor.TYPE_ACCELEROMETER -> handleAccelerometerChanged(event.values)
-                Sensor.TYPE_STEP_COUNTER -> handleStepCounterChanged(event.values.firstOrNull())
+                Sensor.TYPE_ACCELEROMETER -> {
+                    val values = event.values.copyOf()
+                    runOnTrackingThread {
+                        handleAccelerometerChanged(values)
+                    }
+                }
+                Sensor.TYPE_STEP_COUNTER -> {
+                    val totalSteps = event.values.firstOrNull()
+                    runOnTrackingThread {
+                        handleStepCounterChanged(totalSteps)
+                    }
+                }
             }
         }
 
@@ -167,23 +177,26 @@ class BackgroundTrackingService : Service() {
 
     private val significantMotionListener = object : TriggerEventListener() {
         override fun onTrigger(event: TriggerEvent?) {
-            motionConfidenceEngine.noteSignificantMotion(System.currentTimeMillis())
-            maybePromoteToSuspect("检测到显著运动")
-            registerSignificantMotionSensor(true)
+            val triggeredAt = System.currentTimeMillis()
+            runOnTrackingThread {
+                motionConfidenceEngine.noteSignificantMotion(triggeredAt)
+                maybePromoteToSuspect("检测到显著运动")
+                registerSignificantMotionSensor(true)
+            }
         }
     }
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
-            refreshWifiSnapshot()
+            runOnTrackingThread(::refreshWifiSnapshot)
         }
 
         override fun onLost(network: Network) {
-            refreshWifiSnapshot()
+            runOnTrackingThread(::refreshWifiSnapshot)
         }
 
         override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
-            refreshWifiSnapshot()
+            runOnTrackingThread(::refreshWifiSnapshot)
         }
     }
 
@@ -311,6 +324,10 @@ class BackgroundTrackingService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun runOnTrackingThread(block: () -> Unit) {
+        TrackingThreadDispatch.dispatch(trackingHandler, block = block)
+    }
 
     private fun ensureForeground() {
         startForeground(NOTIFICATION_ID, buildNotification())

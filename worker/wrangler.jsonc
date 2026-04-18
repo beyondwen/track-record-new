@@ -2,11 +2,13 @@
   "name": "track-record-worker",
   "main": "src/index.ts",
   "compatibility_date": "2026-04-18",
+  "workers_dev": true,
+  "preview_urls": false,
   "compatibility_flags": ["nodejs_compat"],
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
-      "id": "YOUR_HYPERDRIVE_ID"
+      "id": "cadb0c8fdf674bdc8114ddea69d5a3b2"
     }
   ]
 }
