@@ -24,9 +24,15 @@ interface DecisionDao {
         SELECT * FROM decision_event
         WHERE timestampMillis BETWEEN :startMillis AND :endMillis
         ORDER BY eventId DESC
+        LIMIT :limit OFFSET :offset
         """
     )
-    fun getEventsBetween(startMillis: Long, endMillis: Long): List<DecisionEventEntity>
+    fun getEventsBetweenPaged(
+        startMillis: Long,
+        endMillis: Long,
+        limit: Int,
+        offset: Int,
+    ): List<DecisionEventEntity>
 
     @Query(
         """

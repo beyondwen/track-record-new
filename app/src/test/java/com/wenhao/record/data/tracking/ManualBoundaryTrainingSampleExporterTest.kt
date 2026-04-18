@@ -128,4 +128,46 @@ class ManualBoundaryTrainingSampleExporterTest {
         assertEquals(270_000L, windows[1].startMillis)
         assertEquals(420_000L, windows[1].endMillis)
     }
+
+    @Test
+    fun `loads long manual windows in smaller pages`() {
+        val window = TrainingSampleExporter.ManualSampleWindow(
+            startMillis = 10_000L,
+            endMillis = 1_000_000L,
+        )
+        val sourceEvents = (1L..450L).map { eventId ->
+            DecisionEventEntity(
+                eventId = eventId,
+                timestampMillis = 10_000L + eventId,
+                phase = "ACTIVE",
+                isRecording = eventId % 2L == 0L,
+                startScore = 0.7,
+                stopScore = 0.2,
+                finalDecision = "HOLD",
+                featureJson = """{"steps_30s":4.0}""",
+                gpsQualityPass = true,
+                motionEvidencePass = true,
+                frequentPlaceClearPass = true,
+                feedbackEligible = false,
+                feedbackBlockedReason = null,
+            )
+        }.sortedByDescending { it.eventId }
+        val requestedOffsets = mutableListOf<Int>()
+
+        val loadedEvents = TrainingSampleExporter.loadEventsForWindowPaged(
+            window = window,
+            pageSize = 200,
+        ) { startMillis, endMillis, limit, offset ->
+            assertEquals(window.startMillis, startMillis)
+            assertEquals(window.endMillis, endMillis)
+            assertEquals(200, limit)
+            requestedOffsets += offset
+            sourceEvents.drop(offset).take(limit)
+        }
+
+        assertEquals(450, loadedEvents.size)
+        assertEquals(listOf(0, 200, 400), requestedOffsets)
+        assertEquals(450L, loadedEvents.first().eventId)
+        assertEquals(1L, loadedEvents.last().eventId)
+    }
 }

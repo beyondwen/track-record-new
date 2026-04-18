@@ -38,6 +38,7 @@ object TrainingSampleExporter {
     private const val START_WINDOW_LEAD_MS = 30_000L
     private const val STOP_WINDOW_TRAIL_MS = 60_000L
     private const val SQLITE_IN_LIMIT_SAFE_CHUNK = 900
+    private const val EVENT_EXPORT_PAGE_SIZE = 200
 
     fun exportRows(context: Context): List<TrainingSampleRow> {
         return runBlocking {
@@ -158,11 +159,37 @@ object TrainingSampleExporter {
 
         val byEventId = linkedMapOf<Long, DecisionEventEntity>()
         for (window in windows) {
-            dao.getEventsBetween(window.startMillis, window.endMillis).forEach { event ->
+            loadEventsForWindowPaged(window) { startMillis, endMillis, limit, offset ->
+                dao.getEventsBetweenPaged(
+                    startMillis = startMillis,
+                    endMillis = endMillis,
+                    limit = limit,
+                    offset = offset,
+                )
+            }.forEach { event ->
                 byEventId.putIfAbsent(event.eventId, event)
             }
         }
         return byEventId.values.toList()
+    }
+
+    internal fun loadEventsForWindowPaged(
+        window: ManualSampleWindow,
+        pageSize: Int = EVENT_EXPORT_PAGE_SIZE,
+        loadPage: (startMillis: Long, endMillis: Long, limit: Int, offset: Int) -> List<DecisionEventEntity>,
+    ): List<DecisionEventEntity> {
+        require(pageSize > 0) { "pageSize must be positive" }
+
+        val loadedEvents = mutableListOf<DecisionEventEntity>()
+        var offset = 0
+        while (true) {
+            val page = loadPage(window.startMillis, window.endMillis, pageSize, offset)
+            if (page.isEmpty()) break
+            loadedEvents += page
+            if (page.size < pageSize) break
+            offset += page.size
+        }
+        return loadedEvents
     }
 
     private fun loadFeedbackByEventId(
