@@ -54,16 +54,16 @@ jobs:
           echo "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
           echo "store_file=$RUNNER_TEMP/release.keystore" >> "$GITHUB_OUTPUT"
 
-      - name: Build debug APK
+      - name: Build release APK
         env:
           ORG_GRADLE_PROJECT_RELEASE_STORE_FILE: ${{ steps.signing.outputs.store_file }}
-        run: ./gradlew --no-daemon assembleDebug
+        run: ./gradlew --no-daemon assembleRelease
 
-      - name: Upload debug APK
+      - name: Upload release APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: app-release-apk
+          path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
       - name: Read app version
@@ -86,8 +86,8 @@ jobs:
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Rename debug APK
-        run: cp app/build/outputs/apk/debug/app-debug.apk ./app-debug.apk
+      - name: Rename release APK
+        run: cp app/build/outputs/apk/release/app-release.apk ./app-release.apk
 
       - name: Write update metadata
         run: |
@@ -95,19 +95,19 @@ jobs:
           {
             "versionCode": ${{ steps.app_version.outputs.version_code }},
             "versionName": "${{ steps.app_version.outputs.version_name }}",
-            "apkName": "app-debug.apk"
+            "apkName": "app-release.apk"
           }
           EOF
 
-      - name: Publish debug release
+      - name: Publish release APK
         uses: softprops/action-gh-release@v2
         with:
           tag_name: debug-latest
-          name: Debug Latest
+          name: Release Latest
           prerelease: true
           make_latest: false
           files: |
-            app-debug.apk
+            app-release.apk
             update.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
