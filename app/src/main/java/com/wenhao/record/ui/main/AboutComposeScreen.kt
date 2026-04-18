@@ -29,6 +29,7 @@ fun AboutComposeScreen(
     onUploadTokenChange: (String) -> Unit,
     onSampleUploadConfigSaveClick: () -> Unit,
     onSampleUploadConfigClearClick: () -> Unit,
+    onWorkerConnectivityTestClick: () -> Unit,
     onSampleUploadClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -108,26 +109,36 @@ fun AboutComposeScreen(
             text = "清空上传配置",
             onClick = onSampleUploadConfigClearClick,
             enabled = !state.isUploadingSamples &&
+                !state.isTestingWorkerConnectivity &&
                 (
                     state.hasConfiguredSampleUpload ||
                         state.workerBaseUrlInput.isNotBlank() ||
                         state.uploadTokenInput.isNotBlank()
-                    ),
+            ),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        TrackPrimaryButton(
+            text = if (state.isTestingWorkerConnectivity) "测试中..." else "测试 Worker 连通性",
+            onClick = onWorkerConnectivityTestClick,
+            enabled = !state.isUploadingSamples &&
+                !state.isCheckingUpdate &&
+                !state.isTestingWorkerConnectivity &&
+                state.workerBaseUrlInput.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
         )
         TrackPrimaryButton(
             text = if (state.isUploadingSamples) "上传中..." else "上传未上传样本",
             onClick = onSampleUploadClick,
-            enabled = !state.isUploadingSamples && !state.isCheckingUpdate,
+            enabled = !state.isUploadingSamples && !state.isCheckingUpdate && !state.isTestingWorkerConnectivity,
             modifier = Modifier.fillMaxWidth(),
         )
         TrackPrimaryButton(
             text = if (state.isCheckingUpdate) "检查中..." else "检查更新",
             onClick = onCheckUpdateClick,
-            enabled = !state.isCheckingUpdate && !state.isUploadingSamples,
+            enabled = !state.isCheckingUpdate && !state.isUploadingSamples && !state.isTestingWorkerConnectivity,
             modifier = Modifier.fillMaxWidth(),
         )
-        if (state.isCheckingUpdate) {
+        if (state.isCheckingUpdate || state.isTestingWorkerConnectivity) {
             CircularProgressIndicator()
         }
         state.statusMessage?.let {

@@ -49,6 +49,8 @@ import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
 import com.wenhao.record.data.tracking.TrainingSampleUploadService
 import com.wenhao.record.data.tracking.UploadedTrainingSampleStore
+import com.wenhao.record.data.tracking.WorkerConnectivityResult
+import com.wenhao.record.data.tracking.WorkerConnectivityService
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.permissions.PermissionHelper
 import com.wenhao.record.stability.CrashLogStore
@@ -98,6 +100,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
     private val trainingSampleUploadService by lazy { TrainingSampleUploadService() }
+    private val workerConnectivityService by lazy { WorkerConnectivityService() }
     private val apkDownloadInstaller by lazy { ApkDownloadInstaller(this) }
     private lateinit var dashboardUiController: DashboardUiController
     private lateinit var barometerController: BarometerController
@@ -227,6 +230,7 @@ class MainActivity : AppCompatActivity() {
                     onUploadTokenChange = ::updateUploadTokenInput,
                     onSampleUploadConfigSaveClick = ::saveSampleUploadConfig,
                     onSampleUploadConfigClearClick = ::clearSampleUploadConfig,
+                    onWorkerConnectivityTestClick = ::testWorkerConnectivity,
                     onSampleUploadClick = ::uploadPendingTrainingSamples,
                     onManualRecordClick = ::handleManualRecordToggle,
                     onLocateClick = ::handleLocateAction,
@@ -367,6 +371,10 @@ class MainActivity : AppCompatActivity() {
             aboutState = aboutState.copy(statusMessage = "检查更新进行中，请稍后再试")
             return
         }
+        if (aboutState.isTestingWorkerConnectivity) {
+            aboutState = aboutState.copy(statusMessage = "Worker 连通性测试进行中，请稍后再试")
+            return
+        }
 
         val config = TrainingSampleUploadConfigStorage.load(this)
         if (!hasConfiguredSampleUpload(config)) {
@@ -498,6 +506,58 @@ class MainActivity : AppCompatActivity() {
         return config.workerBaseUrl.isNotBlank() && config.uploadToken.isNotBlank()
     }
 
+    private fun testWorkerConnectivity() {
+        if (aboutState.isTestingWorkerConnectivity) return
+        if (aboutState.isUploadingSamples) {
+            aboutState = aboutState.copy(statusMessage = "样本上传进行中，请稍后再测试")
+            return
+        }
+        if (aboutState.isCheckingUpdate) {
+            aboutState = aboutState.copy(statusMessage = "检查更新进行中，请稍后再测试")
+            return
+        }
+
+        val workerBaseUrl = aboutState.workerBaseUrlInput.trim()
+        if (workerBaseUrl.isBlank()) {
+            aboutState = aboutState.copy(statusMessage = "请先填写 Worker 地址")
+            return
+        }
+
+        aboutState = aboutState.copy(
+            isTestingWorkerConnectivity = true,
+            statusMessage = "正在测试 Worker 连通性…",
+        )
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "Testing worker connectivity for $workerBaseUrl")
+                val result = workerConnectivityService.check(workerBaseUrl)
+                launch(Dispatchers.Main) {
+                    aboutState = aboutState.copy(
+                        statusMessage = when (result) {
+                            is WorkerConnectivityResult.Reachable -> result.message
+                            is WorkerConnectivityResult.Unreachable -> result.message
+                        }
+                    )
+                }
+                when (result) {
+                    is WorkerConnectivityResult.Reachable -> Log.i(TAG, "Worker connectivity check succeeded: ${result.message}")
+                    is WorkerConnectivityResult.Unreachable -> Log.e(TAG, "Worker connectivity check failed: ${result.message}")
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Worker connectivity check crashed", error)
+                launch(Dispatchers.Main) {
+                    val message = error.message?.takeIf { it.isNotBlank() } ?: "Worker 连通性测试失败"
+                    aboutState = aboutState.copy(statusMessage = message)
+                }
+            } finally {
+                launch(Dispatchers.Main) {
+                    aboutState = aboutState.copy(isTestingWorkerConnectivity = false)
+                }
+            }
+        }
+    }
+
     private fun uploadDeviceId(): String {
         val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
         return if (androidId.isNullOrBlank()) {
@@ -510,6 +570,10 @@ class MainActivity : AppCompatActivity() {
     private fun checkForAppUpdate() {
         if (aboutState.isUploadingSamples) {
             aboutState = aboutState.copy(statusMessage = "样本上传进行中，请稍后再检查更新")
+            return
+        }
+        if (aboutState.isTestingWorkerConnectivity) {
+            aboutState = aboutState.copy(statusMessage = "Worker 连通性测试进行中，请稍后再检查更新")
             return
         }
         aboutState = aboutState.copy(isCheckingUpdate = true, statusMessage = null)

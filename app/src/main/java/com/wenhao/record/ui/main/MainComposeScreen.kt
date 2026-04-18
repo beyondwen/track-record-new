@@ -107,6 +107,7 @@ fun MainComposeScreen(
     onUploadTokenChange: (String) -> Unit,
     onSampleUploadConfigSaveClick: () -> Unit,
     onSampleUploadConfigClearClick: () -> Unit,
+    onWorkerConnectivityTestClick: () -> Unit,
     onSampleUploadClick: () -> Unit,
     onManualRecordClick: () -> Unit,
     onLocateClick: () -> Unit,
@@ -162,6 +163,7 @@ fun MainComposeScreen(
                     onUploadTokenChange = onUploadTokenChange,
                     onSampleUploadConfigSaveClick = onSampleUploadConfigSaveClick,
                     onSampleUploadConfigClearClick = onSampleUploadConfigClearClick,
+                    onWorkerConnectivityTestClick = onWorkerConnectivityTestClick,
                     onSampleUploadClick = onSampleUploadClick,
                 )
             }
