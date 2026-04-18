@@ -69,6 +69,8 @@ TrackRecord/
 说明：
 
 - Mapbox Token 不再参与构建期注入。应用安装后请在“关于”页手动输入并保存到当前设备。
+- 训练样本上传配置也在“关于”页手动输入，包括 `Worker 地址` 与 `上传 Token`。
+- 样本上传由 Cloudflare Worker 接收，再写入后端存储；Worker 侧配置见 [worker/README.md](/Users/a555/StudioProjects/track-record-new/worker/README.md)。
 - 若未提供发布签名配置，`release` 构建会回退为 debug 签名，便于本地安装验证。
 - `local.properties` 已被忽略，不应提交到仓库。
 

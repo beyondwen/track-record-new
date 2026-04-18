@@ -13,5 +13,6 @@
 /codex.txt
 /local.properties
 /.track-record-release.jks
+/worker/node_modules/
 **/__pycache__/
 *.pyc

@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS training_samples (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  event_id BIGINT NOT NULL,
+  timestamp_millis BIGINT NOT NULL,
+  phase VARCHAR(64) NOT NULL,
+  final_decision_json JSON NOT NULL,
+  features_json JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_training_samples_event_id (event_id)
+);
