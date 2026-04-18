@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -18,6 +19,9 @@ fun AboutComposeScreen(
     state: AboutUiState,
     onBackClick: () -> Unit,
     onCheckUpdateClick: () -> Unit,
+    onMapboxTokenChange: (String) -> Unit,
+    onMapboxTokenSaveClick: () -> Unit,
+    onMapboxTokenClearClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -28,6 +32,35 @@ fun AboutComposeScreen(
     ) {
         Text(text = "关于", style = MaterialTheme.typography.headlineMedium)
         Text(text = state.appVersionLabel)
+        OutlinedTextField(
+            value = state.mapboxTokenInput,
+            onValueChange = onMapboxTokenChange,
+            label = { Text("Mapbox Token") },
+            placeholder = { Text("请输入你自己的 Mapbox Token") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = if (state.hasConfiguredMapboxToken) {
+                "已保存到当前设备，后续构建不会再把 Mapbox Token 打进 APK。"
+            } else {
+                "当前设备未配置 Mapbox Token，地图页会保持禁用。"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        TrackPrimaryButton(
+            text = "保存 Mapbox Token",
+            onClick = onMapboxTokenSaveClick,
+            enabled = state.mapboxTokenInput.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        TrackPrimaryButton(
+            text = "清空 Mapbox Token",
+            onClick = onMapboxTokenClearClick,
+            enabled = state.hasConfiguredMapboxToken || state.mapboxTokenInput.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        )
         TrackPrimaryButton(
             text = if (state.isCheckingUpdate) "检查中..." else "检查更新",
             onClick = onCheckUpdateClick,

@@ -57,6 +57,8 @@ import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.barometer.BarometerController
 import com.wenhao.record.ui.history.HistoryController
 import com.wenhao.record.ui.map.MapActivity
+import com.wenhao.record.ui.map.MapboxTokenStorage
+import com.wenhao.record.ui.map.isMapboxAccessTokenConfigured
 import com.wenhao.record.util.AppTaskExecutor
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -154,8 +156,9 @@ class MainActivity : AppCompatActivity() {
     private var previewAltitudeMeters: Double? = null
     private var historyTransferBusy = false
     private var currentTab by mutableStateOf(MainTab.RECORD)
+    private var mapboxAccessToken by mutableStateOf("")
     private var aboutState by mutableStateOf(
-        AboutUiState(appVersionLabel = buildVersionLabel())
+        AboutUiState(appVersionLabel = "")
     )
 
     private val defaultLatLng = GeoCoordinate(39.9042, 116.4074)
@@ -181,6 +184,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        restoreMapboxTokenState()
 
         dashboardUiController = DashboardUiController(this)
         barometerController = BarometerController()
@@ -199,6 +203,7 @@ class MainActivity : AppCompatActivity() {
                     historyState = historyController.uiState,
                     barometerState = barometerController.uiState,
                     aboutState = aboutState,
+                    mapboxAccessToken = mapboxAccessToken,
                     dashboardMapState = homeMapController.renderState,
                     onRecordTabClick = { showTab(MainTab.RECORD) },
                     onHistoryTabClick = { showTab(MainTab.HISTORY) },
@@ -206,6 +211,9 @@ class MainActivity : AppCompatActivity() {
                     onAboutTabClick = { showTab(MainTab.ABOUT) },
                     onAboutBackClick = { showTab(MainTab.RECORD) },
                     onCheckUpdateClick = ::checkForAppUpdate,
+                    onMapboxTokenChange = ::updateMapboxTokenInput,
+                    onMapboxTokenSaveClick = ::saveMapboxToken,
+                    onMapboxTokenClearClick = ::clearMapboxToken,
                     onManualRecordClick = ::handleManualRecordToggle,
                     onLocateClick = ::handleLocateAction,
                     onHistoryOpen = { dayStartMillis ->
@@ -266,6 +274,40 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildVersionLabel(): String {
         return "当前版本：${BuildConfig.VERSION_NAME} (${BuildConfig.APP_VERSION_CODE})"
+    }
+
+    private fun restoreMapboxTokenState() {
+        val savedToken = MapboxTokenStorage.load(this)
+        mapboxAccessToken = savedToken
+        aboutState = AboutUiState(
+            appVersionLabel = buildVersionLabel(),
+            mapboxTokenInput = savedToken,
+            hasConfiguredMapboxToken = isMapboxAccessTokenConfigured(savedToken),
+        )
+    }
+
+    private fun updateMapboxTokenInput(value: String) {
+        aboutState = aboutState.copy(mapboxTokenInput = value)
+    }
+
+    private fun saveMapboxToken() {
+        val savedToken = MapboxTokenStorage.save(this, aboutState.mapboxTokenInput)
+        mapboxAccessToken = savedToken
+        aboutState = aboutState.copy(
+            mapboxTokenInput = savedToken,
+            hasConfiguredMapboxToken = isMapboxAccessTokenConfigured(savedToken),
+        )
+        Toast.makeText(this, "Mapbox Token 已保存到当前设备", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun clearMapboxToken() {
+        MapboxTokenStorage.clear(this)
+        mapboxAccessToken = ""
+        aboutState = aboutState.copy(
+            mapboxTokenInput = "",
+            hasConfiguredMapboxToken = false,
+        )
+        Toast.makeText(this, "已清空当前设备上的 Mapbox Token", Toast.LENGTH_SHORT).show()
     }
 
     private fun checkForAppUpdate() {

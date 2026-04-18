@@ -93,6 +93,7 @@ data class MapScreenUiState(
 @Composable
 fun MapComposeScreen(
     state: MapScreenUiState,
+    mapboxAccessToken: String,
     onBackClick: () -> Unit,
     onRefitClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -197,6 +198,7 @@ fun MapComposeScreen(
             Box(modifier = Modifier.fillMaxSize()) {
                 TrackMapboxCanvas(
                     state = state.mapState,
+                    accessToken = mapboxAccessToken,
                     modifier = Modifier.fillMaxSize(),
                     viewportPadding = TrackMapViewportPadding(
                         top = 36.dp,
@@ -536,6 +538,7 @@ private fun MapComposeScreenPreview() {
                     contentDescription = "Altitude legend, lowest 23 meters, highest 128 meters",
                 ),
             ),
+            mapboxAccessToken = "pk.preview-token",
             onBackClick = {},
             onRefitClick = {},
         )

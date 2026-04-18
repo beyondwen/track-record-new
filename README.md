@@ -61,7 +61,6 @@ TrackRecord/
 
 项目支持从 `gradle.properties` 或 `local.properties` 读取以下配置：
 
-- `MAPBOX_ACCESS_TOKEN`
 - `RELEASE_STORE_FILE`
 - `RELEASE_STORE_PASSWORD`
 - `RELEASE_KEY_ALIAS`
@@ -69,6 +68,7 @@ TrackRecord/
 
 说明：
 
+- Mapbox Token 不再参与构建期注入。应用安装后请在“关于”页手动输入并保存到当前设备。
 - 若未提供发布签名配置，`release` 构建会回退为 debug 签名，便于本地安装验证。
 - `local.properties` 已被忽略，不应提交到仓库。
 

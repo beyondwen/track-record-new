@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.ContentScale
 import com.mapbox.maps.EdgeInsets
+import com.mapbox.common.MapboxOptions
 import com.mapbox.maps.dsl.cameraOptions
 import com.mapbox.maps.extension.compose.MapboxMap
 import com.mapbox.maps.extension.compose.MapEffect
@@ -57,6 +58,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun TrackMapboxCanvas(
     state: TrackMapSceneState,
+    accessToken: String,
     modifier: Modifier = Modifier,
     viewportPadding: TrackMapViewportPadding = TrackMapViewportPadding(),
     showCenterIndicator: Boolean = false,
@@ -65,6 +67,11 @@ fun TrackMapboxCanvas(
     snapshotCacheKey: String? = null,
     onSnapshotCached: (() -> Unit)? = null,
 ) {
+    val resolvedAccessToken = resolveMapboxAccessToken(
+        runtimeToken = accessToken,
+        bundledToken = BuildConfig.MAPBOX_ACCESS_TOKEN,
+    )
+
     if (LocalInspectionMode.current) {
         Box(
             modifier = modifier
@@ -81,10 +88,12 @@ fun TrackMapboxCanvas(
         return
     }
 
-    if (!isMapboxAccessTokenConfigured(BuildConfig.MAPBOX_ACCESS_TOKEN)) {
+    if (!isMapboxAccessTokenConfigured(resolvedAccessToken)) {
         MapboxUnavailablePlaceholder(modifier = modifier)
         return
     }
+
+    MapboxOptions.accessToken = resolvedAccessToken
 
     var snapshotBitmap by remember(snapshotCacheKey) {
         mutableStateOf(snapshotCacheKey?.let(TrackMapSnapshotCache::get))
@@ -331,7 +340,7 @@ private fun MapboxUnavailablePlaceholder(modifier: Modifier = Modifier) {
                     textAlign = TextAlign.Center,
                 )
                 Text(
-                    text = "当前构建未配置 Mapbox Token，已自动跳过地图初始化，避免启动闪退。",
+                    text = "当前设备尚未配置 Mapbox Token，请先到关于页输入并保存后再使用地图。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,

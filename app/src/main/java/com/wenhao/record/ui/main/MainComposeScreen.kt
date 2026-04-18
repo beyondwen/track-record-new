@@ -92,6 +92,7 @@ fun MainComposeScreen(
     historyState: HistoryScreenUiState,
     barometerState: BarometerUiState,
     aboutState: AboutUiState,
+    mapboxAccessToken: String,
     dashboardMapState: TrackMapSceneState,
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
@@ -99,6 +100,9 @@ fun MainComposeScreen(
     onAboutTabClick: () -> Unit,
     onAboutBackClick: () -> Unit,
     onCheckUpdateClick: () -> Unit,
+    onMapboxTokenChange: (String) -> Unit,
+    onMapboxTokenSaveClick: () -> Unit,
+    onMapboxTokenClearClick: () -> Unit,
     onManualRecordClick: () -> Unit,
     onLocateClick: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
@@ -146,6 +150,9 @@ fun MainComposeScreen(
                     state = aboutState,
                     onBackClick = onAboutBackClick,
                     onCheckUpdateClick = onCheckUpdateClick,
+                    onMapboxTokenChange = onMapboxTokenChange,
+                    onMapboxTokenSaveClick = onMapboxTokenSaveClick,
+                    onMapboxTokenClearClick = onMapboxTokenClearClick,
                 )
             }
 
@@ -154,6 +161,7 @@ fun MainComposeScreen(
                     dashboardState = dashboardState,
                     overlayState = dashboardOverlayState,
                     mapState = dashboardMapState,
+                    mapboxAccessToken = mapboxAccessToken,
                     onRecordTabClick = onRecordTabClick,
                     onHistoryTabClick = onHistoryTabClick,
                     onBarometerTabClick = onBarometerTabClick,
@@ -172,6 +180,7 @@ private fun DashboardRoot(
     dashboardState: DashboardScreenUiState,
     overlayState: DashboardOverlayUiState,
     mapState: TrackMapSceneState,
+    mapboxAccessToken: String,
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
     onBarometerTabClick: () -> Unit,
@@ -247,6 +256,7 @@ private fun DashboardRoot(
             Box(modifier = Modifier.fillMaxSize()) {
                 TrackMapboxCanvas(
                     state = mapState,
+                    accessToken = mapboxAccessToken,
                     modifier = Modifier.fillMaxSize(),
                     viewportPadding = TrackMapViewportPadding(
                         top = 76.dp,

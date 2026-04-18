@@ -30,17 +30,20 @@ class MapActivity : AppCompatActivity() {
     }
 
     private var uiState by mutableStateOf(MapScreenUiState())
+    private var mapboxAccessToken by mutableStateOf("")
     private var viewportSequence = 0L
     private var renderGeneration = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        mapboxAccessToken = MapboxTokenStorage.load(this)
 
         setContent {
             TrackRecordTheme {
                 MapComposeScreen(
                     state = uiState,
+                    mapboxAccessToken = mapboxAccessToken,
                     onBackClick = { finish() },
                     onRefitClick = ::refitRoute,
                 )

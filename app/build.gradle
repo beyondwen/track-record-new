@@ -13,10 +13,7 @@ if (localPropertiesFile.exists()) {
         localProperties.load(stream)
     }
 }
-def mapboxAccessToken = providers.gradleProperty("MAPBOX_ACCESS_TOKEN").orNull
-if (!mapboxAccessToken) {
-    mapboxAccessToken = localProperties.getProperty("MAPBOX_ACCESS_TOKEN", "")
-}
+def bundledMapboxAccessToken = "YOUR_MAPBOX_ACCESS_TOKEN"
 
 def releaseStoreFilePath = providers.gradleProperty("RELEASE_STORE_FILE").orNull
 if (!releaseStoreFilePath) {
@@ -81,8 +78,8 @@ android {
         versionName = "1.0.16"
         buildConfigField "int", "APP_VERSION_CODE", "17"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        resValue "string", "mapbox_access_token", "\"${mapboxAccessToken.replace("\\", "\\\\").replace("\"", "\\\"")}\""
-        buildConfigField "String", "MAPBOX_ACCESS_TOKEN", "\"${mapboxAccessToken.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+        resValue "string", "mapbox_access_token", "\"${bundledMapboxAccessToken}\""
+        buildConfigField "String", "MAPBOX_ACCESS_TOKEN", "\"${bundledMapboxAccessToken}\""
     }
 
     buildTypes {
