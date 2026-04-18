@@ -85,12 +85,9 @@ class MainActivity : AppCompatActivity() {
         GithubReleaseUpdateService(
             owner = "beyondwen",
             repo = "track-record-new",
-            authToken = BuildConfig.PRIVATE_RELEASE_TOKEN,
         )
     }
-    private val apkDownloadInstaller by lazy {
-        ApkDownloadInstaller(this, BuildConfig.PRIVATE_RELEASE_TOKEN)
-    }
+    private val apkDownloadInstaller by lazy { ApkDownloadInstaller(this) }
     private lateinit var dashboardUiController: DashboardUiController
     private lateinit var barometerController: BarometerController
     private lateinit var homeMapController: HomeMapPort

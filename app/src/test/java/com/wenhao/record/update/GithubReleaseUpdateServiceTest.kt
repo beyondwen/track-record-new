@@ -87,11 +87,10 @@ class GithubReleaseUpdateServiceTest {
     }
 
     @Test
-    fun `uses authenticated asset api urls when token is configured`() {
+    fun `uses public browser download urls when asset api url is also present`() {
         val service = GithubReleaseUpdateService(
             owner = "wenhao",
             repo = "track-record-new",
-            authToken = "token",
             releaseJsonFetcher = {
                 """
                 {
@@ -103,7 +102,7 @@ class GithubReleaseUpdateServiceTest {
                 """.trimIndent()
             },
             updateJsonFetcher = { url ->
-                assertEquals("https://api.github.com/assets/update", url)
+                assertEquals("https://example.com/update.json", url)
                 """
                 {
                   "versionCode": 16,
@@ -118,6 +117,6 @@ class GithubReleaseUpdateServiceTest {
 
         assertTrue(result is UpdateCheckResult.UpdateAvailable)
         result as UpdateCheckResult.UpdateAvailable
-        assertEquals("https://api.github.com/assets/apk", result.info.apkUrl)
+        assertEquals("https://example.com/app-debug.apk", result.info.apkUrl)
     }
 }

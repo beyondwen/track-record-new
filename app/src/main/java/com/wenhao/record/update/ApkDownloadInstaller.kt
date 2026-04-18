@@ -10,7 +10,6 @@ import java.net.URL
 
 class ApkDownloadInstaller(
     private val context: Context,
-    private val authToken: String = "",
 ) {
     fun download(apkUrl: String, fileName: String = "app-debug.apk"): File {
         val targetFile = File(context.cacheDir, fileName)
@@ -18,11 +17,6 @@ class ApkDownloadInstaller(
         connection.requestMethod = "GET"
         connection.connectTimeout = 15000
         connection.readTimeout = 15000
-        if (authToken.isNotBlank()) {
-            connection.setRequestProperty("Accept", "application/octet-stream")
-            connection.setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
-            connection.setRequestProperty("Authorization", "Bearer $authToken")
-        }
         connection.inputStream.use { input ->
             targetFile.outputStream().use { output ->
                 input.copyTo(output)
