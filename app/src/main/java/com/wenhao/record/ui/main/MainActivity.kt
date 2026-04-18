@@ -60,6 +60,7 @@ import com.wenhao.record.ui.map.MapActivity
 import com.wenhao.record.ui.map.MapboxTokenStorage
 import com.wenhao.record.ui.map.isMapboxAccessTokenConfigured
 import com.wenhao.record.util.AppTaskExecutor
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -360,24 +361,56 @@ class MainActivity : AppCompatActivity() {
         aboutState = aboutState.copy(statusMessage = "正在下载更新…")
         lifecycleScope.launch(Dispatchers.IO) {
             try {
+                Log.i(TAG, "Starting APK download. version=${info.versionName}, url=${info.apkUrl}")
                 val apkFile = apkDownloadInstaller.download(info.apkUrl, info.apkName)
+                Log.i(
+                    TAG,
+                    "APK download finished. file=${apkFile.absolutePath}, bytes=${apkFile.length()}"
+                )
                 launch(Dispatchers.Main) {
-                    runCatching {
-                        val intent = apkDownloadInstaller.createInstallIntent(apkFile)
-                        aboutState = aboutState.copy(statusMessage = "下载完成，正在打开安装器")
-                        startActivity(intent)
-                    }.onFailure { error ->
-                        Log.e(TAG, "Failed to open package installer", error)
-                        aboutState = aboutState.copy(statusMessage = "打开安装器失败")
-                        Toast.makeText(this@MainActivity, "打开安装器失败", Toast.LENGTH_SHORT).show()
-                    }
+                    openDownloadedApk(apkFile)
                 }
-            } catch (_: Exception) {
+            } catch (error: Exception) {
+                Log.e(TAG, "Failed to download APK from ${info.apkUrl}", error)
                 launch(Dispatchers.Main) {
                     aboutState = aboutState.copy(statusMessage = "下载失败")
                 }
             }
         }
+    }
+
+    private fun openDownloadedApk(apkFile: File) {
+        aboutState = aboutState.copy(statusMessage = "下载完成，正在打开安装器")
+        val primaryIntent = apkDownloadInstaller.createInstallIntent(apkFile)
+        if (startInstallerIntent(primaryIntent, "package-installer")) {
+            return
+        }
+
+        val fallbackIntent = apkDownloadInstaller.createFallbackInstallIntent(apkFile)
+        if (startInstallerIntent(fallbackIntent, "view-fallback")) {
+            return
+        }
+
+        aboutState = aboutState.copy(statusMessage = "打开安装器失败")
+        Toast.makeText(this, "打开安装器失败", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun startInstallerIntent(intent: Intent, source: String): Boolean {
+        val resolved = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
+        if (resolved == null) {
+            Log.w(TAG, "No installer activity resolved for $source")
+            return false
+        }
+
+        return runCatching {
+            Log.i(
+                TAG,
+                "Opening installer via $source: ${resolved.activityInfo.packageName}/${resolved.activityInfo.name}"
+            )
+            startActivity(intent)
+        }.onFailure { error ->
+            Log.e(TAG, "Failed to open package installer via $source", error)
+        }.isSuccess
     }
 
     private fun syncRecordTabToCurrentLocation() {
