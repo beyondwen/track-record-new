@@ -77,7 +77,7 @@ export function createMysqlSamplePersistence(): SamplePersistence {
       let connection: Connection | undefined;
       try {
         connection = await mysql.createConnection(toConnection(env));
-        const [result] = await connection.execute<ResultSetHeader>(sql, params);
+        const [result] = await connection.query<ResultSetHeader>(sql, params);
         const insertedCount = result.affectedRows ?? 0;
         return buildPersistSamplesResult(samples, insertedCount);
       } finally {
