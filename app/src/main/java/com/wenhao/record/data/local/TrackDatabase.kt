@@ -6,9 +6,6 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.wenhao.record.data.local.auto.AutoTrackDao
-import com.wenhao.record.data.local.auto.AutoTrackPointEntity
-import com.wenhao.record.data.local.auto.AutoTrackSessionEntity
 import com.wenhao.record.data.local.decision.DecisionDao
 import com.wenhao.record.data.local.decision.DecisionEventEntity
 import com.wenhao.record.data.local.decision.DecisionFeedbackEntity
@@ -23,8 +20,6 @@ import com.wenhao.record.data.local.stream.StayClusterEntity
 
 @Database(
     entities = [
-        AutoTrackSessionEntity::class,
-        AutoTrackPointEntity::class,
         HistoryRecordEntity::class,
         HistoryPointEntity::class,
         DecisionEventEntity::class,
@@ -34,12 +29,10 @@ import com.wenhao.record.data.local.stream.StayClusterEntity
         StayClusterEntity::class,
         AnalysisCursorEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true
 )
 abstract class TrackDatabase : RoomDatabase() {
-
-    abstract fun autoTrackDao(): AutoTrackDao
 
     abstract fun historyDao(): HistoryDao
 
@@ -213,6 +206,13 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("DROP TABLE IF EXISTS `auto_track_point`")
+                database.execSQL("DROP TABLE IF EXISTS `auto_track_session`")
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -231,6 +231,7 @@ abstract class TrackDatabase : RoomDatabase() {
                         MIGRATION_5_6,
                         MIGRATION_6_7,
                         MIGRATION_7_8,
+                        MIGRATION_8_9,
                     )
                     .build()
                     .also { instance = it }
