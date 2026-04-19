@@ -17,6 +17,7 @@ import com.wenhao.record.data.local.stream.AnalysisSegmentEntity
 import com.wenhao.record.data.local.stream.ContinuousTrackDao
 import com.wenhao.record.data.local.stream.RawLocationPointEntity
 import com.wenhao.record.data.local.stream.StayClusterEntity
+import com.wenhao.record.data.local.stream.UploadCursorEntity
 
 @Database(
     entities = [
@@ -28,8 +29,9 @@ import com.wenhao.record.data.local.stream.StayClusterEntity
         AnalysisSegmentEntity::class,
         StayClusterEntity::class,
         AnalysisCursorEntity::class,
+        UploadCursorEntity::class,
     ],
-    version = 9,
+    version = 10,
     exportSchema = true
 )
 abstract class TrackDatabase : RoomDatabase() {
@@ -213,6 +215,21 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `upload_cursor` (
+                        `cursorType` TEXT NOT NULL,
+                        `lastUploadedId` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`cursorType`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -232,6 +249,7 @@ abstract class TrackDatabase : RoomDatabase() {
                         MIGRATION_6_7,
                         MIGRATION_7_8,
                         MIGRATION_8_9,
+                        MIGRATION_9_10,
                     )
                     .build()
                     .also { instance = it }

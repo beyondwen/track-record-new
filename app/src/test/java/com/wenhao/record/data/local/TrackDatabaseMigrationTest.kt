@@ -23,6 +23,18 @@ class TrackDatabaseMigrationTest {
         assertFalse(classExists("com.wenhao.record.data.local.auto.AutoTrackSessionEntity"))
     }
 
+    @Test
+    fun `track database declares migration 9 to 10 and exposes upload cursor entity`() {
+        val companionClass = Class.forName("com.wenhao.record.data.local.TrackDatabase\$Companion")
+
+        assertTrue(
+            companionClass.declaredFields.any { it.name == "MIGRATION_9_10" } ||
+                companionClass.declaredMethods.any { it.name == "getMIGRATION_9_10" }
+        )
+
+        assertTrue(classExists("com.wenhao.record.data.local.stream.UploadCursorEntity"))
+    }
+
     private fun classExists(name: String): Boolean {
         return runCatching { Class.forName(name) }.isSuccess
     }

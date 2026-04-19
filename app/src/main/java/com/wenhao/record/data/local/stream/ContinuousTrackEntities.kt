@@ -61,3 +61,11 @@ data class AnalysisCursorEntity(
     val lastAnalyzedPointId: Long,
     val updatedAt: Long,
 )
+
+@Entity(tableName = "upload_cursor")
+data class UploadCursorEntity(
+    @PrimaryKey
+    val cursorType: String,
+    val lastUploadedId: Long,
+    val updatedAt: Long,
+)
