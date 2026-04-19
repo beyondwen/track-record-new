@@ -11,7 +11,7 @@ class WorkerConnectivityServiceTest {
     fun `check treats method not allowed as reachable worker`() {
         val service = WorkerConnectivityService(
             requestExecutor = { request ->
-                assertEquals("https://worker.example.com/samples/batch", request.url)
+                assertEquals("https://worker.example.com/raw-points/batch", request.url)
                 assertEquals("GET", request.method)
                 WorkerConnectivityResponse(statusCode = 405, body = """{"ok":false,"message":"Method not allowed"}""")
             }

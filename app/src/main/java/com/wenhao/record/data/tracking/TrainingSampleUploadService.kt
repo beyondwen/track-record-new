@@ -134,7 +134,7 @@ private const val AUTH_FAILURE_MESSAGE = "鉴权失败，请检查上传令牌"
 private const val NETWORK_FAILURE_MESSAGE = "上传失败，请检查网络后重试"
 private const val GENERIC_FAILURE_MESSAGE = "上传失败，请稍后重试"
 
-private fun executeWithHttpUrlConnection(request: TrainingSampleUploadRequest): TrainingSampleUploadResponse {
+internal fun executeWithHttpUrlConnection(request: TrainingSampleUploadRequest): TrainingSampleUploadResponse {
     val connection = URL(request.url).openConnection() as HttpURLConnection
     connection.requestMethod = request.method
     connection.connectTimeout = 15000

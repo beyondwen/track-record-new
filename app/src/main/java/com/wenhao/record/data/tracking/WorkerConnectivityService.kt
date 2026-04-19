@@ -33,7 +33,7 @@ class WorkerConnectivityService(
         return try {
             val response = requestExecutor(
                 WorkerConnectivityRequest(
-                    url = "${workerBaseUrl.trim().trimEnd('/')}/samples/batch",
+                    url = "${workerBaseUrl.trim().trimEnd('/')}/raw-points/batch",
                     method = "GET",
                 )
             )
