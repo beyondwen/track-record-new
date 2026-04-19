@@ -108,8 +108,8 @@
     <string name="history_metric_distance">距离</string>
     <string name="history_metric_duration">时长</string>
     <string name="history_metric_speed">平均速度</string>
-    <string name="history_total_distance">累计 %.1f 公里</string>
-    <string name="history_total_duration">累计 %1$s</string>
+    <string name="history_total_distance">累计里程</string>
+    <string name="history_total_duration">累计时长</string>
 
     <string name="history_group_today">今天</string>
     <string name="history_group_yesterday">昨天</string>

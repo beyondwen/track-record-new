@@ -240,7 +240,7 @@ private fun DashboardRoot(
                     accessToken = mapboxAccessToken,
                     modifier = Modifier.fillMaxSize(),
                     viewportPadding = TrackMapViewportPadding(
-                        top = 76.dp,
+                        top = 104.dp,
                         start = 20.dp,
                         end = 20.dp,
                         bottom = mapViewportBottomPadding,
@@ -249,7 +249,7 @@ private fun DashboardRoot(
                     onUserGestureMove = { showRecenterCue = true },
                 )
 
-                TrackTopOverlayColumn {
+                TrackTopOverlayColumn(modifier = Modifier.padding(top = 8.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,

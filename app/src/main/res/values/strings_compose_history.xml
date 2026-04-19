@@ -3,8 +3,8 @@
     <string name="compose_history_title">我的行程</string>
     <string name="compose_history_subtitle">查看已经保存的轨迹与统计摘要</string>
     <string name="compose_history_total_count">%1$d 天记录</string>
-    <string name="compose_history_total_distance">累计 %.1f 公里</string>
-    <string name="compose_history_total_duration">累计 %1$s</string>
+    <string name="compose_history_total_distance">累计里程</string>
+    <string name="compose_history_total_duration">累计时长</string>
     <string name="compose_history_export">导出备份</string>
     <string name="compose_history_import">导入恢复</string>
     <string name="compose_history_training_export">导出样本</string>

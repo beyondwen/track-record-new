@@ -172,10 +172,10 @@ class DashboardUiController(
     }
 
     private fun controlTitleForState(state: AutoTrackUiState): String = when (state) {
-        AutoTrackUiState.TRACKING -> "后台采集中"
+        AutoTrackUiState.TRACKING -> "持续采点中"
         AutoTrackUiState.WAITING_PERMISSION -> "等待权限"
         AutoTrackUiState.SAVED_RECENTLY -> "已完成分析"
-        else -> "自动待机中"
+        else -> "低功耗采点中"
     }
 
     private fun controlBodyForState(state: AutoTrackUiState): String = when (state) {

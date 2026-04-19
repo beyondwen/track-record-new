@@ -7,7 +7,7 @@
     <string name="compose_map_overlay_collapsed_hint">点按查看详情</string>
     <string name="compose_map_overlay_status_fallback">状态信息</string>
     <string name="compose_map_overlay_status_waiting">正在等待最新状态</string>
-    <string name="compose_map_overlay_tracking_title">智能记录状态</string>
+    <string name="compose_map_overlay_tracking_title">采点与分析状态</string>
     <string name="compose_map_overlay_diagnostics_title">实时诊断</string>
     <string name="compose_map_overlay_diagnostics_empty">当前暂无更多诊断信息。</string>
     <string name="compose_map_overlay_confirm">知道了</string>

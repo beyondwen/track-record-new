@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -115,7 +117,11 @@ fun HistoryComposeScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         TrackAtmosphericBackground()
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding(),
+        ) {
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(
@@ -359,7 +365,7 @@ private fun DecisionFeedbackActionButton(
 private fun HistoryHeroSection(
     state: HistoryScreenUiState,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -382,6 +388,54 @@ private fun HistoryHeroSection(
             }
         }
 
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            HistoryOverviewMetricCard(
+                label = stringResource(R.string.compose_history_total_distance),
+                value = state.totalDistanceText,
+                modifier = Modifier.weight(1f),
+            )
+            HistoryOverviewMetricCard(
+                label = stringResource(R.string.compose_history_total_duration),
+                value = state.totalDurationText,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun HistoryOverviewMetricCard(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    TrackLiquidPanel(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        tone = TrackLiquidTone.SUBTLE,
+        shadowElevation = 0.dp,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -555,6 +609,7 @@ private fun HistoryBottomBar(
     onRecordClick: () -> Unit,
 ) {
     TrackLiquidPanel(
+        modifier = Modifier.navigationBarsPadding(),
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
         tone = TrackLiquidTone.STRONG,
         shadowElevation = 0.dp,
