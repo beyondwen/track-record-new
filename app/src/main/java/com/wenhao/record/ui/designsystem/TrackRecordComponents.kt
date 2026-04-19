@@ -53,7 +53,6 @@ import com.wenhao.record.R
 enum class TrackBottomTab {
     RECORD,
     HISTORY,
-    BAROMETER,
 }
 
 enum class TrackLiquidTone {
@@ -365,14 +364,11 @@ fun TrackBottomNavigationBar(
     selectedTab: TrackBottomTab,
     onRecordClick: () -> Unit,
     onHistoryClick: () -> Unit,
-    onBarometerClick: () -> Unit,
     modifier: Modifier = Modifier,
     recordLabel: String = stringResource(R.string.compose_dashboard_record),
     historyLabel: String = stringResource(R.string.compose_dashboard_history),
-    barometerLabel: String = stringResource(R.string.compose_barometer_tab),
     recordEnabled: Boolean = true,
     historyEnabled: Boolean = true,
-    barometerEnabled: Boolean = true,
 ) {
     TrackLiquidPanel(
         modifier = modifier.fillMaxWidth(),
@@ -418,27 +414,6 @@ fun TrackBottomNavigationBar(
                     )
                 },
                 label = { Text(historyLabel) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                    indicatorColor = MaterialTheme.colorScheme.trackSoftAccent.copy(alpha = 0.5f),
-                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
-                    disabledIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f),
-                    disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f),
-                ),
-            )
-            NavigationBarItem(
-                selected = selectedTab == TrackBottomTab.BAROMETER,
-                onClick = onBarometerClick,
-                enabled = barometerEnabled,
-                icon = {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_tab_altitude),
-                        contentDescription = null,
-                    )
-                },
-                label = { Text(barometerLabel) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedIconColor = MaterialTheme.colorScheme.primary,
                     selectedTextColor = MaterialTheme.colorScheme.primary,

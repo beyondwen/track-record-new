@@ -96,7 +96,6 @@ data class HistoryScreenUiState(
 fun HistoryComposeScreen(
     state: HistoryScreenUiState,
     onRecordClick: () -> Unit,
-    onBarometerClick: () -> Unit,
     onExportClick: () -> Unit,
     onImportClick: () -> Unit,
     onTrainingSampleExport: () -> Unit,
@@ -213,7 +212,6 @@ fun HistoryComposeScreen(
 
             HistoryBottomBar(
                 onRecordClick = onRecordClick,
-                onBarometerClick = onBarometerClick,
             )
         }
 
@@ -726,7 +724,6 @@ private fun HistoryPreviewCard(
 @Composable
 private fun HistoryBottomBar(
     onRecordClick: () -> Unit,
-    onBarometerClick: () -> Unit,
 ) {
     TrackLiquidPanel(
         shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
@@ -741,12 +738,10 @@ private fun HistoryBottomBar(
                 selectedTab = TrackBottomTab.HISTORY,
                 onRecordClick = onRecordClick,
                 onHistoryClick = {},
-                onBarometerClick = onBarometerClick,
                 recordLabel = stringResource(R.string.compose_history_record_tab),
                 historyLabel = stringResource(R.string.compose_history_list_tab),
                 recordEnabled = true,
                 historyEnabled = false,
-                barometerEnabled = true,
             )
         }
     }
@@ -866,7 +861,6 @@ private fun HistoryComposeScreenPreview() {
                 totalCountText = "14 days",
             ),
             onRecordClick = {},
-            onBarometerClick = {},
             onExportClick = {},
             onImportClick = {},
             onTrainingSampleExport = {},

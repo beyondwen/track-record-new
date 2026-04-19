@@ -54,8 +54,6 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.wenhao.record.R
 import com.wenhao.record.data.tracking.DecisionFeedbackType
-import com.wenhao.record.ui.barometer.BarometerUiState
-import com.wenhao.record.ui.barometer.BarometerComposeScreen
 import com.wenhao.record.ui.dashboard.DashboardComposeScreen
 import com.wenhao.record.ui.dashboard.DashboardOverlayUiState
 import com.wenhao.record.ui.dashboard.DashboardScreenUiState
@@ -90,13 +88,11 @@ fun MainComposeScreen(
     dashboardState: DashboardScreenUiState,
     dashboardOverlayState: DashboardOverlayUiState,
     historyState: HistoryScreenUiState,
-    barometerState: BarometerUiState,
     aboutState: AboutUiState,
     mapboxAccessToken: String,
     dashboardMapState: TrackMapSceneState,
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
-    onBarometerTabClick: () -> Unit,
     onAboutTabClick: () -> Unit,
     onAboutBackClick: () -> Unit,
     onCheckUpdateClick: () -> Unit,
@@ -130,7 +126,6 @@ fun MainComposeScreen(
                 HistoryComposeScreen(
                     state = historyState,
                     onRecordClick = onRecordTabClick,
-                    onBarometerClick = onBarometerTabClick,
                     onExportClick = onHistoryExport,
                     onImportClick = onHistoryImport,
                     onTrainingSampleExport = onTrainingSampleExport,
@@ -140,15 +135,6 @@ fun MainComposeScreen(
                     onDecisionFeedback = onHistoryDecisionFeedback,
                     onFeedbackSubmit = onHistoryFeedbackSubmit,
                     onFeedbackDismiss = onHistoryFeedbackDismiss,
-                )
-            }
-
-            MainTab.BAROMETER -> {
-                BarometerComposeScreen(
-                    state = barometerState,
-                    onRecordClick = onRecordTabClick,
-                    onHistoryClick = onHistoryTabClick,
-                    onBarometerClick = onBarometerTabClick,
                 )
             }
 
@@ -178,7 +164,6 @@ fun MainComposeScreen(
                     mapboxAccessToken = mapboxAccessToken,
                     onRecordTabClick = onRecordTabClick,
                     onHistoryTabClick = onHistoryTabClick,
-                    onBarometerTabClick = onBarometerTabClick,
                     onAboutTabClick = onAboutTabClick,
                     onManualRecordClick = onManualRecordClick,
                     onLocateClick = onLocateClick,
@@ -197,7 +182,6 @@ private fun DashboardRoot(
     mapboxAccessToken: String,
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
-    onBarometerTabClick: () -> Unit,
     onAboutTabClick: () -> Unit,
     onManualRecordClick: () -> Unit,
     onLocateClick: () -> Unit,
@@ -260,7 +244,6 @@ private fun DashboardRoot(
                     overlayState = overlayState,
                     onManualRecordClick = onManualRecordClick,
                     onHistoryClick = onHistoryTabClick,
-                    onBarometerClick = onBarometerTabClick,
                     modifier = Modifier
                         .fillMaxWidth()
                         .onSizeChanged { sheetContentHeightPx = it.height.toFloat() },
@@ -333,7 +316,6 @@ private fun DashboardRoot(
 enum class MainTab {
     RECORD,
     HISTORY,
-    BAROMETER,
     ABOUT,
 }
 

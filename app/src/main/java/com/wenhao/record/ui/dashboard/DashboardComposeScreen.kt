@@ -95,7 +95,6 @@ fun DashboardComposeScreen(
     overlayState: DashboardOverlayUiState,
     onManualRecordClick: () -> Unit,
     onHistoryClick: () -> Unit,
-    onBarometerClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showStatusDialog by rememberSaveable { mutableStateOf(false) }
@@ -135,7 +134,6 @@ fun DashboardComposeScreen(
                 selectedTab = TrackBottomTab.RECORD,
                 onRecordClick = {},
                 onHistoryClick = onHistoryClick,
-                onBarometerClick = onBarometerClick,
                 recordLabel = stringResource(R.string.compose_dashboard_record),
                 historyLabel = stringResource(R.string.compose_dashboard_history),
             )
@@ -697,7 +695,6 @@ private fun DashboardComposeScreenPreview() {
             ),
             onManualRecordClick = {},
             onHistoryClick = {},
-            onBarometerClick = {},
         )
     }
 }
