@@ -186,6 +186,37 @@ object HistoryStorage {
         TrackDataChangeNotifier.notifyHistoryChanged()
     }
 
+    fun upsertProjectedItems(context: Context, projectedItems: List<HistoryItem>) {
+        if (projectedItems.isEmpty()) return
+        ensureHistoryCache(context)
+        val normalizedItems = projectedItems.map { item ->
+            item.copy(points = item.points.toList())
+        }
+
+        synchronized(cacheLock) {
+            val mergedById = historyCache.associateBy { it.id }.toMutableMap()
+            normalizedItems.forEach { item ->
+                mergedById[item.id] = item
+            }
+            historyCache = mergedById.values
+                .sortedWith(compareByDescending<HistoryItem> { it.timestamp }.thenByDescending { it.id })
+            refreshDailyCacheLocked()
+        }
+
+        ioExecutor.execute {
+            val dao = TrackDatabase.getInstance(context).historyDao()
+            normalizedItems.forEach { item ->
+                dao.upsertHistory(
+                    record = item.toRecordEntity(),
+                    points = item.toPointEntities(),
+                )
+            }
+            persistSnapshot(context, synchronized(cacheLock) { historyCache })
+        }
+
+        TrackDataChangeNotifier.notifyHistoryChanged()
+    }
+
     fun rename(context: Context, historyId: Long, newTitle: String?) {
         ensureHistoryCache(context)
         var updated = false

@@ -40,12 +40,12 @@ import com.wenhao.record.data.history.HistoryUploadService
 import com.wenhao.record.data.history.UploadedHistoryStore
 import com.wenhao.record.data.tracking.AutoTrackDiagnostics
 import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
-import com.wenhao.record.data.tracking.AutoTrackSession
-import com.wenhao.record.data.tracking.AutoTrackStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.wenhao.record.data.tracking.DecisionFeedbackType
 import com.wenhao.record.data.tracking.DecisionEventStorage
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
+import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
+import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
 import com.wenhao.record.data.tracking.TrainingSampleExportCodec
 import com.wenhao.record.data.tracking.TrainingSampleBatchUploadResult
 import com.wenhao.record.data.tracking.TrainingSampleBatchUploader
@@ -168,7 +168,7 @@ class MainActivity : AppCompatActivity() {
     private var pressureSensor: Sensor? = null
     private var gnssStatusCallback: GnssStatus.Callback? = null
     private var centerOnNextFix = false
-    private var lastDashboardSessionStart: Long? = null
+    private var lastDashboardTrackingEnabled = false
     private var previewLocationCache: GeoCoordinate? = null
     private var previewLocationCachedAt = 0L
     private var previewAltitudeMeters: Double? = null
@@ -856,9 +856,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun handleManualRecordToggle() {
-        if (AutoTrackStorage.peekSession(this) != null) {
+        if (TrackingRuntimeSnapshotStorage.peek(this).isEnabled) {
             BackgroundTrackingService.stop(this)
-            Toast.makeText(this, "已结束手动记录", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "已停止后台采集", Toast.LENGTH_SHORT).show()
             return
         }
         startManualRecording()
@@ -875,7 +875,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
         BackgroundTrackingService.start(this)
-        Toast.makeText(this, "已开始手动记录", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "已开启后台采集", Toast.LENGTH_SHORT).show()
     }
 
     private fun configureHomeMap() {
@@ -930,48 +930,42 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshDashboardContent() {
-        val session = AutoTrackStorage.peekSession(this)
+        val runtimeSnapshot = TrackingRuntimeSnapshotStorage.peek(this)
         val previewLocation = loadPreviewLocation()
         val todayHistoryItems = HistoryStorage.peek(this)
-        val previousSessionStart = lastDashboardSessionStart
-        lastDashboardSessionStart = session?.startTimestamp
-        val dashboardState = currentDashboardState(session)
-        val durationSeconds = session?.let {
-            ((System.currentTimeMillis() - it.startTimestamp) / 1000L).toInt()
-        } ?: 0
+        val previousTrackingEnabled = lastDashboardTrackingEnabled
+        lastDashboardTrackingEnabled = runtimeSnapshot.isEnabled
+        val dashboardState = currentDashboardState(runtimeSnapshot)
 
-        dashboardUiController.render(session, dashboardState, durationSeconds)
+        dashboardUiController.render(runtimeSnapshot, dashboardState, todayHistoryItems)
         homeMapController.render(
-            session = session,
+            runtimeSnapshot = runtimeSnapshot,
             previewLocation = previewLocation,
             todayHistoryItems = todayHistoryItems,
         )
         renderDashboardDiagnosticsRefined()
 
-        if (previousSessionStart != null && session == null) {
+        if (previousTrackingEnabled && !runtimeSnapshot.isEnabled) {
             homeMapController.shouldRefit = true
             historyController.reload()
             historyController.updateContent()
         }
     }
 
-    private fun currentDashboardState(session: AutoTrackSession?): AutoTrackUiState {
+    private fun currentDashboardState(runtimeSnapshot: TrackingRuntimeSnapshot): AutoTrackUiState {
         if (!permissionHelper.hasLocationPermission()) {
             return AutoTrackUiState.WAITING_PERMISSION
         }
 
-        val savedState = AutoTrackStorage.loadUiState(this)
-        return if (session != null) {
-            AutoTrackUiState.TRACKING
-        } else {
-            when (savedState) {
-                AutoTrackUiState.TRACKING,
-                AutoTrackUiState.PREPARING,
-                AutoTrackUiState.PAUSED_STILL,
-                AutoTrackUiState.DISABLED,
-                -> AutoTrackUiState.IDLE
-                else -> savedState
-            }
+        if (!runtimeSnapshot.isEnabled) {
+            return AutoTrackUiState.IDLE
+        }
+
+        return when (runtimeSnapshot.phase) {
+            com.wenhao.record.tracking.TrackingPhase.ACTIVE -> AutoTrackUiState.TRACKING
+            com.wenhao.record.tracking.TrackingPhase.SUSPECT_MOVING -> AutoTrackUiState.PREPARING
+            com.wenhao.record.tracking.TrackingPhase.SUSPECT_STOPPING -> AutoTrackUiState.PAUSED_STILL
+            com.wenhao.record.tracking.TrackingPhase.IDLE -> AutoTrackUiState.IDLE
         }
     }
 
@@ -1205,7 +1199,7 @@ class MainActivity : AppCompatActivity() {
                     reader.readText()
                 } ?: error("Unable to read model bundle")
                 DecisionModelRepository.importBundle(this@MainActivity, payload)
-                if (AutoTrackStorage.peekSession(this@MainActivity) != null) {
+                if (TrackingRuntimeSnapshotStorage.peek(this@MainActivity).isEnabled) {
                     BackgroundTrackingService.reloadDecisionModel(this@MainActivity)
                 }
             }

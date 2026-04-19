@@ -1,0 +1,72 @@
+package com.wenhao.record.data.tracking
+
+import com.wenhao.record.tracking.analysis.SegmentCandidate
+import com.wenhao.record.tracking.analysis.SegmentKind
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class AnalysisHistoryProjectorTest {
+
+    @Test
+    fun `project maps dynamic segment to stable history item`() {
+        val projector = AnalysisHistoryProjector()
+        val rawPoints = demoSegmentPoints()
+        val segment = SegmentCandidate(
+            kind = SegmentKind.DYNAMIC,
+            startTimestamp = 1_000L,
+            endTimestamp = 61_000L,
+            pointCount = rawPoints.size,
+        )
+
+        val projected = projector.project(
+            segments = listOf(segment),
+            rawPoints = rawPoints,
+        )
+
+        assertEquals(1, projected.size)
+        assertEquals(
+            AnalysisHistoryProjector.stableHistoryId(
+                startPointId = rawPoints.first().pointId,
+                endPointId = rawPoints.last().pointId,
+            ),
+            projected.single().id,
+        )
+        assertTrue(projected.single().distanceKm in 1.24..1.27)
+        assertEquals(rawPoints.size, projected.single().points.size)
+    }
+
+    private fun demoSegmentPoints(): List<RawTrackPoint> {
+        return listOf(
+            rawPoint(pointId = 101L, timestampMillis = 1_000L, latitude = 30.00000, longitude = 120.00000),
+            rawPoint(pointId = 102L, timestampMillis = 21_000L, latitude = 30.00375, longitude = 120.00000),
+            rawPoint(pointId = 103L, timestampMillis = 41_000L, latitude = 30.00750, longitude = 120.00000),
+            rawPoint(pointId = 104L, timestampMillis = 61_000L, latitude = 30.01125, longitude = 120.00000),
+        )
+    }
+
+    private fun rawPoint(
+        pointId: Long,
+        timestampMillis: Long,
+        latitude: Double,
+        longitude: Double,
+    ): RawTrackPoint {
+        return RawTrackPoint(
+            pointId = pointId,
+            timestampMillis = timestampMillis,
+            latitude = latitude,
+            longitude = longitude,
+            accuracyMeters = 8f,
+            altitudeMeters = null,
+            speedMetersPerSecond = null,
+            bearingDegrees = null,
+            provider = "gps",
+            sourceType = "LOCATION",
+            isMock = false,
+            wifiFingerprintDigest = null,
+            activityType = "WALKING",
+            activityConfidence = 0.9f,
+            samplingTier = SamplingTier.ACTIVE,
+        )
+    }
+}

@@ -22,6 +22,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.wenhao.record.R
 import com.wenhao.record.data.local.TrackDatabase
+import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.tracking.AnalysisHistoryProjector
 import com.wenhao.record.data.tracking.ContinuousPointStorage
 import com.wenhao.record.data.tracking.RawTrackPoint
 import com.wenhao.record.data.tracking.SamplingTier
@@ -74,6 +76,7 @@ class BackgroundTrackingService : Service() {
 
     private val phasePolicy = BackgroundTrackingServicePhasePolicy()
     private val analysisRunner = TrackAnalysisRunner()
+    private val analysisHistoryProjector = AnalysisHistoryProjector()
     private lateinit var locationManager: LocationManager
     private lateinit var trackingThread: HandlerThread
     private lateinit var trackingHandler: Handler
@@ -333,7 +336,7 @@ class BackgroundTrackingService : Service() {
                 return@runOnIo
             }
 
-            analysisRunner.analyze(
+            val analysisResult = analysisRunner.analyze(
                 points = window.map { rawPoint ->
                     AnalyzedPoint(
                         timestampMillis = rawPoint.timestampMillis,
@@ -346,6 +349,13 @@ class BackgroundTrackingService : Service() {
                         wifiFingerprintDigest = rawPoint.wifiFingerprintDigest,
                     )
                 },
+            )
+            HistoryStorage.upsertProjectedItems(
+                context = applicationContext,
+                projectedItems = analysisHistoryProjector.project(
+                    segments = analysisResult.segments,
+                    rawPoints = window,
+                ),
             )
 
             runOnTrackingThread {

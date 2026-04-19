@@ -4,9 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.wenhao.record.data.history.HistoryItem
-import com.wenhao.record.data.tracking.AutoTrackSession
 import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.ui.map.TrackMapMarker
 import com.wenhao.record.ui.map.TrackMapMarkerKind
@@ -30,6 +30,7 @@ class HomeMapController : HomeMapPort {
     private var homeMarker: GeoCoordinate? = null
     private var liveStartMarker: GeoCoordinate? = null
     private var liveCurrentMarker: GeoCoordinate? = null
+    private var trackingEnabled = false
     private var viewportSequence = 0L
 
     override fun configure(previewLocation: GeoCoordinate?, hasLocationPermission: Boolean, defaultCoordinate: GeoCoordinate) {
@@ -38,35 +39,36 @@ class HomeMapController : HomeMapPort {
         issueCenter(initialLocation, if (hasLocationPermission) 16.0 else 15.0)
     }
 
-    override fun hasActiveTrack(): Boolean = currentTrackPoints.isNotEmpty()
+    override fun hasActiveTrack(): Boolean = trackingEnabled && liveCurrentMarker != null
 
     override fun hasTodayTracks(): Boolean = todayTrackPoints.isNotEmpty()
 
-    override fun render(session: AutoTrackSession?, previewLocation: GeoCoordinate?, todayHistoryItems: List<HistoryItem>) {
-        val sanitizedTrack = TrackPathSanitizer.sanitize(
-            points = session?.points.orEmpty(),
-            sortByTimestamp = false,
-        )
-        currentTrackPoints.clear()
-        currentTrackPoints.addAll(sanitizedTrack.points)
-        currentTrackSegments = sanitizedTrack.segments
+    override fun render(
+        runtimeSnapshot: TrackingRuntimeSnapshot?,
+        previewLocation: GeoCoordinate?,
+        todayHistoryItems: List<HistoryItem>,
+    ) {
+        trackingEnabled = runtimeSnapshot?.isEnabled == true
+        clearActiveTrack()
+        renderTodayTracks(todayHistoryItems)
 
-        if (currentTrackPoints.isEmpty()) {
-            clearActiveTrack()
-            renderTodayTracks(todayHistoryItems)
-            previewLocation?.let(::updateMarker)
-            syncScene()
-            return
-        }
+        val liveCoordinate = runtimeSnapshot?.latestPoint?.toGeoCoordinate()
+        when {
+            trackingEnabled && liveCoordinate != null -> {
+                homeMarker = null
+                liveCurrentMarker = liveCoordinate
+                if (shouldRefit) {
+                    focusActiveTrackOnLatestPoint(forceZoom = false)
+                } else {
+                    syncScene()
+                }
+            }
 
-        clearTodayTrackOverlays()
-        renderTrackHeatmap()
-        updateLiveTrackMarkers()
-        updateMarker(currentTrackPoints.last().toGeoCoordinate())
-        if (shouldRefit) {
-            focusActiveTrackOnLatestPoint(forceZoom = false)
-        } else {
-            syncScene()
+            else -> {
+                clearActiveTrack()
+                (liveCoordinate ?: previewLocation)?.let(::updateMarker)
+                syncScene()
+            }
         }
     }
 
@@ -86,14 +88,14 @@ class HomeMapController : HomeMapPort {
     }
 
     override fun showPreviewLocationIfIdle(previewLocation: GeoCoordinate?) {
-        if (!hasActiveTrack()) {
+        if (!trackingEnabled) {
             previewLocation?.let(::updateMarker)
             syncScene()
         }
     }
 
     override fun focusActiveTrackOnLatestPoint(forceZoom: Boolean) {
-        val latestPoint = currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
+        val latestPoint = liveCurrentMarker ?: currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
         issueCenter(
             coordinate = latestPoint,
             zoom = if (forceZoom) 16.8 else 16.2,
@@ -151,7 +153,9 @@ class HomeMapController : HomeMapPort {
         currentTrackSegments = emptyList()
         currentTrackPoints.clear()
         liveStartMarker = null
-        liveCurrentMarker = null
+        if (!trackingEnabled) {
+            liveCurrentMarker = null
+        }
     }
 
     private fun clearTodayTrackOverlays() {

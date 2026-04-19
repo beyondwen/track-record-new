@@ -5,8 +5,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.wenhao.record.R
-import com.wenhao.record.data.tracking.AutoTrackSession
+import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.tracking.AutoTrackUiState
+import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import kotlin.math.roundToInt
 
 data class DashboardOverlayUiState(
@@ -51,13 +52,19 @@ class DashboardUiController(
         panelState = panelState.copy(isRecordTabSelected = isRecord)
     }
 
-    fun render(session: AutoTrackSession?, state: AutoTrackUiState, durationSeconds: Int) {
-        val displayDistanceKm = session?.totalDistanceKm ?: 0.0
+    fun render(
+        runtimeSnapshot: TrackingRuntimeSnapshot?,
+        state: AutoTrackUiState,
+        todayHistoryItems: List<HistoryItem>,
+    ) {
+        val displayDistanceKm = todayHistoryItems.sumOf { it.distanceKm }
+        val durationSeconds = todayHistoryItems.sumOf { it.durationSeconds }
         val averageSpeed = if (durationSeconds > 0) {
             displayDistanceKm / (durationSeconds / 3600.0)
         } else {
             0.0
         }
+        val isTracking = runtimeSnapshot?.isEnabled == true
 
         panelState = panelState.copy(
             distanceText = formatDistance(displayDistanceKm),
@@ -67,12 +74,12 @@ class DashboardUiController(
             autoTrackMeta = metaForState(state),
             statusLabel = statusForState(state),
             statusTone = toneForState(state),
-            recordIconRes = if (state == AutoTrackUiState.TRACKING) {
+            recordIconRes = if (isTracking) {
                 R.drawable.ic_stop_dashboard
             } else {
                 R.drawable.ic_play_dashboard
             },
-            isPulseActive = state == AutoTrackUiState.TRACKING || state == AutoTrackUiState.PREPARING,
+            isPulseActive = isTracking,
             controlTitle = controlTitleForState(state),
             controlBody = controlBodyForState(state),
         )
@@ -165,14 +172,14 @@ class DashboardUiController(
     }
 
     private fun controlTitleForState(state: AutoTrackUiState): String = when (state) {
-        AutoTrackUiState.TRACKING -> "结束记录"
-        else -> "开始记录"
+        AutoTrackUiState.TRACKING -> "停止采集"
+        else -> "开启采集"
     }
 
     private fun controlBodyForState(state: AutoTrackUiState): String = when (state) {
-        AutoTrackUiState.TRACKING -> "手动结束后，这一整段会作为高置信样本保留下来。"
-        AutoTrackUiState.WAITING_PERMISSION -> "先授予定位权限，再由你手动开始和结束记录。"
-        else -> "当前阶段已停用自动记录，只保留手动开始和手动结束。"
+        AutoTrackUiState.TRACKING -> "持续采点会继续运行，动态段会在本地延迟分析后进入历史记录。"
+        AutoTrackUiState.WAITING_PERMISSION -> "先授予定位权限，后台采点和延迟分析才能正常工作。"
+        else -> "开启后会持续采集点位，不再依赖手动开始和结束轨迹。"
     }
 
 }
