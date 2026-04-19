@@ -22,6 +22,8 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.wenhao.record.R
 import com.wenhao.record.data.local.TrackDatabase
+import com.wenhao.record.data.local.stream.AnalysisSegmentEntity
+import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.tracking.AnalysisHistoryProjector
 import com.wenhao.record.data.tracking.ContinuousPointStorage
@@ -29,10 +31,12 @@ import com.wenhao.record.data.tracking.RawTrackPoint
 import com.wenhao.record.data.tracking.SamplingTier
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
+import com.wenhao.record.data.tracking.TrackUploadScheduler
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
 import com.wenhao.record.map.GeoMath
 import com.wenhao.record.tracking.analysis.AnalyzedPoint
+import com.wenhao.record.tracking.analysis.SegmentKind
 import com.wenhao.record.tracking.analysis.TrackAnalysisRunner
 import com.wenhao.record.ui.main.MainActivity
 import com.wenhao.record.util.AppTaskExecutor
@@ -46,6 +50,7 @@ class BackgroundTrackingService : Service() {
 
         private const val CHANNEL_ID = "smart_tracking"
         private const val NOTIFICATION_ID = 1107
+        private const val ANALYSIS_VERSION = 1
 
         fun start(context: Context) {
             val intent = Intent(context, BackgroundTrackingService::class.java).apply {
@@ -319,6 +324,7 @@ class BackgroundTrackingService : Service() {
         )
         AppTaskExecutor.runOnIo {
             pointStorage.appendRawPoint(rawPoint)
+            TrackUploadScheduler.kickRawPointSync(applicationContext)
         }
     }
 
@@ -350,6 +356,81 @@ class BackgroundTrackingService : Service() {
                     )
                 },
             )
+            val persistedSegments = analysisResult.segments.mapNotNull { segment ->
+                if (segment.kind == SegmentKind.UNCERTAIN) {
+                    return@mapNotNull null
+                }
+
+                val segmentPoints = window.filter { point ->
+                    point.timestampMillis in segment.startTimestamp..segment.endTimestamp
+                }
+                if (segmentPoints.isEmpty()) {
+                    return@mapNotNull null
+                }
+
+                val distanceMeters = segmentPoints.zipWithNext { first, second ->
+                    GeoMath.distanceMeters(
+                        first.latitude,
+                        first.longitude,
+                        second.latitude,
+                        second.longitude,
+                    )
+                }.sum()
+                val durationMillis = (segment.endTimestamp - segment.startTimestamp).coerceAtLeast(0L)
+                val speedSamples = segmentPoints.mapNotNull { it.speedMetersPerSecond?.toDouble() }
+                val avgSpeedMetersPerSecond = when {
+                    speedSamples.isNotEmpty() -> speedSamples.average()
+                    durationMillis <= 0L -> 0.0
+                    else -> distanceMeters / (durationMillis / 1_000.0)
+                }
+                val maxSpeedMetersPerSecond = speedSamples.maxOrNull() ?: avgSpeedMetersPerSecond
+
+                AnalysisSegmentEntity(
+                    segmentId = stableSegmentId(
+                        startPointId = segmentPoints.first().pointId,
+                        endPointId = segmentPoints.last().pointId,
+                    ),
+                    startPointId = segmentPoints.first().pointId,
+                    endPointId = segmentPoints.last().pointId,
+                    startTimestamp = segment.startTimestamp,
+                    endTimestamp = segment.endTimestamp,
+                    segmentType = segment.kind.name,
+                    confidence = defaultSegmentConfidence(segment.kind),
+                    distanceMeters = distanceMeters.toFloat(),
+                    durationMillis = durationMillis,
+                    avgSpeedMetersPerSecond = avgSpeedMetersPerSecond.toFloat(),
+                    maxSpeedMetersPerSecond = maxSpeedMetersPerSecond.toFloat(),
+                    analysisVersion = ANALYSIS_VERSION,
+                )
+            }
+            val persistedStayClusters = analysisResult.stayClusters.mapNotNull { stay ->
+                val ownerSegment = persistedSegments.firstOrNull { segment ->
+                    segment.segmentType == SegmentKind.STATIC.name &&
+                        stay.arrivalTime <= segment.endTimestamp &&
+                        stay.departureTime >= segment.startTimestamp
+                } ?: return@mapNotNull null
+
+                StayClusterEntity(
+                    stayId = stableStayId(
+                        segmentId = ownerSegment.segmentId,
+                        arrivalTime = stay.arrivalTime,
+                        departureTime = stay.departureTime,
+                    ),
+                    segmentId = ownerSegment.segmentId,
+                    centerLat = stay.centerLat,
+                    centerLng = stay.centerLng,
+                    radiusMeters = stay.radiusMeters,
+                    arrivalTime = stay.arrivalTime,
+                    departureTime = stay.departureTime,
+                    confidence = stay.confidence,
+                    analysisVersion = ANALYSIS_VERSION,
+                )
+            }
+            pointStorage.saveAnalysisResult(
+                analyzedUpToPointId = window.maxOf { it.pointId },
+                segments = persistedSegments,
+                stayClusters = persistedStayClusters,
+            )
             HistoryStorage.upsertProjectedItems(
                 context = applicationContext,
                 projectedItems = analysisHistoryProjector.project(
@@ -357,6 +438,7 @@ class BackgroundTrackingService : Service() {
                     rawPoints = window,
                 ),
             )
+            TrackUploadScheduler.kickAnalysisSync(applicationContext)
 
             runOnTrackingThread {
                 analysisInFlight = false
@@ -366,6 +448,23 @@ class BackgroundTrackingService : Service() {
                 TrackDataChangeNotifier.notifyHistoryChanged()
             }
         }
+    }
+
+    private fun defaultSegmentConfidence(kind: SegmentKind): Float {
+        return when (kind) {
+            SegmentKind.STATIC -> 0.9f
+            SegmentKind.DYNAMIC -> 0.85f
+            SegmentKind.UNCERTAIN -> 0.5f
+        }
+    }
+
+    private fun stableSegmentId(startPointId: Long, endPointId: Long): Long {
+        return (startPointId shl 32) xor (endPointId and 0xFFFF_FFFFL)
+    }
+
+    private fun stableStayId(segmentId: Long, arrivalTime: Long, departureTime: Long): Long {
+        val raw = (segmentId * 1_000_003L) xor arrivalTime xor departureTime
+        return raw.coerceAtLeast(1L)
     }
 
     private fun saveSnapshot() {

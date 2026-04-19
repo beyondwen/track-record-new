@@ -43,6 +43,24 @@ class ContinuousPointStorageTest {
         assertEquals(listOf(SamplingTier.IDLE, SamplingTier.ACTIVE), points.map { it.samplingTier })
     }
 
+    @Test
+    fun `save analysis result persists segments stay clusters and analysis cursor`() {
+        val dao = FakeContinuousTrackDao()
+        val storage = ContinuousPointStorage(dao)
+
+        storage.saveAnalysisResult(
+            analyzedUpToPointId = 42L,
+            segments = listOf(segmentEntity(segmentId = 100L)),
+            stayClusters = listOf(stayEntity(stayId = 200L, segmentId = 100L)),
+        )
+
+        assertEquals(42L, storage.loadAnalysisCursor()?.lastAnalyzedPointId)
+        assertEquals(listOf(100L), storage.loadPendingAnalysisUploadRows(afterSegmentId = 0L, limit = 10).map { it.segmentId })
+        assertEquals(listOf(200L), storage.loadPendingAnalysisUploadRows(afterSegmentId = 0L, limit = 10).flatMap { row ->
+            row.stayClusters.map { it.stayId }
+        })
+    }
+
     private fun samplePoint(timestampMillis: Long, samplingTier: SamplingTier): RawTrackPoint {
         return RawTrackPoint(
             timestampMillis = timestampMillis,
@@ -62,8 +80,42 @@ class ContinuousPointStorageTest {
         )
     }
 
+    private fun segmentEntity(segmentId: Long): AnalysisSegmentEntity {
+        return AnalysisSegmentEntity(
+            segmentId = segmentId,
+            startPointId = 11L,
+            endPointId = 19L,
+            startTimestamp = 100_000L,
+            endTimestamp = 160_000L,
+            segmentType = "STATIC",
+            confidence = 0.95f,
+            distanceMeters = 18f,
+            durationMillis = 60_000L,
+            avgSpeedMetersPerSecond = 0.2f,
+            maxSpeedMetersPerSecond = 0.4f,
+            analysisVersion = 1,
+        )
+    }
+
+    private fun stayEntity(stayId: Long, segmentId: Long): StayClusterEntity {
+        return StayClusterEntity(
+            stayId = stayId,
+            segmentId = segmentId,
+            centerLat = 30.1,
+            centerLng = 120.1,
+            radiusMeters = 25f,
+            arrivalTime = 100_000L,
+            departureTime = 160_000L,
+            confidence = 0.91f,
+            analysisVersion = 1,
+        )
+    }
+
     private class FakeContinuousTrackDao : ContinuousTrackDao {
         private val items = mutableListOf<RawLocationPointEntity>()
+        private val segments = mutableListOf<AnalysisSegmentEntity>()
+        private val stayClusters = mutableListOf<StayClusterEntity>()
+        private var analysisCursor: AnalysisCursorEntity? = null
         private var nextPointId = 1L
 
         override fun insertRawPoint(entity: RawLocationPointEntity): Long {
@@ -77,24 +129,29 @@ class ContinuousPointStorageTest {
         }
 
         override fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
-            return emptyList()
+            return segments.filter { it.segmentId > afterSegmentId }.sortedBy { it.segmentId }.take(limit)
         }
 
         override fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {
-            return emptyList()
+            return stayClusters.filter { segmentIds.contains(it.segmentId) }.sortedBy { it.segmentId }
         }
 
         override fun loadAnalysisCursor(): AnalysisCursorEntity? {
-            return null
+            return analysisCursor
         }
 
         override fun upsertAnalysisCursor(entity: AnalysisCursorEntity) {
+            analysisCursor = entity
         }
 
         override fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>) {
+            segments.removeAll { existing -> entities.any { it.segmentId == existing.segmentId } }
+            segments += entities
         }
 
         override fun insertStayClusters(entities: List<StayClusterEntity>) {
+            stayClusters.removeAll { existing -> entities.any { it.stayId == existing.stayId } }
+            stayClusters += entities
         }
 
         override fun loadUploadCursor(cursorType: String): UploadCursorEntity? {
