@@ -6,22 +6,86 @@ import org.junit.Test
 class BackgroundTrackingServicePhasePolicyTest {
 
     @Test
-    fun `schedules finalization only while suspect stopping`() {
+    fun `promotes to active only when motion and displacement signals both pass`() {
+        val policy = BackgroundTrackingServicePhasePolicy()
+
         assertEquals(
-            BackgroundTrackingService.Companion.SessionFinalizationAction.CANCEL,
-            BackgroundTrackingService.sessionFinalizationActionForPhase(TrackingPhase.IDLE),
+            TrackingPhase.ACTIVE,
+            policy.nextPhase(
+                current = TrackingPhase.IDLE,
+                motionType = "WALKING",
+                motionConfidence = 0.82f,
+                netDistanceMeters = 96f,
+                inferredSpeedMetersPerSecond = 1.9f,
+                stillDurationMillis = 0L,
+            ),
+        )
+    }
+
+    @Test
+    fun `enters suspect when only one side of the dual signal is present`() {
+        val policy = BackgroundTrackingServicePhasePolicy()
+
+        assertEquals(
+            TrackingPhase.SUSPECT_MOVING,
+            policy.nextPhase(
+                current = TrackingPhase.IDLE,
+                motionType = "WALKING",
+                motionConfidence = 0.88f,
+                netDistanceMeters = 24f,
+                inferredSpeedMetersPerSecond = 0.4f,
+                stillDurationMillis = 0L,
+            ),
         )
         assertEquals(
-            BackgroundTrackingService.Companion.SessionFinalizationAction.CANCEL,
-            BackgroundTrackingService.sessionFinalizationActionForPhase(TrackingPhase.SUSPECT_MOVING),
+            TrackingPhase.SUSPECT_MOVING,
+            policy.nextPhase(
+                current = TrackingPhase.IDLE,
+                motionType = "STILL",
+                motionConfidence = 0.9f,
+                netDistanceMeters = 120f,
+                inferredSpeedMetersPerSecond = 1.8f,
+                stillDurationMillis = 0L,
+            ),
+        )
+    }
+
+    @Test
+    fun `downshifts active only after sustained still evidence`() {
+        val policy = BackgroundTrackingServicePhasePolicy()
+
+        assertEquals(
+            TrackingPhase.SUSPECT_STOPPING,
+            policy.nextPhase(
+                current = TrackingPhase.ACTIVE,
+                motionType = "STILL",
+                motionConfidence = 0.92f,
+                netDistanceMeters = 18f,
+                inferredSpeedMetersPerSecond = 0.12f,
+                stillDurationMillis = 6 * 60_000L,
+            ),
         )
         assertEquals(
-            BackgroundTrackingService.Companion.SessionFinalizationAction.CANCEL,
-            BackgroundTrackingService.sessionFinalizationActionForPhase(TrackingPhase.ACTIVE),
+            TrackingPhase.ACTIVE,
+            policy.nextPhase(
+                current = TrackingPhase.ACTIVE,
+                motionType = "STILL",
+                motionConfidence = 0.92f,
+                netDistanceMeters = 18f,
+                inferredSpeedMetersPerSecond = 0.12f,
+                stillDurationMillis = 2 * 60_000L,
+            ),
         )
         assertEquals(
-            BackgroundTrackingService.Companion.SessionFinalizationAction.SCHEDULE,
-            BackgroundTrackingService.sessionFinalizationActionForPhase(TrackingPhase.SUSPECT_STOPPING),
+            TrackingPhase.IDLE,
+            policy.nextPhase(
+                current = TrackingPhase.SUSPECT_STOPPING,
+                motionType = "STILL",
+                motionConfidence = 0.92f,
+                netDistanceMeters = 12f,
+                inferredSpeedMetersPerSecond = 0.08f,
+                stillDurationMillis = 10 * 60_000L,
+            ),
         )
     }
 }
