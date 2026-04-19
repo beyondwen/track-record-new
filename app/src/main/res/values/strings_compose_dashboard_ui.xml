@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="compose_dashboard_status_entry_hint">点按查看记录状态与诊断</string>
-    <string name="compose_dashboard_panel_caption">手动记录</string>
-    <string name="compose_dashboard_panel_expand_short">开始记录</string>
-    <string name="compose_dashboard_panel_collapse_short">结束记录</string>
+    <string name="compose_dashboard_panel_caption">点位采集</string>
+    <string name="compose_dashboard_panel_expand_short">查看状态</string>
+    <string name="compose_dashboard_panel_collapse_short">收起状态</string>
 </resources>

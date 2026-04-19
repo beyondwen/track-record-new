@@ -564,7 +564,7 @@ class MainActivity : AppCompatActivity() {
         val decisionSummary = buildDecisionSummary(diagnostics)
         val saveSummary = diagnostics.lastSavedSummary?.let { summary ->
             buildTimedSummary(diagnostics.lastSavedAt, summary)
-        } ?: "还没有手动结束并保存过有效记录"
+        } ?: "还没有完成并写入历史的有效轨迹分析"
         val crashSummary = CrashLogStore.latestSummary(this)
 
         val body = buildString {
@@ -627,20 +627,20 @@ class MainActivity : AppCompatActivity() {
         val parts = mutableListOf<String>()
         parts += "最终判定 $decision"
         diagnostics.lastStartScore?.let { score ->
-            parts += "开始 ${"%.2f".format(Locale.US, score)}"
+            parts += "起点 ${"%.2f".format(Locale.US, score)}"
         }
         diagnostics.lastStopScore?.let { score ->
-            parts += "结束 ${"%.2f".format(Locale.US, score)}"
+            parts += "终点 ${"%.2f".format(Locale.US, score)}"
         }
         return parts.joinToString("，")
     }
 
     private fun feedbackSavedText(type: DecisionFeedbackType): String {
         return when (type) {
-            DecisionFeedbackType.START_TOO_EARLY -> "已标记为开始太早"
-            DecisionFeedbackType.START_TOO_LATE -> "已标记为开始太晚"
-            DecisionFeedbackType.STOP_TOO_EARLY -> "已标记为结束太早"
-            DecisionFeedbackType.STOP_TOO_LATE -> "已标记为结束太晚"
+            DecisionFeedbackType.START_TOO_EARLY -> "已标记为动态段起点太早"
+            DecisionFeedbackType.START_TOO_LATE -> "已标记为动态段起点太晚"
+            DecisionFeedbackType.STOP_TOO_EARLY -> "已标记为动态段终点太早"
+            DecisionFeedbackType.STOP_TOO_LATE -> "已标记为动态段终点太晚"
             DecisionFeedbackType.CORRECT -> "已标记为判定正确"
         }
     }

@@ -4,14 +4,11 @@ import type {
   HistoryPoint,
   HistoryRecord,
   RawLocationPoint,
-  TrainingSample,
   ValidatedAnalysisBatchRequest,
-  ValidatedBatchRequest,
   ValidatedRawPointBatchRequest,
   ValidatedHistoryBatchRequest
 } from "./types";
 
-const MAX_PHASE_LENGTH = 64;
 const MAX_DEVICE_ID_LENGTH = 128;
 const MAX_APP_VERSION_LENGTH = 64;
 const MAX_TITLE_LENGTH = 255;
@@ -87,66 +84,6 @@ function parseOptionalFiniteNumber(value: unknown, label: string): number | null
     throw new ValidationError(`${label} must be a finite number or null`);
   }
   return value;
-}
-
-function parseSample(sample: unknown, index: number): TrainingSample {
-  if (!isObject(sample)) {
-    throw new ValidationError(`samples[${index}] must be an object`);
-  }
-
-  const { eventId, timestampMillis, phase, finalDecision, features } = sample;
-
-  if (!Number.isSafeInteger(eventId)) {
-    throw new ValidationError(`samples[${index}].eventId must be an integer`);
-  }
-
-  if (!Number.isSafeInteger(timestampMillis)) {
-    throw new ValidationError(
-      `samples[${index}].timestampMillis must be an integer`
-    );
-  }
-
-  if (typeof phase !== "string" || phase.trim().length === 0) {
-    throw new ValidationError(`samples[${index}].phase must be a non-empty string`);
-  }
-  if (phase.trim().length > MAX_PHASE_LENGTH) {
-    throw new ValidationError(
-      `samples[${index}].phase length must be <= ${MAX_PHASE_LENGTH}`
-    );
-  }
-
-  if (!("finalDecision" in sample)) {
-    throw new ValidationError(`samples[${index}].finalDecision is required`);
-  }
-  if (finalDecision === undefined) {
-    throw new ValidationError(`samples[${index}].finalDecision is required`);
-  }
-
-  if (!isObject(features)) {
-    throw new ValidationError(`samples[${index}].features must be an object`);
-  }
-
-  return {
-    eventId: eventId as number,
-    timestampMillis: timestampMillis as number,
-    phase: phase.trim(),
-    finalDecision,
-    features
-  };
-}
-
-export function validateBatchRequest(payload: unknown): ValidatedBatchRequest {
-  if (!isObject(payload)) {
-    throw new ValidationError("Request body must be a JSON object");
-  }
-
-  if (!Array.isArray(payload.samples)) {
-    throw new ValidationError("`samples` must be an array");
-  }
-
-  return {
-    samples: payload.samples.map((sample, index) => parseSample(sample, index))
-  };
 }
 
 function parseRawPoint(point: unknown, index: number): RawLocationPoint {

@@ -38,16 +38,16 @@
     <string name="compose_history_log_title">行程日志</string>
     <string name="compose_history_view_all">查看全部</string>
     <string name="compose_history_card_meta">共 %1$d 段行程 · 最近 %2$s</string>
-    <string name="compose_history_feedback_title">开始 / 结束纠错</string>
-    <string name="compose_history_feedback_subtitle">这里展示最近的自动开始与自动结束决策，点进去可以补录人工反馈。</string>
+    <string name="compose_history_feedback_title">切段纠错</string>
+    <string name="compose_history_feedback_subtitle">这里展示最近的动态段切分决策，点进去可以补录人工反馈。</string>
     <string name="compose_history_feedback_pending">待纠错</string>
     <string name="compose_history_feedback_action">提交反馈</string>
     <string name="compose_history_feedback_update_action">更新反馈</string>
-    <string name="compose_history_feedback_sheet_title">纠正这次自动判定</string>
-    <string name="compose_history_feedback_sheet_subtitle">选择更接近实际情况的反馈，后续可用于训练开始 / 结束决策模型。</string>
-    <string name="compose_history_feedback_start_early">开始太早</string>
-    <string name="compose_history_feedback_start_late">开始太晚</string>
-    <string name="compose_history_feedback_stop_early">结束太早</string>
-    <string name="compose_history_feedback_stop_late">结束太晚</string>
+    <string name="compose_history_feedback_sheet_title">纠正这次切段判定</string>
+    <string name="compose_history_feedback_sheet_subtitle">选择更接近实际情况的反馈，后续可用于训练动态段切分模型。</string>
+    <string name="compose_history_feedback_start_early">动态段起点太早</string>
+    <string name="compose_history_feedback_start_late">动态段起点太晚</string>
+    <string name="compose_history_feedback_stop_early">动态段终点太早</string>
+    <string name="compose_history_feedback_stop_late">动态段终点太晚</string>
     <string name="compose_history_feedback_correct">判定正确</string>
 </resources>

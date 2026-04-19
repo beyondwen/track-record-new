@@ -1,17 +1,3 @@
-CREATE TABLE IF NOT EXISTS training_samples (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  event_id INTEGER NOT NULL,
-  timestamp_millis INTEGER NOT NULL,
-  phase TEXT NOT NULL,
-  final_decision_json TEXT NOT NULL,
-  features_json TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS uk_training_samples_event_id
-  ON training_samples (event_id);
-
 CREATE TABLE IF NOT EXISTS uploaded_histories (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   device_id TEXT NOT NULL,

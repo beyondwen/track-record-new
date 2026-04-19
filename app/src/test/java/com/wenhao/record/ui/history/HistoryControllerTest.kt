@@ -142,6 +142,6 @@ class HistoryControllerTest {
         controller.reload()
 
         assertEquals(1, controller.uiState.decisionFeedbackItems.size)
-        assertEquals("自动开始记录", controller.uiState.decisionFeedbackItems.single().title)
+        assertEquals("识别为动态段起点", controller.uiState.decisionFeedbackItems.single().title)
     }
 }

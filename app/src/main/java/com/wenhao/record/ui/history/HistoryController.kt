@@ -123,8 +123,8 @@ class HistoryController(
             HistoryDecisionFeedbackItem(
                 eventId = item.eventId,
                 title = when (item.finalDecision) {
-                    "START" -> "自动开始记录"
-                    "STOP" -> "自动结束记录"
+                    "START" -> "识别为动态段起点"
+                    "STOP" -> "识别为动态段终点"
                     else -> item.finalDecision
                 },
                 summary = buildString {

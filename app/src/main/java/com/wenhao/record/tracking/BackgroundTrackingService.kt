@@ -439,6 +439,7 @@ class BackgroundTrackingService : Service() {
                 ),
             )
             TrackUploadScheduler.kickAnalysisSync(applicationContext)
+            TrackUploadScheduler.kickHistorySync(applicationContext)
 
             runOnTrackingThread {
                 analysisInFlight = false

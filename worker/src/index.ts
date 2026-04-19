@@ -2,8 +2,7 @@ import { authenticateRequest } from "./auth";
 import {
   createD1AnalysisPersistence,
   createD1RawPointPersistence,
-  createD1HistoryPersistence,
-  createD1SamplePersistence
+  createD1HistoryPersistence
 } from "./d1";
 import type {
   AnalysisPersistence,
@@ -13,14 +12,11 @@ import type {
   HistoryPersistence,
   HistorySuccessResponseBody,
   RawPointPersistence,
-  RawPointSuccessResponseBody,
-  SamplePersistence,
-  SampleSuccessResponseBody
+  RawPointSuccessResponseBody
 } from "./types";
 import {
   validateAnalysisBatchRequest,
   ValidationError,
-  validateBatchRequest,
   validateRawPointBatchRequest,
   validateHistoryBatchRequest
 } from "./validation";
@@ -28,12 +24,10 @@ import {
 export type {
   AnalysisPersistence,
   HistoryPersistence,
-  RawPointPersistence,
-  SamplePersistence
+  RawPointPersistence
 } from "./types";
 
 interface AppDependencies {
-  samplePersistence?: SamplePersistence;
   historyPersistence?: HistoryPersistence;
   rawPointPersistence?: RawPointPersistence;
   analysisPersistence?: AnalysisPersistence;
@@ -42,7 +36,6 @@ interface AppDependencies {
 function jsonResponse(
   status: number,
   body:
-    | SampleSuccessResponseBody
     | HistorySuccessResponseBody
     | RawPointSuccessResponseBody
     | AnalysisSuccessResponseBody
@@ -68,7 +61,6 @@ function ensureJsonContentType(request: Request): ErrorResponseBody | null {
 }
 
 export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
-  const samplePersistence = deps.samplePersistence ?? createD1SamplePersistence();
   const historyPersistence =
     deps.historyPersistence ?? createD1HistoryPersistence();
   const rawPointPersistence =
@@ -80,7 +72,6 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
     async fetch(request, env): Promise<Response> {
       const url = new URL(request.url);
       if (
-        url.pathname !== "/samples/batch" &&
         url.pathname !== "/histories/batch" &&
         url.pathname !== "/raw-points/batch" &&
         url.pathname !== "/analysis/batch"
@@ -122,21 +113,6 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
       }
 
       try {
-        if (url.pathname === "/samples/batch") {
-          const validated = validateBatchRequest(payload);
-          const persisted = await samplePersistence.persistSamples(
-            validated.samples,
-            env
-          );
-
-          return jsonResponse(200, {
-            ok: true,
-            insertedCount: persisted.insertedCount,
-            dedupedCount: persisted.dedupedCount,
-            acceptedEventIds: persisted.acceptedEventIds
-          });
-        }
-
         if (url.pathname === "/raw-points/batch") {
           const validated = validateRawPointBatchRequest(payload);
           const persisted = await rawPointPersistence.persistRawPoints(
@@ -198,13 +174,11 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
             ? error.message
             : "Internal server error";
         console.error(
-          url.pathname === "/samples/batch"
-            ? "Failed to persist training samples"
-            : url.pathname === "/histories/batch"
-              ? "Failed to persist histories"
-              : url.pathname === "/raw-points/batch"
-                ? "Failed to persist raw points"
-                : "Failed to persist analysis results",
+          url.pathname === "/histories/batch"
+            ? "Failed to persist histories"
+            : url.pathname === "/raw-points/batch"
+              ? "Failed to persist raw points"
+              : "Failed to persist analysis results",
           error
         );
 

@@ -2,10 +2,10 @@
 <resources>
     <string name="compose_dashboard_dialog_open">查看记录状态</string>
     <string name="compose_dashboard_dialog_open_hint">点按查看当前定位情况和记录诊断</string>
-    <string name="compose_dashboard_dialog_badge">手动记录</string>
+    <string name="compose_dashboard_dialog_badge">点位采集</string>
     <string name="compose_dashboard_dialog_close">关闭记录状态弹窗</string>
     <string name="compose_dashboard_dialog_summary_title">它会如何工作</string>
-    <string name="compose_dashboard_dialog_summary_body">当前阶段由你手动开始和手动结束记录。只有完整的手动闭环片段会进入训练样本导出，旧的自动记录历史会保留查看，但不会进入训练。</string>
+    <string name="compose_dashboard_dialog_summary_body">应用会持续采集点位，再由算法把轨迹切分为动态段和静止段。你不需要手动开始或结束，历史页展示的是分析后的结果。</string>
     <string name="compose_dashboard_dialog_gps_label">定位状态</string>
     <string name="compose_dashboard_dialog_diagnostics_label">记录诊断</string>
     <string name="compose_dashboard_dialog_confirm">我知道了</string>

@@ -7,24 +7,9 @@ import type {
   PersistAnalysisResult,
   PersistHistoriesResult,
   PersistRawPointsResult,
-  PersistSamplesResult,
   RawLocationPoint,
-  RawPointPersistence,
-  SamplePersistence,
-  TrainingSample
+  RawPointPersistence
 } from "./types";
-
-function dedupeSamplesByEventId(samples: TrainingSample[]): TrainingSample[] {
-  const byEventId = new Map<number, TrainingSample>();
-  for (const sample of samples) {
-    byEventId.set(sample.eventId, sample);
-  }
-  return [...byEventId.values()];
-}
-
-function getAcceptedEventIds(samples: TrainingSample[]): number[] {
-  return [...new Set(samples.map((sample) => sample.eventId))];
-}
 
 function dedupeRawPointsById(points: RawLocationPoint[]): RawLocationPoint[] {
   const byPointId = new Map<number, RawLocationPoint>();
@@ -60,17 +45,6 @@ function dedupeHistoriesById(histories: HistoryRecord[]): HistoryRecord[] {
 
 function getAcceptedHistoryIds(histories: HistoryRecord[]): number[] {
   return [...new Set(histories.map((history) => history.historyId))];
-}
-
-export function buildPersistSamplesResult(
-  rawSamples: TrainingSample[],
-  insertedCount: number
-): PersistSamplesResult {
-  return {
-    insertedCount,
-    dedupedCount: rawSamples.length - insertedCount,
-    acceptedEventIds: getAcceptedEventIds(rawSamples)
-  };
 }
 
 export function buildPersistHistoriesResult(
@@ -124,37 +98,6 @@ async function executeBatch(
   }
   const results = await env.DB.batch(statements);
   return results.reduce((sum, result) => sum + extractChanges(result), 0);
-}
-
-export function createD1SamplePersistence(): SamplePersistence {
-  return {
-    async persistSamples(
-      samples: TrainingSample[],
-      env: Env
-    ): Promise<PersistSamplesResult> {
-      const uniqueSamples = dedupeSamplesByEventId(samples);
-      if (uniqueSamples.length === 0) {
-        return buildPersistSamplesResult(samples, 0);
-      }
-
-      const statements = uniqueSamples.map((sample) =>
-        env.DB.prepare(
-          `INSERT OR IGNORE INTO training_samples
-             (event_id, timestamp_millis, phase, final_decision_json, features_json)
-           VALUES (?, ?, ?, ?, ?)`
-        ).bind(
-          sample.eventId,
-          sample.timestampMillis,
-          sample.phase,
-          JSON.stringify(sample.finalDecision),
-          JSON.stringify(sample.features)
-        )
-      );
-
-      const insertedCount = await executeBatch(env, statements);
-      return buildPersistSamplesResult(samples, insertedCount);
-    }
-  };
 }
 
 export function createD1HistoryPersistence(): HistoryPersistence {

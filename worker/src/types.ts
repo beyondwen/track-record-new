@@ -48,14 +48,6 @@ export interface AnalysisSegment {
   stayClusters: AnalysisStayCluster[];
 }
 
-export interface TrainingSample {
-  eventId: number;
-  timestampMillis: number;
-  phase: string;
-  finalDecision: unknown;
-  features: Record<string, unknown>;
-}
-
 export interface HistoryPoint {
   latitude: number;
   longitude: number;
@@ -80,10 +72,6 @@ export interface HistoryRecord {
   points: HistoryPoint[];
 }
 
-export interface ValidatedBatchRequest {
-  samples: TrainingSample[];
-}
-
 export interface ValidatedRawPointBatchRequest {
   deviceId: string;
   appVersion: string;
@@ -102,12 +90,6 @@ export interface ValidatedHistoryBatchRequest {
   histories: HistoryRecord[];
 }
 
-export interface PersistSamplesResult {
-  insertedCount: number;
-  dedupedCount: number;
-  acceptedEventIds: number[];
-}
-
 export interface PersistRawPointsResult {
   insertedCount: number;
   dedupedCount: number;
@@ -124,13 +106,6 @@ export interface PersistHistoriesResult {
   insertedCount: number;
   dedupedCount: number;
   acceptedHistoryIds: number[];
-}
-
-export interface SamplePersistence {
-  persistSamples(
-    samples: TrainingSample[],
-    env: Env
-  ): Promise<PersistSamplesResult>;
 }
 
 export interface RawPointPersistence {
@@ -158,10 +133,6 @@ export interface HistoryPersistence {
     histories: HistoryRecord[],
     env: Env
   ): Promise<PersistHistoriesResult>;
-}
-
-export interface SampleSuccessResponseBody extends PersistSamplesResult {
-  ok: true;
 }
 
 export interface RawPointSuccessResponseBody extends PersistRawPointsResult {

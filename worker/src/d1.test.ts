@@ -176,33 +176,6 @@ describe("createD1 persistence", () => {
     });
   });
 
-  it("persists samples through D1 batch statements", async () => {
-    const { createD1SamplePersistence } = await import("./d1");
-    const { env, prepare, batch } = createMockEnv([1]);
-
-    const result = await createD1SamplePersistence().persistSamples(
-      [
-        {
-          eventId: 101,
-          timestampMillis: 1700000000000,
-          phase: "tracking",
-          finalDecision: "allow",
-          features: { score: 0.91 }
-        }
-      ],
-      env
-    );
-
-    expect(prepare).toHaveBeenCalledTimes(1);
-    expect(prepare.mock.calls[0]?.[0]).toContain("INSERT OR IGNORE INTO training_samples");
-    expect(batch).toHaveBeenCalledTimes(1);
-    expect(result).toEqual({
-      insertedCount: 1,
-      dedupedCount: 0,
-      acceptedEventIds: [101]
-    });
-  });
-
   it("persists histories through D1 batch statements", async () => {
     const { createD1HistoryPersistence } = await import("./d1");
     const { env, prepare, batch } = createMockEnv([1]);
