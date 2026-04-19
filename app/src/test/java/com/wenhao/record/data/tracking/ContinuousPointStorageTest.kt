@@ -1,0 +1,75 @@
+package com.wenhao.record.data.tracking
+
+import com.wenhao.record.data.local.stream.ContinuousTrackDao
+import com.wenhao.record.data.local.stream.RawLocationPointEntity
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+
+class ContinuousPointStorageTest {
+
+    @Test
+    fun `continuous point storage exposes append and pending window apis`() {
+        val storageClass = Class.forName("com.wenhao.record.data.tracking.ContinuousPointStorage")
+
+        assertNotNull(storageClass.getDeclaredMethod("appendRawPoint", Class.forName("com.wenhao.record.data.tracking.RawTrackPoint")))
+        assertNotNull(storageClass.getDeclaredMethod("loadPendingWindow", Long::class.javaPrimitiveType, Int::class.javaPrimitiveType))
+    }
+
+    @Test
+    fun `continuous point storage model classes exist`() {
+        val rawTrackPointClass = Class.forName("com.wenhao.record.data.tracking.RawTrackPoint")
+        val samplingTierClass = Class.forName("com.wenhao.record.data.tracking.SamplingTier")
+
+        assertEquals("RawTrackPoint", rawTrackPointClass.simpleName)
+        assertEquals("SamplingTier", samplingTierClass.simpleName)
+    }
+
+    @Test
+    fun `append raw point and load pending window keeps point order and sampling tier`() {
+        val dao = FakeContinuousTrackDao()
+        val storage = ContinuousPointStorage(dao)
+
+        storage.appendRawPoint(samplePoint(timestampMillis = 1_000L, samplingTier = SamplingTier.IDLE))
+        storage.appendRawPoint(samplePoint(timestampMillis = 2_000L, samplingTier = SamplingTier.ACTIVE))
+
+        val points = storage.loadPendingWindow(afterPointId = 0L, limit = 10)
+
+        assertEquals(listOf(1_000L, 2_000L), points.map { it.timestampMillis })
+        assertEquals(listOf(SamplingTier.IDLE, SamplingTier.ACTIVE), points.map { it.samplingTier })
+    }
+
+    private fun samplePoint(timestampMillis: Long, samplingTier: SamplingTier): RawTrackPoint {
+        return RawTrackPoint(
+            timestampMillis = timestampMillis,
+            latitude = 30.0,
+            longitude = 120.0,
+            accuracyMeters = 12f,
+            altitudeMeters = 8.0,
+            speedMetersPerSecond = 1.2f,
+            bearingDegrees = 90f,
+            provider = "gps",
+            sourceType = "LOCATION",
+            isMock = false,
+            wifiFingerprintDigest = "wifi",
+            activityType = "WALKING",
+            activityConfidence = 0.8f,
+            samplingTier = samplingTier,
+        )
+    }
+
+    private class FakeContinuousTrackDao : ContinuousTrackDao {
+        private val items = mutableListOf<RawLocationPointEntity>()
+        private var nextPointId = 1L
+
+        override fun insertRawPoint(entity: RawLocationPointEntity): Long {
+            val stored = entity.copy(pointId = nextPointId++)
+            items += stored
+            return stored.pointId
+        }
+
+        override fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity> {
+            return items.filter { it.pointId > afterPointId }.sortedBy { it.pointId }.take(limit)
+        }
+    }
+}

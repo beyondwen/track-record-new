@@ -15,6 +15,11 @@ import com.wenhao.record.data.local.decision.DecisionFeedbackEntity
 import com.wenhao.record.data.local.history.HistoryDao
 import com.wenhao.record.data.local.history.HistoryPointEntity
 import com.wenhao.record.data.local.history.HistoryRecordEntity
+import com.wenhao.record.data.local.stream.AnalysisCursorEntity
+import com.wenhao.record.data.local.stream.AnalysisSegmentEntity
+import com.wenhao.record.data.local.stream.ContinuousTrackDao
+import com.wenhao.record.data.local.stream.RawLocationPointEntity
+import com.wenhao.record.data.local.stream.StayClusterEntity
 
 @Database(
     entities = [
@@ -24,8 +29,12 @@ import com.wenhao.record.data.local.history.HistoryRecordEntity
         HistoryPointEntity::class,
         DecisionEventEntity::class,
         DecisionFeedbackEntity::class,
+        RawLocationPointEntity::class,
+        AnalysisSegmentEntity::class,
+        StayClusterEntity::class,
+        AnalysisCursorEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 abstract class TrackDatabase : RoomDatabase() {
@@ -35,6 +44,8 @@ abstract class TrackDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
 
     abstract fun decisionDao(): DecisionDao
+
+    abstract fun continuousTrackDao(): ContinuousTrackDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -131,6 +142,77 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `raw_location_point` (
+                        `pointId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `timestampMillis` INTEGER NOT NULL,
+                        `latitude` REAL NOT NULL,
+                        `longitude` REAL NOT NULL,
+                        `accuracyMeters` REAL,
+                        `altitudeMeters` REAL,
+                        `speedMetersPerSecond` REAL,
+                        `bearingDegrees` REAL,
+                        `provider` TEXT NOT NULL,
+                        `sourceType` TEXT NOT NULL,
+                        `isMock` INTEGER NOT NULL,
+                        `wifiFingerprintDigest` TEXT,
+                        `activityType` TEXT,
+                        `activityConfidence` REAL,
+                        `samplingTier` TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `analysis_segment` (
+                        `segmentId` INTEGER NOT NULL,
+                        `startPointId` INTEGER NOT NULL,
+                        `endPointId` INTEGER NOT NULL,
+                        `startTimestamp` INTEGER NOT NULL,
+                        `endTimestamp` INTEGER NOT NULL,
+                        `segmentType` TEXT NOT NULL,
+                        `confidence` REAL NOT NULL,
+                        `distanceMeters` REAL NOT NULL,
+                        `durationMillis` INTEGER NOT NULL,
+                        `avgSpeedMetersPerSecond` REAL NOT NULL,
+                        `maxSpeedMetersPerSecond` REAL NOT NULL,
+                        `analysisVersion` INTEGER NOT NULL,
+                        PRIMARY KEY(`segmentId`)
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `stay_cluster` (
+                        `stayId` INTEGER NOT NULL,
+                        `segmentId` INTEGER NOT NULL,
+                        `centerLat` REAL NOT NULL,
+                        `centerLng` REAL NOT NULL,
+                        `radiusMeters` REAL NOT NULL,
+                        `arrivalTime` INTEGER NOT NULL,
+                        `departureTime` INTEGER NOT NULL,
+                        `confidence` REAL NOT NULL,
+                        `analysisVersion` INTEGER NOT NULL,
+                        PRIMARY KEY(`stayId`)
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `analysis_cursor` (
+                        `cursorId` INTEGER NOT NULL,
+                        `lastAnalyzedPointId` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`cursorId`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -148,6 +230,7 @@ abstract class TrackDatabase : RoomDatabase() {
                         MIGRATION_4_5,
                         MIGRATION_5_6,
                         MIGRATION_6_7,
+                        MIGRATION_7_8,
                     )
                     .build()
                     .also { instance = it }
