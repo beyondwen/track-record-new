@@ -1,15 +1,17 @@
 {
-  "name": "track-record-worker",
-  "main": "src/index.ts",
-  "compatibility_date": "2026-04-18",
-  "workers_dev": true,
-  "preview_urls": false,
-  "compatibility_flags": ["nodejs_compat"],
-  "d1_databases": [
-    {
-      "binding": "DB",
-      "database_name": "track-record",
-      "database_id": "YOUR_D1_DATABASE_ID"
-    }
-  ]
+	"name": "track-record-worker",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-04-18",
+	"workers_dev": true,
+	"preview_urls": false,
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "track-record",
+			"database_id": "917118ea-57f5-4483-aec9-3dc83758c9e2"
+		}
+	]
 }
