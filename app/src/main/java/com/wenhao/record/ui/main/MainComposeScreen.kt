@@ -104,16 +104,9 @@ fun MainComposeScreen(
     onSampleUploadConfigSaveClick: () -> Unit,
     onSampleUploadConfigClearClick: () -> Unit,
     onWorkerConnectivityTestClick: () -> Unit,
-    onSampleUploadClick: () -> Unit,
-    onHistoryUploadClick: () -> Unit,
-    onManualRecordClick: () -> Unit,
     onLocateClick: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
     onHistoryDelete: (Long) -> Unit,
-    onHistoryExport: () -> Unit,
-    onHistoryImport: () -> Unit,
-    onTrainingSampleExport: () -> Unit,
-    onDecisionModelImport: () -> Unit,
     onHistoryDecisionFeedback: (Long) -> Unit,
     onHistoryFeedbackSubmit: (DecisionFeedbackType) -> Unit,
     onHistoryFeedbackDismiss: () -> Unit,
@@ -126,10 +119,6 @@ fun MainComposeScreen(
                 HistoryComposeScreen(
                     state = historyState,
                     onRecordClick = onRecordTabClick,
-                    onExportClick = onHistoryExport,
-                    onImportClick = onHistoryImport,
-                    onTrainingSampleExport = onTrainingSampleExport,
-                    onDecisionModelImport = onDecisionModelImport,
                     onHistoryClick = { onHistoryOpen(it.dayStartMillis) },
                     onHistoryLongClick = { onHistoryDelete(it.dayStartMillis) },
                     onDecisionFeedback = onHistoryDecisionFeedback,
@@ -151,8 +140,6 @@ fun MainComposeScreen(
                     onSampleUploadConfigSaveClick = onSampleUploadConfigSaveClick,
                     onSampleUploadConfigClearClick = onSampleUploadConfigClearClick,
                     onWorkerConnectivityTestClick = onWorkerConnectivityTestClick,
-                    onSampleUploadClick = onSampleUploadClick,
-                    onHistoryUploadClick = onHistoryUploadClick,
                 )
             }
 
@@ -165,7 +152,6 @@ fun MainComposeScreen(
                     onRecordTabClick = onRecordTabClick,
                     onHistoryTabClick = onHistoryTabClick,
                     onAboutTabClick = onAboutTabClick,
-                    onManualRecordClick = onManualRecordClick,
                     onLocateClick = onLocateClick,
                 )
             }
@@ -183,7 +169,6 @@ private fun DashboardRoot(
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
     onAboutTabClick: () -> Unit,
-    onManualRecordClick: () -> Unit,
     onLocateClick: () -> Unit,
 ) {
     var showOverlayStatusDialog by rememberSaveable { mutableStateOf(false) }
@@ -242,7 +227,6 @@ private fun DashboardRoot(
                 DashboardComposeScreen(
                     state = dashboardState,
                     overlayState = overlayState,
-                    onManualRecordClick = onManualRecordClick,
                     onHistoryClick = onHistoryTabClick,
                     modifier = Modifier
                         .fillMaxWidth()

@@ -15,7 +15,6 @@ import android.os.Looper
 import android.widget.Toast
 import android.util.Log
 import androidx.activity.compose.setContent
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,12 +27,6 @@ import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryStorage
-import com.wenhao.record.data.history.HistoryTransferCodec
-import com.wenhao.record.data.history.HistoryBatchUploadResult
-import com.wenhao.record.data.history.HistoryBatchUploader
-import com.wenhao.record.data.history.HistoryUploadRow
-import com.wenhao.record.data.history.HistoryUploadService
-import com.wenhao.record.data.history.UploadedHistoryStore
 import com.wenhao.record.data.tracking.AutoTrackDiagnostics
 import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
@@ -42,14 +35,8 @@ import com.wenhao.record.data.tracking.DecisionEventStorage
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
-import com.wenhao.record.data.tracking.TrainingSampleExportCodec
-import com.wenhao.record.data.tracking.TrainingSampleBatchUploadResult
-import com.wenhao.record.data.tracking.TrainingSampleBatchUploader
-import com.wenhao.record.data.tracking.TrainingSampleExporter
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
-import com.wenhao.record.data.tracking.TrainingSampleUploadService
-import com.wenhao.record.data.tracking.UploadedTrainingSampleStore
 import com.wenhao.record.data.tracking.WorkerConnectivityResult
 import com.wenhao.record.data.tracking.WorkerConnectivityService
 import com.wenhao.record.map.GeoCoordinate
@@ -57,7 +44,6 @@ import com.wenhao.record.permissions.PermissionHelper
 import com.wenhao.record.stability.CrashLogStore
 import com.wenhao.record.tracking.BackgroundTrackingService
 import com.wenhao.record.tracking.LocationSelectionUtils
-import com.wenhao.record.tracking.model.DecisionModelRepository
 import com.wenhao.record.update.ApkDownloadInstaller
 import com.wenhao.record.update.AppUpdateInfo
 import com.wenhao.record.update.GithubReleaseUpdateService
@@ -68,9 +54,7 @@ import com.wenhao.record.ui.history.HistoryController
 import com.wenhao.record.ui.map.MapActivity
 import com.wenhao.record.ui.map.MapboxTokenStorage
 import com.wenhao.record.ui.map.isMapboxAccessTokenConfigured
-import com.wenhao.record.util.AppTaskExecutor
 import java.io.File
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -88,8 +72,6 @@ class MainActivity : AppCompatActivity() {
             repo = "track-record-new",
         )
     }
-    private val trainingSampleUploadService by lazy { TrainingSampleUploadService() }
-    private val historyUploadService by lazy { HistoryUploadService() }
     private val workerConnectivityService by lazy { WorkerConnectivityService() }
     private val apkDownloadInstaller by lazy { ApkDownloadInstaller(this) }
     private lateinit var dashboardUiController: DashboardUiController
@@ -106,53 +88,12 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private val exportHistoryLauncher = registerForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri == null) {
-            setHistoryTransferBusy(false)
-        } else {
-            exportHistoryToUri(uri)
-        }
-    }
-
-    private val importHistoryLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri == null) {
-            setHistoryTransferBusy(false)
-        } else {
-            importHistoryFromUri(uri)
-        }
-    }
-
-    private val exportTrainingSamplesLauncher = registerForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri == null) {
-            setHistoryTransferBusy(false)
-        } else {
-            exportTrainingSamplesToUri(uri)
-        }
-    }
-
-    private val importDecisionModelLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri == null) {
-            setHistoryTransferBusy(false)
-        } else {
-            importDecisionModelFromUri(uri)
-        }
-    }
-
     private var locationManager: LocationManager? = null
     private var gnssStatusCallback: GnssStatus.Callback? = null
     private var centerOnNextFix = false
     private var lastDashboardTrackingEnabled = false
     private var previewLocationCache: GeoCoordinate? = null
     private var previewLocationCachedAt = 0L
-    private var historyTransferBusy = false
     private var currentTab by mutableStateOf(MainTab.RECORD)
     private var mapboxAccessToken by mutableStateOf("")
     private var aboutState by mutableStateOf(
@@ -207,18 +148,11 @@ class MainActivity : AppCompatActivity() {
                     onSampleUploadConfigSaveClick = ::saveSampleUploadConfig,
                     onSampleUploadConfigClearClick = ::clearSampleUploadConfig,
                     onWorkerConnectivityTestClick = ::testWorkerConnectivity,
-                    onSampleUploadClick = ::uploadPendingTrainingSamples,
-                    onHistoryUploadClick = ::uploadPendingHistories,
-                    onManualRecordClick = ::handleManualRecordToggle,
                     onLocateClick = ::handleLocateAction,
                     onHistoryOpen = { dayStartMillis ->
                         startActivity(MapActivity.createHistoryIntent(this, dayStartMillis))
                     },
                     onHistoryDelete = ::confirmDeleteHistoryDay,
-                    onHistoryExport = ::requestHistoryExport,
-                    onHistoryImport = ::requestHistoryImport,
-                    onTrainingSampleExport = ::requestTrainingSampleExport,
-                    onDecisionModelImport = ::requestDecisionModelImport,
                     onHistoryDecisionFeedback = { eventId ->
                         historyController.setDecisionFeedbackSheet(eventId = eventId, visible = true)
                     },
@@ -321,7 +255,7 @@ class MainActivity : AppCompatActivity() {
             uploadTokenInput = savedConfig.uploadToken,
             hasConfiguredSampleUpload = hasConfiguredSampleUpload(savedConfig),
         )
-        Toast.makeText(this, "训练样本上传配置已保存", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Worker 上传配置已保存", Toast.LENGTH_SHORT).show()
     }
 
     private fun clearSampleUploadConfig() {
@@ -331,282 +265,7 @@ class MainActivity : AppCompatActivity() {
             uploadTokenInput = "",
             hasConfiguredSampleUpload = false,
         )
-        Toast.makeText(this, "训练样本上传配置已清空", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun uploadPendingTrainingSamples() {
-        if (aboutState.isUploadingSamples) return
-        if (aboutState.isUploadingHistories) {
-            aboutState = aboutState.copy(statusMessage = "历史轨迹上传进行中，请稍后再试")
-            return
-        }
-        if (aboutState.isCheckingUpdate) {
-            aboutState = aboutState.copy(statusMessage = "检查更新进行中，请稍后再试")
-            return
-        }
-        if (aboutState.isTestingWorkerConnectivity) {
-            aboutState = aboutState.copy(statusMessage = "Worker 连通性测试进行中，请稍后再试")
-            return
-        }
-
-        val config = TrainingSampleUploadConfigStorage.load(this)
-        if (!hasConfiguredSampleUpload(config)) {
-            aboutState = aboutState.copy(statusMessage = "未配置上传信息")
-            return
-        }
-        aboutState = aboutState.copy(
-            isUploadingSamples = true,
-            statusMessage = "准备上传样本…",
-        )
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val uploadedEventIds = UploadedTrainingSampleStore.load(this@MainActivity)
-                val pendingRows = TrainingSampleExporter.exportRows(this@MainActivity)
-                    .filterNot { row -> uploadedEventIds.contains(row.eventId) }
-                if (pendingRows.isEmpty()) {
-                    launch(Dispatchers.Main) {
-                        aboutState = aboutState.copy(statusMessage = "当前没有可上传的新样本")
-                    }
-                    return@launch
-                }
-
-                launch(Dispatchers.Main) {
-                    aboutState = aboutState.copy(
-                        statusMessage = "正在上传 ${pendingRows.size} 条样本…",
-                    )
-                }
-
-                Log.i(TAG, "Start uploading ${pendingRows.size} training samples")
-                val batchUploader = TrainingSampleBatchUploader { batchRows ->
-                    trainingSampleUploadService.upload(
-                        config = config,
-                        appVersion = BuildConfig.VERSION_NAME,
-                        deviceId = uploadDeviceId(),
-                        rows = batchRows,
-                    )
-                }
-                val uploadResult = batchUploader.upload(
-                    rows = pendingRows,
-                    batchSize = TrainingSampleBatchUploader.DEFAULT_BATCH_SIZE,
-                    onBatchStart = { progress ->
-                        launch(Dispatchers.Main) {
-                            aboutState = aboutState.copy(
-                                statusMessage = buildString {
-                                    append("正在上传第 ")
-                                    append(progress.batchIndex + 1)
-                                    append("/")
-                                    append(progress.totalBatches)
-                                    append(" 批（")
-                                    append(progress.batchSize)
-                                    append(" 条）…")
-                                },
-                            )
-                        }
-                        Log.i(
-                            TAG,
-                            "Uploading training sample batch ${progress.batchIndex + 1}/${progress.totalBatches} size=${progress.batchSize}"
-                        )
-                    },
-                )
-
-                when (uploadResult) {
-                    is TrainingSampleBatchUploadResult.Success -> {
-                        DecisionEventStorage.deleteUploadedEvents(
-                            context = this@MainActivity,
-                            eventIds = uploadResult.acceptedEventIds,
-                        )
-                        UploadedTrainingSampleStore.markUploaded(
-                            context = this@MainActivity,
-                            eventIds = uploadResult.acceptedEventIds,
-                        )
-                        launch(Dispatchers.Main) {
-                            aboutState = aboutState.copy(
-                                statusMessage = "上传成功：${uploadResult.acceptedEventIds.size} 条",
-                            )
-                        }
-                        Log.i(
-                            TAG,
-                            "Training sample upload succeeded accepted=${uploadResult.acceptedEventIds.size} inserted=${uploadResult.insertedCount} deduped=${uploadResult.dedupedCount}"
-                        )
-                    }
-
-                    is TrainingSampleBatchUploadResult.Failure -> {
-                        DecisionEventStorage.deleteUploadedEvents(
-                            context = this@MainActivity,
-                            eventIds = uploadResult.acceptedEventIds,
-                        )
-                        UploadedTrainingSampleStore.markUploaded(
-                            context = this@MainActivity,
-                            eventIds = uploadResult.acceptedEventIds,
-                        )
-                        launch(Dispatchers.Main) {
-                            aboutState = aboutState.copy(
-                                statusMessage = buildString {
-                                    append("上传失败：")
-                                    append(uploadResult.message)
-                                    if (uploadResult.totalBatches > 1) {
-                                        append("（第 ")
-                                        append(uploadResult.failedBatchIndex + 1)
-                                        append("/")
-                                        append(uploadResult.totalBatches)
-                                        append(" 批）")
-                                    }
-                                },
-                            )
-                        }
-                        Log.e(
-                            TAG,
-                            "Training sample upload failed at batch ${uploadResult.failedBatchIndex + 1}/${uploadResult.totalBatches} message=${uploadResult.message} acceptedBeforeFailure=${uploadResult.acceptedEventIds.size}"
-                        )
-                    }
-                }
-            } catch (error: Exception) {
-                Log.e(TAG, "Training sample upload crashed", error)
-                launch(Dispatchers.Main) {
-                    val message = error.message?.takeIf { it.isNotBlank() } ?: "上传失败，请稍后重试"
-                    aboutState = aboutState.copy(statusMessage = "上传失败：$message")
-                }
-            } finally {
-                launch(Dispatchers.Main) {
-                    aboutState = aboutState.copy(isUploadingSamples = false)
-                }
-            }
-        }
-    }
-
-    private fun uploadPendingHistories() {
-        if (aboutState.isUploadingHistories) return
-        if (aboutState.isUploadingSamples) {
-            aboutState = aboutState.copy(statusMessage = "样本上传进行中，请稍后再试")
-            return
-        }
-        if (aboutState.isCheckingUpdate) {
-            aboutState = aboutState.copy(statusMessage = "检查更新进行中，请稍后再试")
-            return
-        }
-        if (aboutState.isTestingWorkerConnectivity) {
-            aboutState = aboutState.copy(statusMessage = "Worker 连通性测试进行中，请稍后再试")
-            return
-        }
-
-        val config = TrainingSampleUploadConfigStorage.load(this)
-        if (!hasConfiguredSampleUpload(config)) {
-            aboutState = aboutState.copy(statusMessage = "未配置上传信息")
-            return
-        }
-        aboutState = aboutState.copy(
-            isUploadingHistories = true,
-            statusMessage = "准备上传历史轨迹…",
-        )
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val uploadedHistoryIds = UploadedHistoryStore.load(this@MainActivity)
-                val pendingRows = HistoryStorage.load(this@MainActivity)
-                    .filterNot { item -> uploadedHistoryIds.contains(item.id) }
-                    .map(HistoryUploadRow::from)
-                if (pendingRows.isEmpty()) {
-                    launch(Dispatchers.Main) {
-                        aboutState = aboutState.copy(statusMessage = "当前没有可上传的新历史轨迹")
-                    }
-                    return@launch
-                }
-
-                launch(Dispatchers.Main) {
-                    aboutState = aboutState.copy(
-                        statusMessage = "正在上传 ${pendingRows.size} 条历史轨迹…",
-                    )
-                }
-
-                Log.i(TAG, "Start uploading ${pendingRows.size} histories")
-                val batchUploader = HistoryBatchUploader { batchRows ->
-                    historyUploadService.upload(
-                        config = config,
-                        appVersion = BuildConfig.VERSION_NAME,
-                        deviceId = uploadDeviceId(),
-                        rows = batchRows,
-                    )
-                }
-                val uploadResult = batchUploader.upload(
-                    rows = pendingRows,
-                    batchSize = HistoryBatchUploader.DEFAULT_BATCH_SIZE,
-                    onBatchStart = { progress ->
-                        launch(Dispatchers.Main) {
-                            aboutState = aboutState.copy(
-                                statusMessage = buildString {
-                                    append("正在上传第 ")
-                                    append(progress.batchIndex + 1)
-                                    append("/")
-                                    append(progress.totalBatches)
-                                    append(" 批历史轨迹（")
-                                    append(progress.batchSize)
-                                    append(" 条）…")
-                                },
-                            )
-                        }
-                        Log.i(
-                            TAG,
-                            "Uploading history batch ${progress.batchIndex + 1}/${progress.totalBatches} size=${progress.batchSize}"
-                        )
-                    },
-                )
-
-                when (uploadResult) {
-                    is HistoryBatchUploadResult.Success -> {
-                        UploadedHistoryStore.markUploaded(
-                            context = this@MainActivity,
-                            historyIds = uploadResult.acceptedHistoryIds,
-                        )
-                        launch(Dispatchers.Main) {
-                            aboutState = aboutState.copy(
-                                statusMessage = "历史轨迹上传成功：${uploadResult.acceptedHistoryIds.size} 条",
-                            )
-                        }
-                        Log.i(
-                            TAG,
-                            "History upload succeeded accepted=${uploadResult.acceptedHistoryIds.size} inserted=${uploadResult.insertedCount} deduped=${uploadResult.dedupedCount}"
-                        )
-                    }
-
-                    is HistoryBatchUploadResult.Failure -> {
-                        UploadedHistoryStore.markUploaded(
-                            context = this@MainActivity,
-                            historyIds = uploadResult.acceptedHistoryIds,
-                        )
-                        launch(Dispatchers.Main) {
-                            aboutState = aboutState.copy(
-                                statusMessage = buildString {
-                                    append("历史轨迹上传失败：")
-                                    append(uploadResult.message)
-                                    if (uploadResult.totalBatches > 1) {
-                                        append("（第 ")
-                                        append(uploadResult.failedBatchIndex + 1)
-                                        append("/")
-                                        append(uploadResult.totalBatches)
-                                        append(" 批）")
-                                    }
-                                },
-                            )
-                        }
-                        Log.e(
-                            TAG,
-                            "History upload failed at batch ${uploadResult.failedBatchIndex + 1}/${uploadResult.totalBatches} message=${uploadResult.message} acceptedBeforeFailure=${uploadResult.acceptedHistoryIds.size}"
-                        )
-                    }
-                }
-            } catch (error: Exception) {
-                Log.e(TAG, "History upload crashed", error)
-                launch(Dispatchers.Main) {
-                    val message = error.message?.takeIf { it.isNotBlank() } ?: "上传失败，请稍后重试"
-                    aboutState = aboutState.copy(statusMessage = "历史轨迹上传失败：$message")
-                }
-            } finally {
-                launch(Dispatchers.Main) {
-                    aboutState = aboutState.copy(isUploadingHistories = false)
-                }
-            }
-        }
+        Toast.makeText(this, "Worker 上传配置已清空", Toast.LENGTH_SHORT).show()
     }
 
     private fun hasConfiguredSampleUpload(config: TrainingSampleUploadConfig): Boolean {
@@ -615,14 +274,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun testWorkerConnectivity() {
         if (aboutState.isTestingWorkerConnectivity) return
-        if (aboutState.isUploadingSamples) {
-            aboutState = aboutState.copy(statusMessage = "样本上传进行中，请稍后再测试")
-            return
-        }
-        if (aboutState.isUploadingHistories) {
-            aboutState = aboutState.copy(statusMessage = "历史轨迹上传进行中，请稍后再测试")
-            return
-        }
         if (aboutState.isCheckingUpdate) {
             aboutState = aboutState.copy(statusMessage = "检查更新进行中，请稍后再测试")
             return
@@ -669,24 +320,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun uploadDeviceId(): String {
-        val androidId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-        return if (androidId.isNullOrBlank()) {
-            packageName
-        } else {
-            androidId
-        }
-    }
-
     private fun checkForAppUpdate() {
-        if (aboutState.isUploadingSamples) {
-            aboutState = aboutState.copy(statusMessage = "样本上传进行中，请稍后再检查更新")
-            return
-        }
-        if (aboutState.isUploadingHistories) {
-            aboutState = aboutState.copy(statusMessage = "历史轨迹上传进行中，请稍后再检查更新")
-            return
-        }
         if (aboutState.isTestingWorkerConnectivity) {
             aboutState = aboutState.copy(statusMessage = "Worker 连通性测试进行中，请稍后再检查更新")
             return
@@ -815,15 +449,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleLocateAction() {
         centerOnCurrentLocation()
-    }
-
-    private fun handleManualRecordToggle() {
-        if (TrackingRuntimeSnapshotStorage.peek(this).isEnabled) {
-            BackgroundTrackingService.stop(this)
-            Toast.makeText(this, "已停止后台采集", Toast.LENGTH_SHORT).show()
-            return
-        }
-        startManualRecording()
     }
 
     private fun startManualRecording() {
@@ -1046,182 +671,6 @@ class MainActivity : AppCompatActivity() {
                 dashboardUiController.updateGpsStatusBadge("正在搜索 GPS", R.color.dashboard_badge_yellow)
             }
         }
-    }
-
-    private fun requestHistoryExport() {
-        if (historyTransferBusy) return
-        val items = HistoryStorage.peek(this)
-        if (items.isEmpty()) {
-            Toast.makeText(this, "当前没有可导出的历史记录", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        setHistoryTransferBusy(true)
-        val filename = "track-record-history-${
-            SimpleDateFormat("yyyyMMdd-HHmmss", Locale.CHINA).format(Date())
-        }.json"
-        exportHistoryLauncher.launch(filename)
-    }
-
-    private fun exportHistoryToUri(uri: Uri) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val items = HistoryStorage.load(this@MainActivity)
-            if (items.isEmpty()) {
-                AppTaskExecutor.runOnMain {
-                    with(this@MainActivity) {
-                        setHistoryTransferBusy(false)
-                    Toast.makeText(this, "当前没有可导出的历史记录", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                return@launch
-            }
-
-            val result = runCatching {
-                val payload = HistoryTransferCodec.encode(items)
-                contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-                    writer.write(payload)
-                } ?: error("Unable to open export stream")
-            }
-            AppTaskExecutor.runOnMain {
-                with(this@MainActivity) {
-                    setHistoryTransferBusy(false)
-                Toast.makeText(
-                    this,
-                    if (result.isSuccess) "历史记录已导出" else "导出失败，请重试",
-                    Toast.LENGTH_SHORT,
-                ).show()
-                }
-            }
-        }
-    }
-
-    private fun requestHistoryImport() {
-        if (historyTransferBusy) return
-        setHistoryTransferBusy(true)
-        importHistoryLauncher.launch(arrayOf("application/json", "text/plain", "text/*"))
-    }
-
-    private fun requestTrainingSampleExport() {
-        if (historyTransferBusy) return
-        val rows = TrainingSampleExporter.exportRows(this)
-        if (rows.isEmpty()) {
-            Toast.makeText(this, "当前没有可导出的训练样本", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        setHistoryTransferBusy(true)
-        val filename = "track-record-training-samples-${
-            SimpleDateFormat("yyyyMMdd-HHmmss", Locale.CHINA).format(Date())
-        }.jsonl"
-        exportTrainingSamplesLauncher.launch(filename)
-    }
-
-    private fun exportTrainingSamplesToUri(uri: Uri) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val rows = TrainingSampleExporter.exportRows(this@MainActivity)
-            if (rows.isEmpty()) {
-                AppTaskExecutor.runOnMain {
-                    with(this@MainActivity) {
-                        setHistoryTransferBusy(false)
-                        Toast.makeText(this, "当前没有可导出的训练样本", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                return@launch
-            }
-
-            val result = runCatching {
-                val payload = TrainingSampleExportCodec.encodeJsonLines(rows)
-                contentResolver.openOutputStream(uri)?.bufferedWriter()?.use { writer ->
-                    writer.write(payload)
-                } ?: error("Unable to open export stream")
-            }
-            AppTaskExecutor.runOnMain {
-                with(this@MainActivity) {
-                    setHistoryTransferBusy(false)
-                    Toast.makeText(
-                        this,
-                        if (result.isSuccess) "训练样本已导出" else "训练样本导出失败，请重试",
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-            }
-        }
-    }
-
-    private fun requestDecisionModelImport() {
-        if (historyTransferBusy) return
-        setHistoryTransferBusy(true)
-        importDecisionModelLauncher.launch(arrayOf("application/json", "text/plain", "text/*"))
-    }
-
-    private fun importDecisionModelFromUri(uri: Uri) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val result = runCatching {
-                val payload = contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
-                    reader.readText()
-                } ?: error("Unable to read model bundle")
-                DecisionModelRepository.importBundle(this@MainActivity, payload)
-                if (TrackingRuntimeSnapshotStorage.peek(this@MainActivity).isEnabled) {
-                    BackgroundTrackingService.reloadDecisionModel(this@MainActivity)
-                }
-            }
-
-            AppTaskExecutor.runOnMain {
-                with(this@MainActivity) {
-                    setHistoryTransferBusy(false)
-                    Toast.makeText(
-                        this,
-                        if (result.isSuccess) "决策模型已导入" else "决策模型导入失败，请确认文件格式",
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-            }
-        }
-    }
-
-    private fun importHistoryFromUri(uri: Uri) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            val importedItems = runCatching {
-                contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
-                    HistoryTransferCodec.decode(reader.readText())
-                } ?: emptyList()
-            }.getOrDefault(emptyList())
-
-            if (importedItems.isEmpty()) {
-                AppTaskExecutor.runOnMain {
-                    with(this@MainActivity) {
-                        setHistoryTransferBusy(false)
-                    Toast.makeText(this, "导入失败，请确认备份文件格式", Toast.LENGTH_SHORT).show()
-                    }
-                }
-                return@launch
-            }
-
-            val mergedItems = HistoryTransferCodec.merge(
-                existingItems = HistoryStorage.load(this@MainActivity),
-                importedItems = importedItems,
-            )
-            HistoryStorage.save(this@MainActivity, mergedItems)
-            AppTaskExecutor.runOnMain {
-                with(this@MainActivity) {
-                    setHistoryTransferBusy(false)
-                    homeMapController.shouldRefit = true
-                    historyController.reload()
-                    historyController.updateContent()
-                    refreshDashboardContent()
-                Toast.makeText(
-                    this,
-                    "已导入 ${importedItems.size} 条记录，当前共 ${mergedItems.size} 条",
-                    Toast.LENGTH_SHORT,
-                ).show()
-                }
-            }
-        }
-    }
-
-    private fun setHistoryTransferBusy(isBusy: Boolean) {
-        historyTransferBusy = isBusy
-        historyController.setTransferBusy(isBusy)
     }
 
     private fun confirmDeleteHistoryDay(dayStartMillis: Long) {

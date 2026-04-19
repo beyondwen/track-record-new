@@ -93,7 +93,6 @@ data class DashboardScreenUiState(
 fun DashboardComposeScreen(
     state: DashboardScreenUiState,
     overlayState: DashboardOverlayUiState,
-    onManualRecordClick: () -> Unit,
     onHistoryClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -125,10 +124,7 @@ fun DashboardComposeScreen(
                 onStatusClick = { showStatusDialog = true },
             )
 
-            DashboardStatusPanel(
-                state = state,
-                onClick = onManualRecordClick,
-            )
+            DashboardStatusPanel(state = state)
 
             TrackBottomNavigationBar(
                 selectedTab = TrackBottomTab.RECORD,
@@ -524,16 +520,10 @@ private fun DialogInfoRow(
 @Composable
 private fun DashboardStatusPanel(
     state: DashboardScreenUiState,
-    onClick: () -> Unit,
 ) {
     TrackLiquidPanel(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(
-                role = Role.Button,
-                onClickLabel = state.controlTitle,
-                onClick = onClick,
-            )
             .semantics(mergeDescendants = true) {
                 stateDescription = state.controlTitle
             },
@@ -693,7 +683,6 @@ private fun DashboardComposeScreenPreview() {
                 diagnosticsTitle = "Recording diagnostics",
                 diagnosticsCompactBody = "Background tracking is active and waiting for clear movement.",
             ),
-            onManualRecordClick = {},
             onHistoryClick = {},
         )
     }

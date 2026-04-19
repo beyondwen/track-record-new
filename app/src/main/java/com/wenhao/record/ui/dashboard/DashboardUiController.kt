@@ -172,14 +172,17 @@ class DashboardUiController(
     }
 
     private fun controlTitleForState(state: AutoTrackUiState): String = when (state) {
-        AutoTrackUiState.TRACKING -> "停止采集"
-        else -> "开启采集"
+        AutoTrackUiState.TRACKING -> "后台采集中"
+        AutoTrackUiState.WAITING_PERMISSION -> "等待权限"
+        AutoTrackUiState.SAVED_RECENTLY -> "已完成分析"
+        else -> "自动待机中"
     }
 
     private fun controlBodyForState(state: AutoTrackUiState): String = when (state) {
-        AutoTrackUiState.TRACKING -> "持续采点会继续运行，动态段会在本地延迟分析后进入历史记录。"
+        AutoTrackUiState.TRACKING -> "正在持续采点，动态段和静止段会在本地延迟分析后进入历史记录。"
         AutoTrackUiState.WAITING_PERMISSION -> "先授予定位权限，后台采点和延迟分析才能正常工作。"
-        else -> "开启后会持续采集点位，不再依赖手动开始和结束轨迹。"
+        AutoTrackUiState.SAVED_RECENTLY -> "最近一段轨迹已经完成分析并写入历史记录。"
+        else -> "当前未检测到有效移动，系统会继续低功耗采点并等待状态变化。"
     }
 
 }

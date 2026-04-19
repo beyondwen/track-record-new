@@ -88,18 +88,12 @@ data class HistoryScreenUiState(
     val totalDistanceText: String = "",
     val totalDurationText: String = "",
     val totalCountText: String = "",
-    val isTransferBusy: Boolean = false,
-    val canExportTrainingSamples: Boolean = false,
 )
 
 @Composable
 fun HistoryComposeScreen(
     state: HistoryScreenUiState,
     onRecordClick: () -> Unit,
-    onExportClick: () -> Unit,
-    onImportClick: () -> Unit,
-    onTrainingSampleExport: () -> Unit,
-    onDecisionModelImport: () -> Unit,
     onHistoryClick: (HistoryDayItem) -> Unit,
     onHistoryLongClick: (HistoryDayItem) -> Unit,
     onDecisionFeedback: (Long) -> Unit,
@@ -133,13 +127,7 @@ fun HistoryComposeScreen(
                 verticalArrangement = Arrangement.spacedBy(28.dp),
             ) {
                 item {
-                    HistoryHeroSection(
-                        state = state,
-                        onExportClick = onExportClick,
-                        onImportClick = onImportClick,
-                        onTrainingSampleExport = onTrainingSampleExport,
-                        onDecisionModelImport = onDecisionModelImport,
-                    )
+                    HistoryHeroSection(state = state)
                 }
 
                 if (state.decisionFeedbackItems.isNotEmpty()) {
@@ -370,10 +358,6 @@ private fun DecisionFeedbackActionButton(
 @Composable
 private fun HistoryHeroSection(
     state: HistoryScreenUiState,
-    onExportClick: () -> Unit,
-    onImportClick: () -> Unit,
-    onTrainingSampleExport: () -> Unit,
-    onDecisionModelImport: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
         Row(
@@ -398,116 +382,6 @@ private fun HistoryHeroSection(
             }
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            HistoryActionButton(
-                text = stringResource(R.string.compose_history_export),
-                iconMode = HistoryActionIconMode.UP,
-                onClick = onExportClick,
-                enabled = !state.isTransferBusy && state.items.isNotEmpty(),
-                modifier = Modifier.weight(1f),
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                borderColor = Color.Transparent,
-            )
-            HistoryActionButton(
-                text = stringResource(R.string.compose_history_import),
-                iconMode = HistoryActionIconMode.DOWN,
-                onClick = onImportClick,
-                enabled = !state.isTransferBusy,
-                modifier = Modifier.weight(1f),
-                containerColor = MaterialTheme.colorScheme.trackSecondarySurface,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                borderColor = Color.Transparent,
-            )
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            HistoryActionButton(
-                text = stringResource(R.string.compose_history_training_export),
-                iconMode = HistoryActionIconMode.UP,
-                onClick = onTrainingSampleExport,
-                enabled = !state.isTransferBusy && state.canExportTrainingSamples,
-                modifier = Modifier.weight(1f),
-                containerColor = MaterialTheme.colorScheme.trackSecondarySurface,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                borderColor = Color.Transparent,
-            )
-            HistoryActionButton(
-                text = stringResource(R.string.compose_history_model_import),
-                iconMode = HistoryActionIconMode.DOWN,
-                onClick = onDecisionModelImport,
-                enabled = !state.isTransferBusy,
-                modifier = Modifier.weight(1f),
-                containerColor = MaterialTheme.colorScheme.trackSecondarySurface,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                borderColor = Color.Transparent,
-            )
-        }
-    }
-}
-
-private enum class HistoryActionIconMode {
-    UP,
-    DOWN,
-}
-
-@Composable
-private fun HistoryActionButton(
-    text: String,
-    iconMode: HistoryActionIconMode,
-    onClick: () -> Unit,
-    enabled: Boolean,
-    containerColor: Color,
-    contentColor: Color,
-    borderColor: Color,
-    modifier: Modifier = Modifier,
-) {
-    TrackLiquidPanel(
-        modifier = modifier
-            .height(56.dp)
-            .clickable(
-                enabled = enabled,
-                onClick = onClick,
-            ),
-        shape = RoundedCornerShape(20.dp),
-        tone = if (containerColor == MaterialTheme.colorScheme.primary) {
-            TrackLiquidTone.ACCENT
-        } else {
-            TrackLiquidTone.STANDARD
-        },
-        shadowElevation = 0.dp,
-        borderColor = if (borderColor == Color.Transparent) {
-            Color.Transparent
-        } else {
-            borderColor
-        },
-        contentPadding = PaddingValues(0.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            HistoryTransferGlyph(
-                direction = iconMode,
-                color = if (enabled) contentColor else contentColor.copy(alpha = 0.52f),
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = if (enabled) contentColor else contentColor.copy(alpha = 0.52f),
-            )
-        }
     }
 }
 
@@ -527,51 +401,6 @@ private fun DecorativeMenuGlyph(modifier: Modifier = Modifier) {
                 cap = StrokeCap.Round,
             )
         }
-    }
-}
-
-@Composable
-private fun HistoryTransferGlyph(
-    direction: HistoryActionIconMode,
-    color: Color,
-    modifier: Modifier = Modifier,
-) {
-    Canvas(modifier = modifier.size(12.dp)) {
-        val centerX = size.width / 2f
-        val topY = size.height * 0.18f
-        val bottomY = size.height * 0.82f
-        val arrowTipY = if (direction == HistoryActionIconMode.UP) topY else bottomY
-        val shaftTop = if (direction == HistoryActionIconMode.UP) bottomY else topY
-        val shaftBottom = if (direction == HistoryActionIconMode.UP) topY + size.height * 0.2f else bottomY - size.height * 0.2f
-
-        drawLine(
-            color = color,
-            start = Offset(centerX, shaftTop),
-            end = Offset(centerX, shaftBottom),
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = color,
-            start = Offset(centerX, arrowTipY),
-            end = Offset(centerX - size.width * 0.18f, arrowTipY + if (direction == HistoryActionIconMode.UP) size.height * 0.18f else -size.height * 0.18f),
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = color,
-            start = Offset(centerX, arrowTipY),
-            end = Offset(centerX + size.width * 0.18f, arrowTipY + if (direction == HistoryActionIconMode.UP) size.height * 0.18f else -size.height * 0.18f),
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
-        drawLine(
-            color = color,
-            start = Offset(size.width * 0.24f, bottomY),
-            end = Offset(size.width * 0.76f, bottomY),
-            strokeWidth = 2.dp.toPx(),
-            cap = StrokeCap.Round,
-        )
     }
 }
 
@@ -861,10 +690,6 @@ private fun HistoryComposeScreenPreview() {
                 totalCountText = "14 days",
             ),
             onRecordClick = {},
-            onExportClick = {},
-            onImportClick = {},
-            onTrainingSampleExport = {},
-            onDecisionModelImport = {},
             onHistoryClick = {},
             onHistoryLongClick = {},
             onDecisionFeedback = {},
