@@ -1,101 +1,112 @@
 CREATE TABLE IF NOT EXISTS training_samples (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  event_id BIGINT NOT NULL,
-  timestamp_millis BIGINT NOT NULL,
-  phase VARCHAR(64) NOT NULL,
-  final_decision_json JSON NOT NULL,
-  features_json JSON NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_training_samples_event_id (event_id)
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_id INTEGER NOT NULL,
+  timestamp_millis INTEGER NOT NULL,
+  phase TEXT NOT NULL,
+  final_decision_json TEXT NOT NULL,
+  features_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_training_samples_event_id
+  ON training_samples (event_id);
 
 CREATE TABLE IF NOT EXISTS uploaded_histories (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  device_id VARCHAR(128) NOT NULL,
-  history_id BIGINT NOT NULL,
-  app_version VARCHAR(64) NOT NULL,
-  timestamp_millis BIGINT NOT NULL,
-  distance_km DOUBLE NOT NULL,
-  duration_seconds INT NOT NULL,
-  average_speed_kmh DOUBLE NOT NULL,
-  title VARCHAR(255) NULL,
-  start_source VARCHAR(64) NULL,
-  stop_source VARCHAR(64) NULL,
-  manual_start_at BIGINT NULL,
-  manual_stop_at BIGINT NULL,
-  points_json JSON NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_uploaded_histories_device_history (device_id, history_id)
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  history_id INTEGER NOT NULL,
+  app_version TEXT NOT NULL,
+  timestamp_millis INTEGER NOT NULL,
+  distance_km REAL NOT NULL,
+  duration_seconds INTEGER NOT NULL,
+  average_speed_kmh REAL NOT NULL,
+  title TEXT,
+  start_source TEXT,
+  stop_source TEXT,
+  manual_start_at INTEGER,
+  manual_stop_at INTEGER,
+  points_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_uploaded_histories_device_history
+  ON uploaded_histories (device_id, history_id);
 
 CREATE TABLE IF NOT EXISTS raw_location_point (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  device_id VARCHAR(128) NOT NULL,
-  point_id BIGINT NOT NULL,
-  app_version VARCHAR(64) NOT NULL,
-  timestamp_millis BIGINT NOT NULL,
-  latitude DOUBLE NOT NULL,
-  longitude DOUBLE NOT NULL,
-  accuracy_meters DOUBLE NULL,
-  altitude_meters DOUBLE NULL,
-  speed_meters_per_second DOUBLE NULL,
-  bearing_degrees DOUBLE NULL,
-  provider VARCHAR(64) NOT NULL,
-  source_type VARCHAR(64) NOT NULL,
-  is_mock BOOLEAN NOT NULL,
-  wifi_fingerprint_digest VARCHAR(255) NULL,
-  activity_type VARCHAR(64) NULL,
-  activity_confidence DOUBLE NULL,
-  sampling_tier VARCHAR(32) NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_raw_location_point_device_point (device_id, point_id),
-  KEY idx_raw_location_point_device_timestamp (device_id, timestamp_millis)
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  point_id INTEGER NOT NULL,
+  app_version TEXT NOT NULL,
+  timestamp_millis INTEGER NOT NULL,
+  latitude REAL NOT NULL,
+  longitude REAL NOT NULL,
+  accuracy_meters REAL,
+  altitude_meters REAL,
+  speed_meters_per_second REAL,
+  bearing_degrees REAL,
+  provider TEXT NOT NULL,
+  source_type TEXT NOT NULL,
+  is_mock INTEGER NOT NULL,
+  wifi_fingerprint_digest TEXT,
+  activity_type TEXT,
+  activity_confidence REAL,
+  sampling_tier TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_raw_location_point_device_point
+  ON raw_location_point (device_id, point_id);
+
+CREATE INDEX IF NOT EXISTS idx_raw_location_point_device_timestamp
+  ON raw_location_point (device_id, timestamp_millis);
 
 CREATE TABLE IF NOT EXISTS analysis_segment (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  device_id VARCHAR(128) NOT NULL,
-  segment_id BIGINT NOT NULL,
-  app_version VARCHAR(64) NOT NULL,
-  start_point_id BIGINT NOT NULL,
-  end_point_id BIGINT NOT NULL,
-  start_timestamp BIGINT NOT NULL,
-  end_timestamp BIGINT NOT NULL,
-  segment_type VARCHAR(32) NOT NULL,
-  confidence DOUBLE NOT NULL,
-  distance_meters DOUBLE NOT NULL,
-  duration_millis BIGINT NOT NULL,
-  avg_speed_meters_per_second DOUBLE NOT NULL,
-  max_speed_meters_per_second DOUBLE NOT NULL,
-  analysis_version INT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_analysis_segment_device_segment (device_id, segment_id),
-  KEY idx_analysis_segment_device_start_timestamp (device_id, start_timestamp)
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  segment_id INTEGER NOT NULL,
+  app_version TEXT NOT NULL,
+  start_point_id INTEGER NOT NULL,
+  end_point_id INTEGER NOT NULL,
+  start_timestamp INTEGER NOT NULL,
+  end_timestamp INTEGER NOT NULL,
+  segment_type TEXT NOT NULL,
+  confidence REAL NOT NULL,
+  distance_meters REAL NOT NULL,
+  duration_millis INTEGER NOT NULL,
+  avg_speed_meters_per_second REAL NOT NULL,
+  max_speed_meters_per_second REAL NOT NULL,
+  analysis_version INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS uk_analysis_segment_device_segment
+  ON analysis_segment (device_id, segment_id);
+
+CREATE INDEX IF NOT EXISTS idx_analysis_segment_device_start_timestamp
+  ON analysis_segment (device_id, start_timestamp);
+
 CREATE TABLE IF NOT EXISTS stay_cluster (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-  device_id VARCHAR(128) NOT NULL,
-  segment_id BIGINT NOT NULL,
-  stay_id BIGINT NOT NULL,
-  center_lat DOUBLE NOT NULL,
-  center_lng DOUBLE NOT NULL,
-  radius_meters DOUBLE NOT NULL,
-  arrival_time BIGINT NOT NULL,
-  departure_time BIGINT NOT NULL,
-  confidence DOUBLE NOT NULL,
-  analysis_version INT NOT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (id),
-  UNIQUE KEY uk_stay_cluster_device_stay (device_id, stay_id),
-  KEY idx_stay_cluster_device_segment (device_id, segment_id)
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  segment_id INTEGER NOT NULL,
+  stay_id INTEGER NOT NULL,
+  center_lat REAL NOT NULL,
+  center_lng REAL NOT NULL,
+  radius_meters REAL NOT NULL,
+  arrival_time INTEGER NOT NULL,
+  departure_time INTEGER NOT NULL,
+  confidence REAL NOT NULL,
+  analysis_version INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_stay_cluster_device_stay
+  ON stay_cluster (device_id, stay_id);
+
+CREATE INDEX IF NOT EXISTS idx_stay_cluster_device_segment
+  ON stay_cluster (device_id, segment_id);

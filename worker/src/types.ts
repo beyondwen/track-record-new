@@ -1,14 +1,6 @@
-export interface HyperdriveBinding {
-  host: string;
-  port: number | string;
-  user: string;
-  password: string;
-  database: string;
-}
-
 export interface Env {
   UPLOAD_TOKEN: string;
-  HYPERDRIVE: HyperdriveBinding;
+  DB: D1Database;
 }
 
 export interface RawLocationPoint {

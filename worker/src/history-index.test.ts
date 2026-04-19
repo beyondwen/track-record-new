@@ -5,13 +5,7 @@ import type { Env, HistoryPersistence } from "./types";
 
 const baseEnv: Env = {
   UPLOAD_TOKEN: "correct-token",
-  HYPERDRIVE: {
-    host: "127.0.0.1",
-    port: 3306,
-    user: "worker",
-    password: "worker-pass",
-    database: "track_record"
-  }
+  DB: {} as D1Database
 };
 
 const executionContext: ExecutionContext = {

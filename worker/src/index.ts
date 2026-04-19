@@ -1,10 +1,10 @@
 import { authenticateRequest } from "./auth";
 import {
-  createMysqlAnalysisPersistence,
-  createMysqlRawPointPersistence,
-  createMysqlHistoryPersistence,
-  createMysqlSamplePersistence
-} from "./mysql";
+  createD1AnalysisPersistence,
+  createD1RawPointPersistence,
+  createD1HistoryPersistence,
+  createD1SamplePersistence
+} from "./d1";
 import type {
   AnalysisPersistence,
   AnalysisSuccessResponseBody,
@@ -68,13 +68,13 @@ function ensureJsonContentType(request: Request): ErrorResponseBody | null {
 }
 
 export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
-  const samplePersistence = deps.samplePersistence ?? createMysqlSamplePersistence();
+  const samplePersistence = deps.samplePersistence ?? createD1SamplePersistence();
   const historyPersistence =
-    deps.historyPersistence ?? createMysqlHistoryPersistence();
+    deps.historyPersistence ?? createD1HistoryPersistence();
   const rawPointPersistence =
-    deps.rawPointPersistence ?? createMysqlRawPointPersistence();
+    deps.rawPointPersistence ?? createD1RawPointPersistence();
   const analysisPersistence =
-    deps.analysisPersistence ?? createMysqlAnalysisPersistence();
+    deps.analysisPersistence ?? createD1AnalysisPersistence();
 
   return {
     async fetch(request, env): Promise<Response> {
