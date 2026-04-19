@@ -1,32 +1,52 @@
 import { authenticateRequest } from "./auth";
 import {
+  createMysqlAnalysisPersistence,
+  createMysqlRawPointPersistence,
   createMysqlHistoryPersistence,
   createMysqlSamplePersistence
 } from "./mysql";
 import type {
+  AnalysisPersistence,
+  AnalysisSuccessResponseBody,
   Env,
   ErrorResponseBody,
   HistoryPersistence,
   HistorySuccessResponseBody,
+  RawPointPersistence,
+  RawPointSuccessResponseBody,
   SamplePersistence,
   SampleSuccessResponseBody
 } from "./types";
 import {
+  validateAnalysisBatchRequest,
   ValidationError,
   validateBatchRequest,
+  validateRawPointBatchRequest,
   validateHistoryBatchRequest
 } from "./validation";
 
-export type { HistoryPersistence, SamplePersistence } from "./types";
+export type {
+  AnalysisPersistence,
+  HistoryPersistence,
+  RawPointPersistence,
+  SamplePersistence
+} from "./types";
 
 interface AppDependencies {
   samplePersistence?: SamplePersistence;
   historyPersistence?: HistoryPersistence;
+  rawPointPersistence?: RawPointPersistence;
+  analysisPersistence?: AnalysisPersistence;
 }
 
 function jsonResponse(
   status: number,
-  body: SampleSuccessResponseBody | HistorySuccessResponseBody | ErrorResponseBody
+  body:
+    | SampleSuccessResponseBody
+    | HistorySuccessResponseBody
+    | RawPointSuccessResponseBody
+    | AnalysisSuccessResponseBody
+    | ErrorResponseBody
 ): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -51,11 +71,20 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
   const samplePersistence = deps.samplePersistence ?? createMysqlSamplePersistence();
   const historyPersistence =
     deps.historyPersistence ?? createMysqlHistoryPersistence();
+  const rawPointPersistence =
+    deps.rawPointPersistence ?? createMysqlRawPointPersistence();
+  const analysisPersistence =
+    deps.analysisPersistence ?? createMysqlAnalysisPersistence();
 
   return {
     async fetch(request, env): Promise<Response> {
       const url = new URL(request.url);
-      if (url.pathname !== "/samples/batch" && url.pathname !== "/histories/batch") {
+      if (
+        url.pathname !== "/samples/batch" &&
+        url.pathname !== "/histories/batch" &&
+        url.pathname !== "/raw-points/batch" &&
+        url.pathname !== "/analysis/batch"
+      ) {
         return jsonResponse(404, {
           ok: false,
           message: "Not found"
@@ -108,6 +137,40 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           });
         }
 
+        if (url.pathname === "/raw-points/batch") {
+          const validated = validateRawPointBatchRequest(payload);
+          const persisted = await rawPointPersistence.persistRawPoints(
+            validated.deviceId,
+            validated.appVersion,
+            validated.points,
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            insertedCount: persisted.insertedCount,
+            dedupedCount: persisted.dedupedCount,
+            acceptedMaxPointId: persisted.acceptedMaxPointId
+          });
+        }
+
+        if (url.pathname === "/analysis/batch") {
+          const validated = validateAnalysisBatchRequest(payload);
+          const persisted = await analysisPersistence.persistAnalysis(
+            validated.deviceId,
+            validated.appVersion,
+            validated.segments,
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            insertedCount: persisted.insertedCount,
+            dedupedCount: persisted.dedupedCount,
+            acceptedMaxSegmentId: persisted.acceptedMaxSegmentId
+          });
+        }
+
         const validated = validateHistoryBatchRequest(payload);
         const persisted = await historyPersistence.persistHistories(
           validated.deviceId,
@@ -137,7 +200,11 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
         console.error(
           url.pathname === "/samples/batch"
             ? "Failed to persist training samples"
-            : "Failed to persist histories",
+            : url.pathname === "/histories/batch"
+              ? "Failed to persist histories"
+              : url.pathname === "/raw-points/batch"
+                ? "Failed to persist raw points"
+                : "Failed to persist analysis results",
           error
         );
 

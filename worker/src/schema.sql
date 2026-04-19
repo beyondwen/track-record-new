@@ -31,3 +31,71 @@ CREATE TABLE IF NOT EXISTS uploaded_histories (
   PRIMARY KEY (id),
   UNIQUE KEY uk_uploaded_histories_device_history (device_id, history_id)
 );
+
+CREATE TABLE IF NOT EXISTS raw_location_point (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  device_id VARCHAR(128) NOT NULL,
+  point_id BIGINT NOT NULL,
+  app_version VARCHAR(64) NOT NULL,
+  timestamp_millis BIGINT NOT NULL,
+  latitude DOUBLE NOT NULL,
+  longitude DOUBLE NOT NULL,
+  accuracy_meters DOUBLE NULL,
+  altitude_meters DOUBLE NULL,
+  speed_meters_per_second DOUBLE NULL,
+  bearing_degrees DOUBLE NULL,
+  provider VARCHAR(64) NOT NULL,
+  source_type VARCHAR(64) NOT NULL,
+  is_mock BOOLEAN NOT NULL,
+  wifi_fingerprint_digest VARCHAR(255) NULL,
+  activity_type VARCHAR(64) NULL,
+  activity_confidence DOUBLE NULL,
+  sampling_tier VARCHAR(32) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_raw_location_point_device_point (device_id, point_id),
+  KEY idx_raw_location_point_device_timestamp (device_id, timestamp_millis)
+);
+
+CREATE TABLE IF NOT EXISTS analysis_segment (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  device_id VARCHAR(128) NOT NULL,
+  segment_id BIGINT NOT NULL,
+  app_version VARCHAR(64) NOT NULL,
+  start_point_id BIGINT NOT NULL,
+  end_point_id BIGINT NOT NULL,
+  start_timestamp BIGINT NOT NULL,
+  end_timestamp BIGINT NOT NULL,
+  segment_type VARCHAR(32) NOT NULL,
+  confidence DOUBLE NOT NULL,
+  distance_meters DOUBLE NOT NULL,
+  duration_millis BIGINT NOT NULL,
+  avg_speed_meters_per_second DOUBLE NOT NULL,
+  max_speed_meters_per_second DOUBLE NOT NULL,
+  analysis_version INT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_analysis_segment_device_segment (device_id, segment_id),
+  KEY idx_analysis_segment_device_start_timestamp (device_id, start_timestamp)
+);
+
+CREATE TABLE IF NOT EXISTS stay_cluster (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  device_id VARCHAR(128) NOT NULL,
+  segment_id BIGINT NOT NULL,
+  stay_id BIGINT NOT NULL,
+  center_lat DOUBLE NOT NULL,
+  center_lng DOUBLE NOT NULL,
+  radius_meters DOUBLE NOT NULL,
+  arrival_time BIGINT NOT NULL,
+  departure_time BIGINT NOT NULL,
+  confidence DOUBLE NOT NULL,
+  analysis_version INT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_stay_cluster_device_stay (device_id, stay_id),
+  KEY idx_stay_cluster_device_segment (device_id, segment_id)
+);
