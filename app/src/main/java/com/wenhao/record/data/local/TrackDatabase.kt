@@ -6,9 +6,6 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import com.wenhao.record.data.local.decision.DecisionDao
-import com.wenhao.record.data.local.decision.DecisionEventEntity
-import com.wenhao.record.data.local.decision.DecisionFeedbackEntity
 import com.wenhao.record.data.local.history.HistoryDao
 import com.wenhao.record.data.local.history.HistoryPointEntity
 import com.wenhao.record.data.local.history.HistoryRecordEntity
@@ -23,26 +20,23 @@ import com.wenhao.record.data.local.stream.UploadCursorEntity
     entities = [
         HistoryRecordEntity::class,
         HistoryPointEntity::class,
-        DecisionEventEntity::class,
-        DecisionFeedbackEntity::class,
         RawLocationPointEntity::class,
         AnalysisSegmentEntity::class,
         StayClusterEntity::class,
         AnalysisCursorEntity::class,
         UploadCursorEntity::class,
     ],
-    version = 10,
-    exportSchema = true
+    version = 11,
+    exportSchema = true,
 )
 abstract class TrackDatabase : RoomDatabase() {
 
     abstract fun historyDao(): HistoryDao
 
-    abstract fun decisionDao(): DecisionDao
-
     abstract fun continuousTrackDao(): ContinuousTrackDao
 
     companion object {
+
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 // Schema unchanged; this migration formalizes versioned upgrades so history is preserved.
@@ -230,6 +224,13 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("DROP TABLE IF EXISTS `decision_event`")
+                database.execSQL("DROP TABLE IF EXISTS `decision_feedback`")
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -250,6 +251,7 @@ abstract class TrackDatabase : RoomDatabase() {
                         MIGRATION_7_8,
                         MIGRATION_8_9,
                         MIGRATION_9_10,
+                        MIGRATION_10_11,
                     )
                     .build()
                     .also { instance = it }

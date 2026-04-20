@@ -1,0 +1,450 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 11,
+    "identityHash": "64a17666cb5b4fae99edc0883da143ef",
+    "entities": [
+      {
+        "tableName": "history_record",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`historyId` INTEGER NOT NULL, `timestamp` INTEGER NOT NULL, `distanceKm` REAL NOT NULL, `durationSeconds` INTEGER NOT NULL, `averageSpeedKmh` REAL NOT NULL, `title` TEXT, `startSource` TEXT NOT NULL, `stopSource` TEXT NOT NULL, `manualStartAt` INTEGER, `manualStopAt` INTEGER, PRIMARY KEY(`historyId`))",
+        "fields": [
+          {
+            "fieldPath": "historyId",
+            "columnName": "historyId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestamp",
+            "columnName": "timestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "distanceKm",
+            "columnName": "distanceKm",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationSeconds",
+            "columnName": "durationSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "averageSpeedKmh",
+            "columnName": "averageSpeedKmh",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "startSource",
+            "columnName": "startSource",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stopSource",
+            "columnName": "stopSource",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "manualStartAt",
+            "columnName": "manualStartAt",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "manualStopAt",
+            "columnName": "manualStopAt",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "historyId"
+          ]
+        }
+      },
+      {
+        "tableName": "history_point",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`historyId` INTEGER NOT NULL, `pointOrder` INTEGER NOT NULL, `latitude` REAL NOT NULL, `longitude` REAL NOT NULL, `timestampMillis` INTEGER NOT NULL, `accuracyMeters` REAL, `altitudeMeters` REAL, `wgs84Latitude` REAL, `wgs84Longitude` REAL, PRIMARY KEY(`historyId`, `pointOrder`))",
+        "fields": [
+          {
+            "fieldPath": "historyId",
+            "columnName": "historyId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pointOrder",
+            "columnName": "pointOrder",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampMillis",
+            "columnName": "timestampMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accuracyMeters",
+            "columnName": "accuracyMeters",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "altitudeMeters",
+            "columnName": "altitudeMeters",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "wgs84Latitude",
+            "columnName": "wgs84Latitude",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "wgs84Longitude",
+            "columnName": "wgs84Longitude",
+            "affinity": "REAL"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "historyId",
+            "pointOrder"
+          ]
+        }
+      },
+      {
+        "tableName": "raw_location_point",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`pointId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `timestampMillis` INTEGER NOT NULL, `latitude` REAL NOT NULL, `longitude` REAL NOT NULL, `accuracyMeters` REAL, `altitudeMeters` REAL, `speedMetersPerSecond` REAL, `bearingDegrees` REAL, `provider` TEXT NOT NULL, `sourceType` TEXT NOT NULL, `isMock` INTEGER NOT NULL, `wifiFingerprintDigest` TEXT, `activityType` TEXT, `activityConfidence` REAL, `samplingTier` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "pointId",
+            "columnName": "pointId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "timestampMillis",
+            "columnName": "timestampMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latitude",
+            "columnName": "latitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "longitude",
+            "columnName": "longitude",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accuracyMeters",
+            "columnName": "accuracyMeters",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "altitudeMeters",
+            "columnName": "altitudeMeters",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "speedMetersPerSecond",
+            "columnName": "speedMetersPerSecond",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "bearingDegrees",
+            "columnName": "bearingDegrees",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceType",
+            "columnName": "sourceType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isMock",
+            "columnName": "isMock",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wifiFingerprintDigest",
+            "columnName": "wifiFingerprintDigest",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "activityType",
+            "columnName": "activityType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "activityConfidence",
+            "columnName": "activityConfidence",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "samplingTier",
+            "columnName": "samplingTier",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "pointId"
+          ]
+        }
+      },
+      {
+        "tableName": "analysis_segment",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`segmentId` INTEGER NOT NULL, `startPointId` INTEGER NOT NULL, `endPointId` INTEGER NOT NULL, `startTimestamp` INTEGER NOT NULL, `endTimestamp` INTEGER NOT NULL, `segmentType` TEXT NOT NULL, `confidence` REAL NOT NULL, `distanceMeters` REAL NOT NULL, `durationMillis` INTEGER NOT NULL, `avgSpeedMetersPerSecond` REAL NOT NULL, `maxSpeedMetersPerSecond` REAL NOT NULL, `analysisVersion` INTEGER NOT NULL, PRIMARY KEY(`segmentId`))",
+        "fields": [
+          {
+            "fieldPath": "segmentId",
+            "columnName": "segmentId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startPointId",
+            "columnName": "startPointId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endPointId",
+            "columnName": "endPointId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startTimestamp",
+            "columnName": "startTimestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endTimestamp",
+            "columnName": "endTimestamp",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "segmentType",
+            "columnName": "segmentType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "distanceMeters",
+            "columnName": "distanceMeters",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationMillis",
+            "columnName": "durationMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "avgSpeedMetersPerSecond",
+            "columnName": "avgSpeedMetersPerSecond",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maxSpeedMetersPerSecond",
+            "columnName": "maxSpeedMetersPerSecond",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analysisVersion",
+            "columnName": "analysisVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "segmentId"
+          ]
+        }
+      },
+      {
+        "tableName": "stay_cluster",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`stayId` INTEGER NOT NULL, `segmentId` INTEGER NOT NULL, `centerLat` REAL NOT NULL, `centerLng` REAL NOT NULL, `radiusMeters` REAL NOT NULL, `arrivalTime` INTEGER NOT NULL, `departureTime` INTEGER NOT NULL, `confidence` REAL NOT NULL, `analysisVersion` INTEGER NOT NULL, PRIMARY KEY(`stayId`))",
+        "fields": [
+          {
+            "fieldPath": "stayId",
+            "columnName": "stayId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "segmentId",
+            "columnName": "segmentId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "centerLat",
+            "columnName": "centerLat",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "centerLng",
+            "columnName": "centerLng",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "radiusMeters",
+            "columnName": "radiusMeters",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "arrivalTime",
+            "columnName": "arrivalTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "departureTime",
+            "columnName": "departureTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confidence",
+            "columnName": "confidence",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "analysisVersion",
+            "columnName": "analysisVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "stayId"
+          ]
+        }
+      },
+      {
+        "tableName": "analysis_cursor",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`cursorId` INTEGER NOT NULL, `lastAnalyzedPointId` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`cursorId`))",
+        "fields": [
+          {
+            "fieldPath": "cursorId",
+            "columnName": "cursorId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAnalyzedPointId",
+            "columnName": "lastAnalyzedPointId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "cursorId"
+          ]
+        }
+      },
+      {
+        "tableName": "upload_cursor",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`cursorType` TEXT NOT NULL, `lastUploadedId` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, PRIMARY KEY(`cursorType`))",
+        "fields": [
+          {
+            "fieldPath": "cursorType",
+            "columnName": "cursorType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastUploadedId",
+            "columnName": "lastUploadedId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "cursorType"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '64a17666cb5b4fae99edc0883da143ef')"
+    ]
+  }
+}

@@ -1,7 +1,6 @@
 package com.wenhao.record.ui.history
 
 import android.content.Context
-
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -55,7 +54,6 @@ import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.TrackQualityLevel
 import com.wenhao.record.data.history.buildHistoryDayItem
-import com.wenhao.record.data.tracking.DecisionFeedbackType
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.ui.designsystem.TrackEmptyStateCard
 import com.wenhao.record.ui.designsystem.TrackBottomNavigationBar
@@ -74,19 +72,9 @@ import com.wenhao.record.ui.designsystem.trackSoftSurface
 import java.util.Calendar
 
 @Immutable
-data class HistoryDecisionFeedbackItem(
-    val eventId: Long,
-    val title: String,
-    val summary: String,
-    val feedbackLabel: String? = null,
-)
-
-@Immutable
 data class HistoryScreenUiState(
     val items: List<HistoryDayItem> = emptyList(),
-    val decisionFeedbackItems: List<HistoryDecisionFeedbackItem> = emptyList(),
     val selectedDayStartMillis: Long? = null,
-    val isFeedbackSheetVisible: Boolean = false,
     val totalDistanceText: String = "",
     val totalDurationText: String = "",
     val totalCountText: String = "",
@@ -98,14 +86,12 @@ fun HistoryComposeScreen(
     onRecordClick: () -> Unit,
     onHistoryClick: (HistoryDayItem) -> Unit,
     onHistoryLongClick: (HistoryDayItem) -> Unit,
-    onDecisionFeedback: (Long) -> Unit,
-    onFeedbackSubmit: (DecisionFeedbackType) -> Unit,
-    onFeedbackDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val todayLabel = stringResource(R.string.compose_history_day_today)
     val yesterdayLabel = stringResource(R.string.compose_history_day_yesterday)
+
     val groupLabels = remember(state.items, context, todayLabel, yesterdayLabel) {
         buildGroupLabels(
             items = state.items,
@@ -117,6 +103,7 @@ fun HistoryComposeScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         TrackAtmosphericBackground()
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -134,30 +121,6 @@ fun HistoryComposeScreen(
             ) {
                 item {
                     HistoryHeroSection(state = state)
-                }
-
-                if (state.decisionFeedbackItems.isNotEmpty()) {
-                    item {
-                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            HistorySectionHeader(
-                                title = stringResource(R.string.compose_history_feedback_title),
-                                trailing = null,
-                            )
-                            Text(
-                                text = stringResource(R.string.compose_history_feedback_subtitle),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                state.decisionFeedbackItems.forEach { item ->
-                                    DecisionFeedbackCard(
-                                        item = item,
-                                        onClick = { onDecisionFeedback(item.eventId) },
-                                    )
-                                }
-                            }
-                        }
-                    }
                 }
 
                 if (state.items.isEmpty()) {
@@ -178,6 +141,7 @@ fun HistoryComposeScreen(
                             groupLabels[previousItem.dayStartMillis]
                         }
                         val currentLabel = requireNotNull(groupLabels[item.dayStartMillis])
+
                         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                             if (index == 0 || currentLabel != previousLabel) {
                                 HistorySectionHeader(
@@ -193,6 +157,7 @@ fun HistoryComposeScreen(
                                     },
                                 )
                             }
+
                             HistoryDayCard(
                                 item = item,
                                 isSelected = item.dayStartMillis == state.selectedDayStartMillis,
@@ -208,156 +173,6 @@ fun HistoryComposeScreen(
                 onRecordClick = onRecordClick,
             )
         }
-
-        if (state.isFeedbackSheetVisible) {
-            DecisionFeedbackBottomSheet(
-                onDismiss = onFeedbackDismiss,
-                onFeedbackSubmit = onFeedbackSubmit,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DecisionFeedbackCard(
-    item: HistoryDecisionFeedbackItem,
-    onClick: () -> Unit,
-) {
-    TrackLiquidPanel(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        tone = TrackLiquidTone.SUBTLE,
-        borderColor = MaterialTheme.colorScheme.trackInnerPanelBorder.copy(alpha = 0.18f),
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 16.dp),
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Text(
-                        text = item.title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = item.summary,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                TrackStatChip(
-                    text = if (item.feedbackLabel != null) {
-                        feedbackLabelText(item.feedbackLabel)
-                    } else {
-                        stringResource(R.string.compose_history_feedback_pending)
-                    },
-                    containerColor = if (item.feedbackLabel == null) {
-                        MaterialTheme.colorScheme.trackSoftSurface
-                    } else {
-                        MaterialTheme.colorScheme.trackSoftAccent
-                    },
-                    contentColor = if (item.feedbackLabel == null) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                )
-            }
-
-            Button(
-                onClick = onClick,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    text = if (item.feedbackLabel == null) {
-                        stringResource(R.string.compose_history_feedback_action)
-                    } else {
-                        stringResource(R.string.compose_history_feedback_update_action)
-                    },
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun feedbackLabelText(raw: String): String {
-    return when (raw) {
-        DecisionFeedbackType.START_TOO_EARLY.name -> stringResource(R.string.compose_history_feedback_start_early)
-        DecisionFeedbackType.START_TOO_LATE.name -> stringResource(R.string.compose_history_feedback_start_late)
-        DecisionFeedbackType.STOP_TOO_EARLY.name -> stringResource(R.string.compose_history_feedback_stop_early)
-        DecisionFeedbackType.STOP_TOO_LATE.name -> stringResource(R.string.compose_history_feedback_stop_late)
-        DecisionFeedbackType.CORRECT.name -> stringResource(R.string.compose_history_feedback_correct)
-        else -> raw
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun DecisionFeedbackBottomSheet(
-    onDismiss: () -> Unit,
-    onFeedbackSubmit: (DecisionFeedbackType) -> Unit,
-) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.compose_history_feedback_sheet_title),
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = stringResource(R.string.compose_history_feedback_sheet_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            DecisionFeedbackActionButton(
-                label = stringResource(R.string.compose_history_feedback_start_early),
-                onClick = { onFeedbackSubmit(DecisionFeedbackType.START_TOO_EARLY) },
-            )
-            DecisionFeedbackActionButton(
-                label = stringResource(R.string.compose_history_feedback_start_late),
-                onClick = { onFeedbackSubmit(DecisionFeedbackType.START_TOO_LATE) },
-            )
-            DecisionFeedbackActionButton(
-                label = stringResource(R.string.compose_history_feedback_stop_early),
-                onClick = { onFeedbackSubmit(DecisionFeedbackType.STOP_TOO_EARLY) },
-            )
-            DecisionFeedbackActionButton(
-                label = stringResource(R.string.compose_history_feedback_stop_late),
-                onClick = { onFeedbackSubmit(DecisionFeedbackType.STOP_TOO_LATE) },
-            )
-            DecisionFeedbackActionButton(
-                label = stringResource(R.string.compose_history_feedback_correct),
-                onClick = { onFeedbackSubmit(DecisionFeedbackType.CORRECT) },
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-        }
-    }
-}
-
-@Composable
-private fun DecisionFeedbackActionButton(
-    label: String,
-    onClick: () -> Unit,
-) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(text = label)
     }
 }
 
@@ -371,6 +186,7 @@ private fun HistoryHeroSection(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             DecorativeMenuGlyph()
+
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = stringResource(R.string.compose_history_title),
@@ -378,6 +194,7 @@ private fun HistoryHeroSection(
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.Bold,
                 )
+
                 if (state.totalCountText.isNotBlank()) {
                     Text(
                         text = state.totalCountText,
@@ -397,6 +214,7 @@ private fun HistoryHeroSection(
                 value = state.totalDistanceText,
                 modifier = Modifier.weight(1f),
             )
+
             HistoryOverviewMetricCard(
                 label = stringResource(R.string.compose_history_total_duration),
                 value = state.totalDurationText,
@@ -427,6 +245,7 @@ private fun HistoryOverviewMetricCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleMedium,
@@ -477,6 +296,7 @@ private fun HistorySectionHeader(
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f),
         )
+
         if (!trailing.isNullOrBlank()) {
             Text(
                 text = trailing,
@@ -548,6 +368,7 @@ private fun HistoryDayCard(
                         color = MaterialTheme.colorScheme.onSurface,
                         fontWeight = FontWeight.Bold,
                     )
+
                     Text(
                         text = buildHistoryMetaLine(item),
                         style = MaterialTheme.typography.bodyLarge,
@@ -633,16 +454,14 @@ private fun HistoryBottomBar(
 
 @Composable
 private fun qualityChipContainerColor(level: TrackQualityLevel) = when (level) {
-    TrackQualityLevel.EXCELLENT,
-    TrackQualityLevel.GOOD -> MaterialTheme.colorScheme.trackSoftAccent
+    TrackQualityLevel.EXCELLENT, TrackQualityLevel.GOOD -> MaterialTheme.colorScheme.trackSoftAccent
     TrackQualityLevel.FAIR -> MaterialTheme.colorScheme.trackSoftSurface
     TrackQualityLevel.LOW -> MaterialTheme.colorScheme.errorContainer
 }
 
 @Composable
 private fun qualityChipContentColor(level: TrackQualityLevel) = when (level) {
-    TrackQualityLevel.EXCELLENT,
-    TrackQualityLevel.GOOD -> MaterialTheme.colorScheme.primary
+    TrackQualityLevel.EXCELLENT, TrackQualityLevel.GOOD -> MaterialTheme.colorScheme.primary
     TrackQualityLevel.FAIR -> MaterialTheme.colorScheme.onSurfaceVariant
     TrackQualityLevel.LOW -> MaterialTheme.colorScheme.onErrorContainer
 }
@@ -656,7 +475,9 @@ private fun buildGroupLabels(
     if (items.isEmpty()) return emptyMap()
 
     val now = Calendar.getInstance()
-    val yesterday = (now.clone() as Calendar).apply { add(Calendar.DAY_OF_YEAR, -1) }
+    val yesterday = (now.clone() as Calendar).apply {
+        add(Calendar.DAY_OF_YEAR, -1)
+    }
     val target = Calendar.getInstance()
 
     return buildMap(items.size) {
@@ -691,7 +512,6 @@ private fun buildGroupLabel(
         target.get(Calendar.YEAR) == now.get(Calendar.YEAR) -> {
             context.getString(R.string.compose_history_day_month, target.get(Calendar.MONTH) + 1)
         }
-
         else -> {
             context.getString(
                 R.string.compose_history_day_year_month,
@@ -724,6 +544,7 @@ private fun HistoryComposeScreenPreview() {
         TrackPoint(30.2761, 120.1621, timestampMillis = 61_000L, accuracyMeters = 6f, altitudeMeters = 42.0),
         TrackPoint(30.2794, 120.1682, timestampMillis = 121_000L, accuracyMeters = 6f, altitudeMeters = 61.0),
     )
+
     val sampleItem = buildHistoryDayItem(
         dayStartMillis = 1_742_976_000_000L,
         latestTimestamp = 1_742_980_200_000L,
@@ -747,9 +568,6 @@ private fun HistoryComposeScreenPreview() {
             onRecordClick = {},
             onHistoryClick = {},
             onHistoryLongClick = {},
-            onDecisionFeedback = {},
-            onFeedbackSubmit = {},
-            onFeedbackDismiss = {},
         )
     }
 }

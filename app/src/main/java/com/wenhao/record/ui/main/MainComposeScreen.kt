@@ -53,7 +53,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.wenhao.record.R
-import com.wenhao.record.data.tracking.DecisionFeedbackType
 import com.wenhao.record.ui.dashboard.DashboardComposeScreen
 import com.wenhao.record.ui.dashboard.DashboardOverlayUiState
 import com.wenhao.record.ui.dashboard.DashboardScreenUiState
@@ -107,9 +106,6 @@ fun MainComposeScreen(
     onLocateClick: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
     onHistoryDelete: (Long) -> Unit,
-    onHistoryDecisionFeedback: (Long) -> Unit,
-    onHistoryFeedbackSubmit: (DecisionFeedbackType) -> Unit,
-    onHistoryFeedbackDismiss: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -121,10 +117,7 @@ fun MainComposeScreen(
                     onRecordClick = onRecordTabClick,
                     onHistoryClick = { onHistoryOpen(it.dayStartMillis) },
                     onHistoryLongClick = { onHistoryDelete(it.dayStartMillis) },
-                    onDecisionFeedback = onHistoryDecisionFeedback,
-                    onFeedbackSubmit = onHistoryFeedbackSubmit,
-                    onFeedbackDismiss = onHistoryFeedbackDismiss,
-                )
+                            )
             }
 
             MainTab.ABOUT -> {

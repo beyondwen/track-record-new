@@ -12,26 +12,22 @@ data class AutoTrackDiagnostics(
     val lastEventAt: Long = 0L,
     val lastLocationDecision: String = "\u6682\u672a\u6536\u5230\u5b9a\u4f4d",
     val lastLocationAt: Long = 0L,
-    val lastStartScore: Double? = null,
-    val lastStopScore: Double? = null,
-    val lastDecision: String? = null,
     val lastLocationAccuracyMeters: Float? = null,
     val acceptedPointCount: Int = 0,
     val lastSavedSummary: String? = null,
-    val lastSavedAt: Long = 0L
+    val lastSavedAt: Long = 0L,
 )
 
 object AutoTrackDiagnosticsStorage {
+
     private const val PREFS_NAME = "track_record_diagnostics"
     private const val LOCATION_WRITE_INTERVAL_MS = 4_000L
+
     private const val KEY_SERVICE_STATUS = "service_status"
     private const val KEY_LAST_EVENT = "last_event"
     private const val KEY_LAST_EVENT_AT = "last_event_at"
     private const val KEY_LAST_LOCATION_DECISION = "last_location_decision"
     private const val KEY_LAST_LOCATION_AT = "last_location_at"
-    private const val KEY_LAST_START_SCORE = "last_start_score"
-    private const val KEY_LAST_STOP_SCORE = "last_stop_score"
-    private const val KEY_LAST_DECISION = "last_decision"
     private const val KEY_LAST_LOCATION_ACCURACY = "last_location_accuracy"
     private const val KEY_ACCEPTED_POINT_COUNT = "accepted_point_count"
     private const val KEY_LAST_SAVED_SUMMARY = "last_saved_summary"
@@ -39,10 +35,7 @@ object AutoTrackDiagnosticsStorage {
 
     private val cacheLock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    private val delayedFlushRunnable = Runnable {
-        flushPendingSnapshot()
-    }
+    private val delayedFlushRunnable = Runnable { flushPendingSnapshot() }
 
     @Volatile
     private var diagnosticsCache: AutoTrackDiagnostics? = null
@@ -65,29 +58,18 @@ object AutoTrackDiagnosticsStorage {
             ),
             lastEvent = TrackingTextSanitizer.normalize(
                 prefs.getString(
-                KEY_LAST_EVENT,
-                "\u5e94\u7528\u5df2\u542f\u52a8\uff0c\u7b49\u5f85\u4f4e\u529f\u8017\u63a2\u6d4b"
+                    KEY_LAST_EVENT,
+                    "\u5e94\u7528\u5df2\u542f\u52a8\uff0c\u7b49\u5f85\u4f4e\u529f\u8017\u63a2\u6d4b"
                 ).orEmpty()
             ),
             lastEventAt = prefs.getLong(KEY_LAST_EVENT_AT, 0L),
             lastLocationDecision = TrackingTextSanitizer.normalize(
                 prefs.getString(
-                KEY_LAST_LOCATION_DECISION,
-                "\u6682\u672a\u6536\u5230\u5b9a\u4f4d"
+                    KEY_LAST_LOCATION_DECISION,
+                    "\u6682\u672a\u6536\u5230\u5b9a\u4f4d"
                 ).orEmpty()
             ),
             lastLocationAt = prefs.getLong(KEY_LAST_LOCATION_AT, 0L),
-            lastStartScore = if (prefs.contains(KEY_LAST_START_SCORE)) {
-                prefs.getFloat(KEY_LAST_START_SCORE, 0f).toDouble()
-            } else {
-                null
-            },
-            lastStopScore = if (prefs.contains(KEY_LAST_STOP_SCORE)) {
-                prefs.getFloat(KEY_LAST_STOP_SCORE, 0f).toDouble()
-            } else {
-                null
-            },
-            lastDecision = TrackingTextSanitizer.normalize(prefs.getString(KEY_LAST_DECISION, null)),
             lastLocationAccuracyMeters = if (prefs.contains(KEY_LAST_LOCATION_ACCURACY)) {
                 prefs.getFloat(KEY_LAST_LOCATION_ACCURACY, 0f)
             } else {
@@ -95,13 +77,13 @@ object AutoTrackDiagnosticsStorage {
             },
             acceptedPointCount = prefs.getInt(KEY_ACCEPTED_POINT_COUNT, 0),
             lastSavedSummary = TrackingTextSanitizer.normalize(prefs.getString(KEY_LAST_SAVED_SUMMARY, null)),
-            lastSavedAt = prefs.getLong(KEY_LAST_SAVED_AT, 0L)
+            lastSavedAt = prefs.getLong(KEY_LAST_SAVED_AT, 0L),
         )
         diagnosticsCache = diagnostics
         lastPersistedAt = maxOf(
             diagnostics.lastEventAt,
             diagnostics.lastLocationAt,
-            diagnostics.lastSavedAt
+            diagnostics.lastSavedAt,
         )
         return diagnostics
     }
@@ -111,7 +93,7 @@ object AutoTrackDiagnosticsStorage {
             current.copy(
                 serviceStatus = status,
                 lastEvent = event ?: current.lastEvent,
-                lastEventAt = if (event != null) System.currentTimeMillis() else current.lastEventAt
+                lastEventAt = if (event != null) System.currentTimeMillis() else current.lastEventAt,
             )
         }
     }
@@ -120,7 +102,7 @@ object AutoTrackDiagnosticsStorage {
         update(context) { current ->
             current.copy(
                 lastEvent = event,
-                lastEventAt = System.currentTimeMillis()
+                lastEventAt = System.currentTimeMillis(),
             )
         }
     }
@@ -129,18 +111,15 @@ object AutoTrackDiagnosticsStorage {
         context: Context,
         decision: String,
         acceptedPointCount: Int,
-        accuracyMeters: Float?
+        accuracyMeters: Float?,
     ) {
         update(
             context = context,
-            throttleWrites = true
+            throttleWrites = true,
         ) { current ->
             val now = System.currentTimeMillis()
             val sameAccuracy = current.lastLocationAccuracyMeters == accuracyMeters
-            if (current.lastLocationDecision == decision &&
-                current.acceptedPointCount == acceptedPointCount &&
-                sameAccuracy &&
-                now - current.lastLocationAt < LOCATION_WRITE_INTERVAL_MS
+            if (current.lastLocationDecision == decision && current.acceptedPointCount == acceptedPointCount && sameAccuracy && now - current.lastLocationAt < LOCATION_WRITE_INTERVAL_MS
             ) {
                 return@update current
             }
@@ -148,30 +127,7 @@ object AutoTrackDiagnosticsStorage {
                 lastLocationDecision = decision,
                 lastLocationAt = now,
                 lastLocationAccuracyMeters = accuracyMeters,
-                acceptedPointCount = acceptedPointCount
-            )
-        }
-    }
-
-    fun markDecisionScores(
-        context: Context,
-        startScore: Double,
-        stopScore: Double,
-        finalDecision: String,
-        gateSummary: String? = null,
-    ) {
-        update(
-            context = context,
-            throttleWrites = true
-        ) { current ->
-            current.copy(
-                lastStartScore = startScore,
-                lastStopScore = stopScore,
-                lastDecision = if (gateSummary.isNullOrBlank()) {
-                    finalDecision
-                } else {
-                    "$finalDecision / $gateSummary"
-                },
+                acceptedPointCount = acceptedPointCount,
             )
         }
     }
@@ -183,7 +139,7 @@ object AutoTrackDiagnosticsStorage {
                 lastEvent = "\u672c\u6b21\u884c\u7a0b\u5df2\u81ea\u52a8\u4fdd\u5b58",
                 lastEventAt = System.currentTimeMillis(),
                 lastSavedSummary = summary,
-                lastSavedAt = System.currentTimeMillis()
+                lastSavedAt = System.currentTimeMillis(),
             )
         }
     }
@@ -193,7 +149,7 @@ object AutoTrackDiagnosticsStorage {
             current.copy(
                 serviceStatus = "\u540e\u53f0\u5f85\u547d\u4e2d",
                 lastEvent = reason,
-                lastEventAt = System.currentTimeMillis()
+                lastEventAt = System.currentTimeMillis(),
             )
         }
     }
@@ -210,16 +166,14 @@ object AutoTrackDiagnosticsStorage {
     private fun update(
         context: Context,
         throttleWrites: Boolean = false,
-        transform: (AutoTrackDiagnostics) -> AutoTrackDiagnostics
+        transform: (AutoTrackDiagnostics) -> AutoTrackDiagnostics,
     ) {
         val current = load(context)
         val updated = transform(current)
         if (updated == current) {
             return
         }
-
         diagnosticsCache = updated
-
         val appContext = context.applicationContext
         val preferences = prefs(appContext)
         val shouldPersistImmediately = synchronized(cacheLock) {
@@ -239,7 +193,6 @@ object AutoTrackDiagnosticsStorage {
                 false
             }
         }
-
         if (shouldPersistImmediately) {
             persist(preferences, updated)
         }
@@ -266,21 +219,6 @@ object AutoTrackDiagnosticsStorage {
             putLong(KEY_LAST_EVENT_AT, diagnostics.lastEventAt)
             putString(KEY_LAST_LOCATION_DECISION, TrackingTextSanitizer.normalize(diagnostics.lastLocationDecision))
             putLong(KEY_LAST_LOCATION_AT, diagnostics.lastLocationAt)
-            if (diagnostics.lastStartScore != null) {
-                putFloat(KEY_LAST_START_SCORE, diagnostics.lastStartScore.toFloat())
-            } else {
-                remove(KEY_LAST_START_SCORE)
-            }
-            if (diagnostics.lastStopScore != null) {
-                putFloat(KEY_LAST_STOP_SCORE, diagnostics.lastStopScore.toFloat())
-            } else {
-                remove(KEY_LAST_STOP_SCORE)
-            }
-            if (diagnostics.lastDecision != null) {
-                putString(KEY_LAST_DECISION, TrackingTextSanitizer.normalize(diagnostics.lastDecision))
-            } else {
-                remove(KEY_LAST_DECISION)
-            }
             if (diagnostics.lastLocationAccuracyMeters != null) {
                 putFloat(KEY_LAST_LOCATION_ACCURACY, diagnostics.lastLocationAccuracyMeters)
             } else {
@@ -298,6 +236,5 @@ object AutoTrackDiagnosticsStorage {
         }
     }
 
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private fun prefs(context: Context) = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 }

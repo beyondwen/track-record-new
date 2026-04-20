@@ -1,7 +1,6 @@
 package com.wenhao.record.tracking.pipeline
 
 import com.wenhao.record.tracking.TrackingPhase
-import com.wenhao.record.tracking.decision.DecisionGateInput
 
 class FeatureWindowAggregator(
     private val clock: () -> Long = System::currentTimeMillis,
@@ -15,10 +14,13 @@ class FeatureWindowAggregator(
 
     fun buildVector(): FeatureVector? {
         val latest = snapshots.lastOrNull() ?: return null
+
         val features = linkedMapOf<String, Double>()
+
         fillWindow(features, "30s", latest.timestampMillis - WINDOW_30S_MS)
         fillWindow(features, "60s", latest.timestampMillis - WINDOW_60S_MS)
         fillWindow(features, "180s", latest.timestampMillis - WINDOW_180S_MS)
+
         features["candidate_duration_seconds"] = latest.candidateStateDurationMillis / 1000.0
         features["protection_remaining_seconds"] = latest.protectionRemainingMillis / 1000.0
         features["is_recording"] = latest.isRecording.toBinaryDouble()
@@ -36,23 +38,12 @@ class FeatureWindowAggregator(
             0.0
         }
         features["inside_frequent_place_current"] = latest.insideFrequentPlace.toBinaryDouble()
-        val gateInput = DecisionGateInput(
-            gpsSampleCount30s = features.getValue("gps_sample_count_30s"),
-            gpsAccuracyAvg30s = features.getValue("accuracy_avg_30s"),
-            motionEvidence30s = features.getValue("motion_evidence_30s") >= 1.0,
-            insideFrequentPlace = latest.insideFrequentPlace,
-            isRecording = latest.isRecording,
-            startScore = 0.0,
-            stopScore = 0.0,
-            recordingDurationSeconds = latest.candidateStateDurationMillis / 1000.0,
-            stopObservationPassed = latest.phase == TrackingPhase.SUSPECT_STOPPING,
-        )
+
         return FeatureVector(
             timestampMillis = latest.timestampMillis,
             features = features,
             isRecording = latest.isRecording,
             phase = latest.phase,
-            gateInput = gateInput,
         )
     }
 
@@ -72,10 +63,8 @@ class FeatureWindowAggregator(
         features["accuracy_avg_$suffix"] = accuracyValues.averageOrZero()
         features["speed_avg_$suffix"] = speedValues.averageOrZero()
         features["acceleration_avg_$suffix"] = accelerationValues.averageOrZero()
-        features["inside_frequent_place_${suffix}_ratio"] =
-            windowSnapshots.count { it.insideFrequentPlace }.toRatio(sampleCount)
-        features["wifi_changed_${suffix}_ratio"] =
-            windowSnapshots.count { it.wifiChanged }.toRatio(sampleCount)
+        features["inside_frequent_place_${suffix}_ratio"] = windowSnapshots.count { it.insideFrequentPlace }.toRatio(sampleCount)
+        features["wifi_changed_${suffix}_ratio"] = windowSnapshots.count { it.wifiChanged }.toRatio(sampleCount)
     }
 
     private fun trimBefore(cutoffMillis: Long) {

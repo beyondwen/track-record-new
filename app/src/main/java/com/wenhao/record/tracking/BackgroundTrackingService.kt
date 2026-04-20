@@ -46,7 +46,6 @@ class BackgroundTrackingService : Service() {
     companion object {
         const val ACTION_START = "com.wenhao.record.action.START_BACKGROUND_TRACKING"
         const val ACTION_STOP = "com.wenhao.record.action.STOP_BACKGROUND_TRACKING"
-        const val ACTION_RELOAD_DECISION_MODEL = "com.wenhao.record.action.RELOAD_DECISION_MODEL"
 
         private const val CHANNEL_ID = "smart_tracking"
         private const val NOTIFICATION_ID = 1107
@@ -69,12 +68,6 @@ class BackgroundTrackingService : Service() {
             context.startService(intent)
         }
 
-        fun reloadDecisionModel(context: Context) {
-            val intent = Intent(context, BackgroundTrackingService::class.java).apply {
-                action = ACTION_RELOAD_DECISION_MODEL
-            }
-            context.startService(intent)
-        }
     }
 
     private data class SamplingConfig(
@@ -137,10 +130,6 @@ class BackgroundTrackingService : Service() {
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> runOnTrackingThread(::enableTracking)
             ACTION_STOP -> runOnTrackingThread(::disableTracking)
-            ACTION_RELOAD_DECISION_MODEL -> runOnTrackingThread {
-                if (enabled) {
-                    triggerAnalysis(reason = "手动触发分析")
-                }
             }
         }
         return START_STICKY

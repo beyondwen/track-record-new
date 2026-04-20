@@ -27,11 +27,7 @@ import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryStorage
-import com.wenhao.record.data.tracking.AutoTrackDiagnostics
-import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
-import com.wenhao.record.data.tracking.DecisionFeedbackType
-import com.wenhao.record.data.tracking.DecisionEventStorage
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
@@ -153,16 +149,6 @@ class MainActivity : AppCompatActivity() {
                         startActivity(MapActivity.createHistoryIntent(this, dayStartMillis))
                     },
                     onHistoryDelete = ::confirmDeleteHistoryDay,
-                    onHistoryDecisionFeedback = { eventId ->
-                        historyController.setDecisionFeedbackSheet(eventId = eventId, visible = true)
-                    },
-                    onHistoryFeedbackSubmit = { type ->
-                        historyController.submitFeedback(type)
-                        Toast.makeText(this, feedbackSavedText(type), Toast.LENGTH_SHORT).show()
-                    },
-                    onHistoryFeedbackDismiss = {
-                        historyController.setDecisionFeedbackSheet(eventId = 0L, visible = false)
-                    },
                 )
             }
         }
@@ -561,7 +547,6 @@ class MainActivity : AppCompatActivity() {
         val permissionSummary = buildPermissionSummarySafe()
         val eventSummary = buildTimedSummary(diagnostics.lastEventAt, diagnostics.lastEvent)
         val locationSummary = buildLocationSummary(diagnostics)
-        val decisionSummary = buildDecisionSummary(diagnostics)
         val saveSummary = diagnostics.lastSavedSummary?.let { summary ->
             buildTimedSummary(diagnostics.lastSavedAt, summary)
         } ?: "还没有完成并写入历史的有效轨迹分析"
@@ -572,8 +557,7 @@ class MainActivity : AppCompatActivity() {
             append("服务：").append(diagnostics.serviceStatus).append('\n')
             append("最近事件：").append(eventSummary).append('\n')
             append("最近定位：").append(locationSummary).append('\n')
-            append("模型决策：").append(decisionSummary).append('\n')
-            append("最近保存：").append(saveSummary)
+                append("最近保存：").append(saveSummary)
             if (!crashSummary.isNullOrBlank()) {
                 append('\n').append("最近异常：").append(crashSummary)
             }
@@ -588,9 +572,7 @@ class MainActivity : AppCompatActivity() {
                     "等待定位信号"
                 }
             )
-            if (decisionSummary.isNotBlank()) {
-                append('\n').append(decisionSummary)
-            }
+
             if (!crashSummary.isNullOrBlank()) {
                 append('\n').append(crashSummary)
             }
@@ -622,27 +604,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun buildDecisionSummary(diagnostics: AutoTrackDiagnostics): String {
-        val decision = diagnostics.lastDecision ?: return "尚未生成模型决策"
-        val parts = mutableListOf<String>()
-        parts += "最终判定 $decision"
-        diagnostics.lastStartScore?.let { score ->
-            parts += "起点 ${"%.2f".format(Locale.US, score)}"
-        }
         diagnostics.lastStopScore?.let { score ->
             parts += "终点 ${"%.2f".format(Locale.US, score)}"
         }
         return parts.joinToString("，")
     }
 
-    private fun feedbackSavedText(type: DecisionFeedbackType): String {
-        return when (type) {
-            DecisionFeedbackType.START_TOO_EARLY -> "已标记为动态段起点太早"
-            DecisionFeedbackType.START_TOO_LATE -> "已标记为动态段起点太晚"
-            DecisionFeedbackType.STOP_TOO_EARLY -> "已标记为动态段终点太早"
-            DecisionFeedbackType.STOP_TOO_LATE -> "已标记为动态段终点太晚"
-            DecisionFeedbackType.CORRECT -> "已标记为判定正确"
-        }
     }
 
     private fun buildTimedSummary(timestamp: Long, summary: String): String {
