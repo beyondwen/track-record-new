@@ -33,7 +33,7 @@ class WorkerConnectivityService(
         return try {
             val response = requestExecutor(
                 WorkerConnectivityRequest(
-                    url = "${workerBaseUrl.trim().trimEnd('/')}/raw-points/batch",
+                    url = "${workerBaseUrl.trim().trimEnd('/')}/health",
                     method = "GET",
                 )
             )
@@ -48,8 +48,8 @@ class WorkerConnectivityService(
 
     private fun parseResponse(response: WorkerConnectivityResponse): WorkerConnectivityResult {
         val message = when (response.statusCode) {
-            405 -> "Worker 可达，接口路径正常（返回 405）"
-            401, 403 -> "Worker 可达，但鉴权会失败（返回 ${response.statusCode}）"
+            200 -> "Worker 可达，健康检查正常（返回 200）"
+            401, 403 -> "Worker 可达，但健康检查不该要求鉴权（返回 ${response.statusCode}）"
             404 -> "Worker 可达，但接口路径不对（返回 404）"
             in 500..599 -> "Worker 可达，但服务端异常（返回 ${response.statusCode}）"
             else -> "Worker 可达（返回 ${response.statusCode}）"

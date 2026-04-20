@@ -2,14 +2,59 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 function createMockPreparedStatement(
   sql: string,
-  bindCollector: Array<{ sql: string; args: unknown[] }>
+  bindCollector: Array<{ sql: string; args: unknown[] }>,
+  allHandler?: (sql: string, args: unknown[]) => Promise<D1Result<unknown>>
 ): D1PreparedStatement {
+  let boundArgs: unknown[] = [];
   return {
     bind(...args: unknown[]) {
+      boundArgs = args;
       bindCollector.push({ sql, args });
       return this;
+    },
+    all() {
+      return allHandler?.(sql, boundArgs) ?? Promise.resolve({
+        success: true,
+        results: []
+      } as D1Result<unknown>);
     }
   } as D1PreparedStatement;
+}
+
+function createMockEnv(changeCounts: number[]): {
+  env: { UPLOAD_TOKEN: string; DB: D1Database };
+  prepare: ReturnType<typeof vi.fn>;
+  batch: ReturnType<typeof vi.fn>;
+  bindCollector: Array<{ sql: string; args: unknown[] }>;
+}
+
+function createMockReadEnv(
+  queryResults: Array<{ sqlIncludes: string; rows: unknown[] }>
+): {
+  env: { UPLOAD_TOKEN: string; DB: D1Database };
+  prepare: ReturnType<typeof vi.fn>;
+  bindCollector: Array<{ sql: string; args: unknown[] }>;
+} {
+  const bindCollector: Array<{ sql: string; args: unknown[] }> = [];
+  const prepare = vi.fn((sql: string) =>
+    createMockPreparedStatement(sql, bindCollector, async (boundSql) => {
+      const matched = queryResults.find((item) => boundSql.includes(item.sqlIncludes));
+      return {
+        success: true,
+        results: matched?.rows ?? []
+      } as D1Result<unknown>;
+    })
+  );
+  return {
+    env: {
+      UPLOAD_TOKEN: "token",
+      DB: ({
+        prepare
+      } as unknown) as D1Database
+    },
+    prepare,
+    bindCollector
+  };
 }
 
 function createMockEnv(changeCounts: number[]): {
@@ -219,5 +264,100 @@ describe("createD1 persistence", () => {
       dedupedCount: 0,
       acceptedHistoryIds: [201]
     });
+  });
+
+  it("reads uploaded histories from D1", async () => {
+    const { createD1HistoryPersistence } = await import("./d1");
+    const { env, prepare, bindCollector } = createMockReadEnv([
+      {
+        sqlIncludes: "FROM uploaded_histories",
+        rows: [
+          {
+            history_id: 201,
+            timestamp_millis: 1700000000000,
+            distance_km: 1.23,
+            duration_seconds: 456,
+            average_speed_kmh: 9.8,
+            title: "通勤",
+            start_source: "MANUAL",
+            stop_source: "AUTO",
+            manual_start_at: 1700000000000,
+            manual_stop_at: 1700000000500,
+            points_json:
+              '[{"latitude":30.1,"longitude":120.1,"timestampMillis":1700000000000,"accuracyMeters":5.5,"altitudeMeters":20.2,"wgs84Latitude":30.09,"wgs84Longitude":120.09}]'
+          }
+        ]
+      }
+    ]);
+
+    const histories = await createD1HistoryPersistence().readHistories(
+      "device-1",
+      env
+    );
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(bindCollector[0]?.args).toEqual(["device-1"]);
+    expect(histories).toEqual([
+      {
+        historyId: 201,
+        timestampMillis: 1700000000000,
+        distanceKm: 1.23,
+        durationSeconds: 456,
+        averageSpeedKmh: 9.8,
+        title: "通勤",
+        startSource: "MANUAL",
+        stopSource: "AUTO",
+        manualStartAt: 1700000000000,
+        manualStopAt: 1700000000500,
+        points: [
+          {
+            latitude: 30.1,
+            longitude: 120.1,
+            timestampMillis: 1700000000000,
+            accuracyMeters: 5.5,
+            altitudeMeters: 20.2,
+            wgs84Latitude: 30.09,
+            wgs84Longitude: 120.09
+          }
+        ]
+      }
+    ]);
+  });
+
+  it("reads uploaded histories for a specific day from D1", async () => {
+    const { createD1HistoryPersistence } = await import("./d1");
+    const { env, bindCollector } = createMockReadEnv([
+      {
+        sqlIncludes: "WHERE device_id = ?",
+        rows: [
+          {
+            history_id: 301,
+            timestamp_millis: 1700003600000,
+            distance_km: 3.21,
+            duration_seconds: 654,
+            average_speed_kmh: 17.7,
+            title: null,
+            start_source: null,
+            stop_source: null,
+            manual_start_at: null,
+            manual_stop_at: null,
+            points_json: "[]"
+          }
+        ]
+      }
+    ]);
+
+    const histories = await createD1HistoryPersistence().readHistoriesByDay(
+      "device-1",
+      1700000000000,
+      env
+    );
+
+    expect(bindCollector[0]?.args).toEqual([
+      "device-1",
+      1700000000000,
+      1700086400000
+    ]);
+    expect(histories.map((history) => history.historyId)).toEqual([301]);
   });
 });

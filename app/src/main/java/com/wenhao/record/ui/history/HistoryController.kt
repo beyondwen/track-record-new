@@ -7,17 +7,22 @@ import androidx.compose.runtime.setValue
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.history.RemoteHistoryRepository
+import com.wenhao.record.util.AppTaskExecutor
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.runBlocking
 
 class HistoryController(
     private val context: Context,
+    private val remoteHistoryRepository: RemoteHistoryRepository = RemoteHistoryRepository(),
 ) {
     private var historyItems: List<HistoryDayItem> = emptyList()
     private var cachedTotalDistanceKm = 0.0
     private var cachedTotalDurationSeconds = 0
     private var selectedDayStartMillis: Long? = null
+    private var reloadGeneration = 0L
 
     var uiState by mutableStateOf(
         HistoryScreenUiState(
@@ -29,9 +34,23 @@ class HistoryController(
         private set
 
     fun reload() {
+        val generation = nextReloadGeneration()
         historyItems = HistoryStorage.peekDaily(context)
         recalculateTotals()
         updateContent()
+
+        val appContext = context.applicationContext
+        AppTaskExecutor.runOnIo {
+            val mergedDaily = runBlocking {
+                remoteHistoryRepository.loadMergedDaily(appContext)
+            }
+            AppTaskExecutor.runOnMain {
+                if (generation != reloadGeneration) return@runOnMain
+                historyItems = mergedDaily
+                recalculateTotals()
+                updateContent()
+            }
+        }
     }
 
     fun updateContent() {
@@ -90,5 +109,11 @@ class HistoryController(
             totalMinutes > 0 -> "${totalMinutes}分钟"
             else -> "少于 1 分钟"
         }
+    }
+
+    @Synchronized
+    private fun nextReloadGeneration(): Long {
+        reloadGeneration += 1
+        return reloadGeneration
     }
 }

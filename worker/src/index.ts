@@ -10,6 +10,7 @@ import type {
   Env,
   ErrorResponseBody,
   HistoryPersistence,
+  HistoryReadSuccessResponseBody,
   HistorySuccessResponseBody,
   RawPointPersistence,
   RawPointSuccessResponseBody
@@ -36,7 +37,12 @@ interface AppDependencies {
 function jsonResponse(
   status: number,
   body:
+    | {
+        ok: true;
+        message: string;
+      }
     | HistorySuccessResponseBody
+    | HistoryReadSuccessResponseBody
     | RawPointSuccessResponseBody
     | AnalysisSuccessResponseBody
     | ErrorResponseBody
@@ -60,6 +66,32 @@ function ensureJsonContentType(request: Request): ErrorResponseBody | null {
   return null;
 }
 
+function parseRequiredQueryString(
+  value: string | null,
+  label: string,
+  maxLength = 128
+): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new ValidationError(`${label} must be a non-empty string`);
+  }
+  const normalized = value.trim();
+  if (normalized.length > maxLength) {
+    throw new ValidationError(`${label} length must be <= ${maxLength}`);
+  }
+  return normalized;
+}
+
+function parseRequiredQueryInteger(value: string | null, label: string): number {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new ValidationError(`${label} must be an integer`);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new ValidationError(`${label} must be an integer`);
+  }
+  return parsed;
+}
+
 export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
   const historyPersistence =
     deps.historyPersistence ?? createD1HistoryPersistence();
@@ -71,7 +103,23 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
   return {
     async fetch(request, env): Promise<Response> {
       const url = new URL(request.url);
+      if (url.pathname === "/health") {
+        if (request.method !== "GET") {
+          return jsonResponse(405, {
+            ok: false,
+            message: "Method not allowed"
+          });
+        }
+
+        return jsonResponse(200, {
+          ok: true,
+          message: "ok"
+        });
+      }
+
       if (
+        url.pathname !== "/histories" &&
+        url.pathname !== "/histories/day" &&
         url.pathname !== "/histories/batch" &&
         url.pathname !== "/raw-points/batch" &&
         url.pathname !== "/analysis/batch"
@@ -79,13 +127,6 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
         return jsonResponse(404, {
           ok: false,
           message: "Not found"
-        });
-      }
-
-      if (request.method !== "POST") {
-        return jsonResponse(405, {
-          ok: false,
-          message: "Method not allowed"
         });
       }
 
@@ -97,22 +138,59 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
         });
       }
 
-      const contentTypeFailure = ensureJsonContentType(request);
-      if (contentTypeFailure) {
-        return jsonResponse(400, contentTypeFailure);
-      }
-
-      let payload: unknown;
       try {
-        payload = await request.json();
-      } catch {
-        return jsonResponse(400, {
-          ok: false,
-          message: "Request body must be valid JSON"
-        });
-      }
+        if (url.pathname === "/histories" || url.pathname === "/histories/day") {
+          if (request.method !== "GET") {
+            return jsonResponse(405, {
+              ok: false,
+              message: "Method not allowed"
+            });
+          }
 
-      try {
+          const deviceId = parseRequiredQueryString(
+            url.searchParams.get("deviceId"),
+            "`deviceId`"
+          );
+          const histories =
+            url.pathname === "/histories/day"
+              ? await historyPersistence.readHistoriesByDay(
+                  deviceId,
+                  parseRequiredQueryInteger(
+                    url.searchParams.get("dayStartMillis"),
+                    "`dayStartMillis`"
+                  ),
+                  env
+                )
+              : await historyPersistence.readHistories(deviceId, env);
+
+          return jsonResponse(200, {
+            ok: true,
+            histories
+          });
+        }
+
+        if (request.method !== "POST") {
+          return jsonResponse(405, {
+            ok: false,
+            message: "Method not allowed"
+          });
+        }
+
+        const contentTypeFailure = ensureJsonContentType(request);
+        if (contentTypeFailure) {
+          return jsonResponse(400, contentTypeFailure);
+        }
+
+        let payload: unknown;
+        try {
+          payload = await request.json();
+        } catch {
+          return jsonResponse(400, {
+            ok: false,
+            message: "Request body must be valid JSON"
+          });
+        }
+
         if (url.pathname === "/raw-points/batch") {
           const validated = validateRawPointBatchRequest(payload);
           const persisted = await rawPointPersistence.persistRawPoints(

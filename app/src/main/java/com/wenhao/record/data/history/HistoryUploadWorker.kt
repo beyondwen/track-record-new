@@ -16,10 +16,32 @@ class HistoryUploadWorker(
     },
     private val uploadedHistoryIdsLoader: (Context) -> Set<Long> = UploadedHistoryStore::load,
     private val markUploaded: (Context, List<Long>) -> Unit = UploadedHistoryStore::markUploaded,
+    private val pruneUploadedHistories: suspend (Context, Set<Long>, Long) -> List<Long> = { context, uploadedIds, nowMillis ->
+        HistoryRetentionPolicy.pruneUploadedHistories(context, uploadedIds, nowMillis)
+    },
     private val uploadService: HistoryUploadService = HistoryUploadService(),
     private val configLoader: (Context) -> TrainingSampleUploadConfig = TrainingSampleUploadConfigStorage::load,
     private val deviceIdProvider: (Context) -> String = ::uploadDeviceId,
+    private val nowProvider: () -> Long = System::currentTimeMillis,
 ) : CoroutineWorker(appContext, workerParams) {
+
+    constructor(
+        appContext: Context,
+        workerParams: WorkerParameters,
+    ) : this(
+        appContext = appContext,
+        workerParams = workerParams,
+        historyLoader = { context -> HistoryStorage.load(context) },
+        uploadedHistoryIdsLoader = UploadedHistoryStore::load,
+        markUploaded = UploadedHistoryStore::markUploaded,
+        pruneUploadedHistories = { context, uploadedIds, nowMillis ->
+            HistoryRetentionPolicy.pruneUploadedHistories(context, uploadedIds, nowMillis)
+        },
+        uploadService = HistoryUploadService(),
+        configLoader = TrainingSampleUploadConfigStorage::load,
+        deviceIdProvider = ::uploadDeviceId,
+        nowProvider = System::currentTimeMillis,
+    )
 
     override suspend fun doWork(): Result {
         val config = configLoader(applicationContext)
@@ -49,14 +71,28 @@ class HistoryUploadWorker(
         return when (val result = uploader.upload(rows = pendingRows)) {
             is HistoryBatchUploadResult.Success -> {
                 markUploaded(applicationContext, result.acceptedHistoryIds)
+                pruneAcceptedHistory(result.acceptedHistoryIds, uploadedHistoryIds)
                 Result.success()
             }
 
             is HistoryBatchUploadResult.Failure -> {
                 markUploaded(applicationContext, result.acceptedHistoryIds)
+                pruneAcceptedHistory(result.acceptedHistoryIds, uploadedHistoryIds)
                 retryOrFail(result.message)
             }
         }
+    }
+
+    private suspend fun pruneAcceptedHistory(
+        acceptedHistoryIds: List<Long>,
+        existingUploadedHistoryIds: Set<Long>,
+    ) {
+        val mergedUploadedIds = existingUploadedHistoryIds + acceptedHistoryIds
+        pruneUploadedHistories(
+            applicationContext,
+            mergedUploadedIds,
+            nowProvider(),
+        )
     }
 
     private fun retryOrFail(message: String): Result {

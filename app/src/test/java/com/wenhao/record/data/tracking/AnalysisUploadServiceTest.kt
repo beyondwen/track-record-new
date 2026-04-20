@@ -13,8 +13,8 @@ class AnalysisUploadServiceTest {
             requestExecutor = { request ->
                 assertEquals("https://worker.example.com/analysis/batch", request.url)
                 assertEquals("POST", request.method)
-                assertTrue(request.body.contains("\"segments\""))
-                TrainingSampleUploadResponse(
+                assertTrue(request.body.orEmpty().contains("\"segments\""))
+                UploadHttpResponse(
                     statusCode = 200,
                     body = """{"ok":true,"insertedCount":2,"dedupedCount":1,"acceptedMaxSegmentId":52}"""
                 )
@@ -39,7 +39,7 @@ class AnalysisUploadServiceTest {
     fun `upload returns auth failure message for unauthorized response`() {
         val service = AnalysisUploadService(
             requestExecutor = {
-                TrainingSampleUploadResponse(statusCode = 403, body = """{"ok":false,"message":"forbidden"}""")
+                UploadHttpResponse(statusCode = 403, body = """{"ok":false,"message":"forbidden"}""")
             }
         )
 

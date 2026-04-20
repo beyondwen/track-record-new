@@ -1,6 +1,7 @@
 package com.wenhao.record.ui.main
 
 import com.wenhao.record.data.history.HistoryItem
+import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.ui.map.TrackMapSceneState
@@ -12,7 +13,12 @@ interface HomeMapPort {
     fun configure(previewLocation: GeoCoordinate?, hasLocationPermission: Boolean, defaultCoordinate: GeoCoordinate)
     fun hasActiveTrack(): Boolean
     fun hasTodayTracks(): Boolean
-    fun render(runtimeSnapshot: TrackingRuntimeSnapshot?, previewLocation: GeoCoordinate?, todayHistoryItems: List<HistoryItem>)
+    fun render(
+        runtimeSnapshot: TrackingRuntimeSnapshot?,
+        previewLocation: GeoCoordinate?,
+        todayHistoryItems: List<HistoryItem>,
+        activeSessionPoints: List<TrackPoint> = emptyList(),
+    )
     fun centerOnPreviewLocation(latLng: GeoCoordinate, zoom: Double = 17.0)
     fun updateCurrentLocation(latLng: GeoCoordinate, shouldCenter: Boolean)
     fun showPreviewLocationIfIdle(previewLocation: GeoCoordinate?)

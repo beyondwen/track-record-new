@@ -211,14 +211,14 @@ private fun buildHistoryDateDetail(
     displayTitle: String,
     sessionCount: Int,
 ): String {
-    return "$displayTitle / 共 $sessionCount 段行程"
+    return "$displayTitle · $sessionCount 段"
 }
 
 private fun buildHistorySessionCountLabel(
     sessionCount: Int,
     formattedLatestTime: String,
 ): String {
-    return "共 $sessionCount 段行程，最近 $formattedLatestTime"
+    return "$sessionCount 段 · 最近 $formattedLatestTime"
 }
 
 private fun buildHistorySummary(
@@ -226,12 +226,12 @@ private fun buildHistorySummary(
     formattedDuration: String,
     formattedSpeed: String,
 ): String {
-    return "$formattedDistance / $formattedDuration / 平均 $formattedSpeed"
+    return "$formattedDistance · $formattedDuration · 均速 $formattedSpeed"
 }
 
 private fun buildHistoryPointCountLabel(
     sessionCount: Int,
     pointCount: Int,
 ): String {
-    return "共 $sessionCount 段行程 / $pointCount 个定位点"
+    return "$sessionCount 段 · $pointCount 个点"
 }

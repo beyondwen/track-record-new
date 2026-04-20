@@ -4,7 +4,7 @@ data class UploadHttpRequest(
     val url: String,
     val method: String,
     val headers: Map<String, String>,
-    val body: String,
+    val body: String? = null,
 )
 
 data class UploadHttpResponse(

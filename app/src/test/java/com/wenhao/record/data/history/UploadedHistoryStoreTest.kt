@@ -59,4 +59,13 @@ class UploadedHistoryStoreTest {
                 .contains("bad-value")
         )
     }
+
+    @Test
+    fun `remove deletes specified uploaded ids`() {
+        UploadedHistoryStore.markUploaded(context, listOf(3L, 7L, 11L))
+
+        UploadedHistoryStore.remove(context, listOf(7L, 99L))
+
+        assertEquals(setOf(3L, 11L), UploadedHistoryStore.load(context))
+    }
 }

@@ -56,6 +56,7 @@ class ApkDownloadInstaller(
     }
 }
 
+@Suppress("DEPRECATION")
 internal fun buildInstallIntent(contentUri: Uri): Intent {
     return Intent(Intent.ACTION_INSTALL_PACKAGE).apply {
         setDataAndType(contentUri, APK_MIME_TYPE)

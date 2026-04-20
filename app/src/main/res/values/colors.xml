@@ -11,13 +11,6 @@
     <color name="md_theme_light_onSecondaryContainer">#2A2135</color>
     <color name="md_theme_light_background">#F4F0EA</color>
     <color name="md_theme_light_surface">#FFFFFF</color>
-    <color name="md_theme_light_onSurface">#201D26</color>
-    <color name="md_theme_light_onSurfaceVariant">#8B8594</color>
-    <color name="md_theme_light_outlineVariant">#E7DED3</color>
-
-    <color name="dashboard_header_bg">#EDE7DE</color>
-    <color name="dashboard_handle">#EEE9E2</color>
-    <color name="dashboard_nav_inactive">#9D97A4</color>
     <color name="dashboard_badge_green">#35C77D</color>
     <color name="dashboard_badge_yellow">#E2A93B</color>
     <color name="dashboard_badge_red">#E56A6A</color>

@@ -1,6 +1,7 @@
 package com.wenhao.record.data.tracking
 
 import android.content.Context
+import androidx.core.content.edit
 
 object TrainingSampleUploadConfigStorage {
     internal const val PREFS_NAME = "training_sample_upload_config"
@@ -21,25 +22,25 @@ object TrainingSampleUploadConfigStorage {
 
     fun save(context: Context, config: TrainingSampleUploadConfig) {
         val sanitizedConfig = sanitize(config)
-        val editor = prefs(context).edit()
-        if (sanitizedConfig.workerBaseUrl.isEmpty()) {
-            editor.remove(KEY_WORKER_BASE_URL)
-        } else {
-            editor.putString(KEY_WORKER_BASE_URL, sanitizedConfig.workerBaseUrl)
+        prefs(context).edit {
+            if (sanitizedConfig.workerBaseUrl.isEmpty()) {
+                remove(KEY_WORKER_BASE_URL)
+            } else {
+                putString(KEY_WORKER_BASE_URL, sanitizedConfig.workerBaseUrl)
+            }
+            if (sanitizedConfig.uploadToken.isEmpty()) {
+                remove(KEY_UPLOAD_TOKEN)
+            } else {
+                putString(KEY_UPLOAD_TOKEN, sanitizedConfig.uploadToken)
+            }
         }
-        if (sanitizedConfig.uploadToken.isEmpty()) {
-            editor.remove(KEY_UPLOAD_TOKEN)
-        } else {
-            editor.putString(KEY_UPLOAD_TOKEN, sanitizedConfig.uploadToken)
-        }
-        editor.apply()
     }
 
     fun clear(context: Context) {
-        prefs(context).edit()
-            .remove(KEY_WORKER_BASE_URL)
-            .remove(KEY_UPLOAD_TOKEN)
-            .apply()
+        prefs(context).edit {
+            remove(KEY_WORKER_BASE_URL)
+            remove(KEY_UPLOAD_TOKEN)
+        }
     }
 
     private fun sanitize(config: TrainingSampleUploadConfig): TrainingSampleUploadConfig {

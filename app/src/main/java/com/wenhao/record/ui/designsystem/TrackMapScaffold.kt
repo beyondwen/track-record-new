@@ -38,8 +38,8 @@ fun TrackFloatingMapButton(
     icon: Painter,
     contentDescription: String,
     onClick: () -> Unit,
-    accented: Boolean = false,
     modifier: Modifier = Modifier,
+    accented: Boolean = false,
 ) {
     TrackLiquidPanel(
         modifier = modifier.size(52.dp),
@@ -71,10 +71,10 @@ fun TrackFloatingMapButton(
 @Composable
 fun TrackTopOverlayCard(
     title: String,
+    modifier: Modifier = Modifier,
     body: String? = null,
     eyebrow: String? = null,
     accentColor: Color = MaterialTheme.colorScheme.primary,
-    modifier: Modifier = Modifier,
 ) {
     TrackLiquidPanel(
         modifier = modifier,

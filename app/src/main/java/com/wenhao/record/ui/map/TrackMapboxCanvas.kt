@@ -110,10 +110,10 @@ fun TrackMapboxCanvas(
             )
         }
     }
-    if (snapshotBitmap != null) {
+    snapshotBitmap?.let { bitmap ->
         Box(modifier = modifier.fillMaxSize()) {
             Image(
-                bitmap = snapshotBitmap!!.asImageBitmap(),
+                bitmap = bitmap.asImageBitmap(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

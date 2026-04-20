@@ -1,5 +1,6 @@
 package com.wenhao.record.data.tracking
 
+import com.wenhao.record.data.history.executeWithHttpUrlConnection
 import org.json.JSONObject
 import java.io.IOException
 
@@ -16,7 +17,7 @@ sealed interface RawPointUploadResult {
 }
 
 class RawPointUploadService(
-    private val requestExecutor: TrainingSampleUploadRequestExecutor = ::executeWithHttpUrlConnection,
+    private val requestExecutor: UploadHttpRequestExecutor = ::executeWithHttpUrlConnection,
 ) {
     fun upload(
         config: TrainingSampleUploadConfig,
@@ -25,7 +26,7 @@ class RawPointUploadService(
         rows: List<RawPointUploadRow>,
     ): RawPointUploadResult {
         return try {
-            val request = TrainingSampleUploadRequest(
+            val request = UploadHttpRequest(
                 url = "${config.workerBaseUrl.trim().trimEnd('/')}/raw-points/batch",
                 method = "POST",
                 headers = mapOf(
@@ -47,7 +48,7 @@ class RawPointUploadService(
         }
     }
 
-    private fun parseResponse(response: TrainingSampleUploadResponse): RawPointUploadResult {
+    private fun parseResponse(response: UploadHttpResponse): RawPointUploadResult {
         if (response.statusCode == 401 || response.statusCode == 403) {
             return RawPointUploadResult.Failure(RAW_POINT_AUTH_FAILURE_MESSAGE)
         }

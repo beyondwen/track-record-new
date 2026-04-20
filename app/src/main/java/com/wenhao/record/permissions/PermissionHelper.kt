@@ -10,17 +10,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.wenhao.record.R
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
+import com.wenhao.record.tracking.BackgroundTrackingService
 
 class PermissionHelper(
     private val activity: AppCompatActivity,
     private val onRefreshGpsStatus: () -> Unit,
     private val onLocateGranted: () -> Unit,
     private val onRefreshDashboard: () -> Unit,
-    private val onManualRecordReady: () -> Unit,
 ) {
     private enum class PendingPermissionAction {
         LOCATE,
-        MANUAL_RECORD,
     }
 
     private var pendingPermissionAction: PendingPermissionAction? = null
@@ -44,7 +44,6 @@ class PermissionHelper(
         onRefreshGpsStatus()
         when (action) {
             PendingPermissionAction.LOCATE -> onLocateGranted()
-            PendingPermissionAction.MANUAL_RECORD -> onManualRecordReady()
             null -> Unit
         }
     }
@@ -97,10 +96,22 @@ class PermissionHelper(
     }
 
     fun ensureSmartTrackingEnabled() {
-        onRefreshDashboard()
+        when {
+            canRunBackgroundTracking() -> startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
+            !hasSmartTrackingBasePermissions() -> smartTrackingPermissionLauncher.launch(buildSmartTrackingPermissionList())
+            needsBackgroundLocationPermission() -> showBackgroundLocationSettingsPrompt()
+            else -> onRefreshDashboard()
+        }
     }
 
     fun startBackgroundTrackingServiceIfReady() {
+        if (canRunBackgroundTracking()) {
+            startBackgroundTrackingWithPrompts(promptBatteryOptimization = false)
+            return
+        }
+        if (TrackingRuntimeSnapshotStorage.peek(activity).isEnabled) {
+            BackgroundTrackingService.stop(activity)
+        }
         onRefreshDashboard()
     }
 
@@ -115,21 +126,6 @@ class PermissionHelper(
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION
-            )
-        )
-    }
-
-    fun requestManualRecordPermissionOrRun() {
-        if (hasLocationPermission()) {
-            onManualRecordReady()
-            return
-        }
-
-        pendingPermissionAction = PendingPermissionAction.MANUAL_RECORD
-        locationPermissionLauncher.launch(
-            arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION,
             )
         )
     }
@@ -152,6 +148,10 @@ class PermissionHelper(
 
     fun needsNotificationPermission(): Boolean {
         return TrackingPermissionGate.needsNotificationPermission(activity)
+    }
+
+    fun canRunBackgroundTracking(): Boolean {
+        return TrackingPermissionGate.canRunBackgroundTracking(activity)
     }
 
     fun shouldRequestIgnoreBatteryOptimizations(): Boolean {
@@ -193,11 +193,12 @@ class PermissionHelper(
     }
 
     private fun startBackgroundTrackingWithPrompts(promptBatteryOptimization: Boolean) {
-        onManualRecordReady()
+        BackgroundTrackingService.start(activity)
         maybeShowNotificationPermissionHint()
         if (promptBatteryOptimization) {
             maybeShowBatteryOptimizationPrompt()
         }
+        onRefreshDashboard()
     }
 
     private fun maybeShowBatteryOptimizationPrompt() {

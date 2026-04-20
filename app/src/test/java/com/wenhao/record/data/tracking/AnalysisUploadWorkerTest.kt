@@ -15,6 +15,7 @@ import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.local.stream.UploadCursorEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -23,6 +24,16 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, manifest = Config.NONE, sdk = [35])
 class AnalysisUploadWorkerTest {
+
+    @Test
+    fun `worker exposes workmanager compatible constructor`() {
+        assertNotNull(
+            AnalysisUploadWorker::class.java.getDeclaredConstructor(
+                Context::class.java,
+                WorkerParameters::class.java,
+            )
+        )
+    }
 
     @Test
     fun `doWork advances analysis cursor after successful batch`() = runBlocking {
@@ -39,7 +50,7 @@ class AnalysisUploadWorkerTest {
             cursorStorage = cursorStorage,
             uploadService = AnalysisUploadService(
                 requestExecutor = {
-                    TrainingSampleUploadResponse(
+                    UploadHttpResponse(
                         statusCode = 200,
                         body = """{"ok":true,"insertedCount":1,"dedupedCount":0,"acceptedMaxSegmentId":31}"""
                     )
@@ -65,7 +76,7 @@ class AnalysisUploadWorkerTest {
             cursorStorage = UploadCursorStorage(dao),
             uploadService = AnalysisUploadService(
                 requestExecutor = {
-                    TrainingSampleUploadResponse(
+                    UploadHttpResponse(
                         statusCode = 500,
                         body = """{"ok":false,"message":"server down"}"""
                     )

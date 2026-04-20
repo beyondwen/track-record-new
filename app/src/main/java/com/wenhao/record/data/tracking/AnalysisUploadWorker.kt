@@ -20,6 +20,23 @@ class AnalysisUploadWorker(
     private val deviceIdProvider: (Context) -> String = ::uploadDeviceId,
 ) : CoroutineWorker(appContext, workerParams) {
 
+    constructor(
+        appContext: Context,
+        workerParams: WorkerParameters,
+    ) : this(
+        appContext = appContext,
+        workerParams = workerParams,
+        pointStorage = ContinuousPointStorage(
+            TrackDatabase.getInstance(appContext).continuousTrackDao(),
+        ),
+        cursorStorage = UploadCursorStorage(
+            TrackDatabase.getInstance(appContext).continuousTrackDao(),
+        ),
+        uploadService = AnalysisUploadService(),
+        configLoader = TrainingSampleUploadConfigStorage::load,
+        deviceIdProvider = ::uploadDeviceId,
+    )
+
     override suspend fun doWork(): Result {
         val config = configLoader(applicationContext)
         if (!config.isConfigured()) return Result.success()

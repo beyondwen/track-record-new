@@ -1,14 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="compose_map_overlay_status_button">查看状态</string>
-    <string name="compose_map_overlay_open_status">查看地图状态详情</string>
-    <string name="compose_map_overlay_close_status">关闭地图状态详情</string>
-    <string name="compose_map_overlay_collapsed_description">当前状态已收起，%1$s，点按查看详情</string>
-    <string name="compose_map_overlay_collapsed_hint">点按查看详情</string>
+    <string name="compose_map_overlay_open_status">查看状态</string>
+    <string name="compose_map_overlay_close_status">收起状态</string>
+    <string name="compose_map_overlay_collapsed_description">状态已收起，%1$s，点按展开</string>
+    <string name="compose_map_overlay_collapsed_hint">点按展开</string>
     <string name="compose_map_overlay_status_fallback">状态信息</string>
     <string name="compose_map_overlay_status_waiting">正在等待最新状态</string>
     <string name="compose_map_overlay_tracking_title">采点与分析状态</string>
     <string name="compose_map_overlay_diagnostics_title">实时诊断</string>
-    <string name="compose_map_overlay_diagnostics_empty">当前暂无更多诊断信息。</string>
+    <string name="compose_map_overlay_diagnostics_empty">暂无更多诊断信息。</string>
     <string name="compose_map_overlay_confirm">知道了</string>
 </resources>

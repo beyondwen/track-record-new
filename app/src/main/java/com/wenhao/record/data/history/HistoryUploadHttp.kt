@@ -1,24 +1,26 @@
 package com.wenhao.record.data.history
 
-import com.wenhao.record.data.tracking.TrainingSampleUploadRequest
-import com.wenhao.record.data.tracking.TrainingSampleUploadResponse
+import com.wenhao.record.data.tracking.UploadHttpRequest
+import com.wenhao.record.data.tracking.UploadHttpResponse
 import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-internal fun executeWithHttpUrlConnection(request: TrainingSampleUploadRequest): TrainingSampleUploadResponse {
+internal fun executeWithHttpUrlConnection(request: UploadHttpRequest): UploadHttpResponse {
     val connection = URL(request.url).openConnection() as HttpURLConnection
     connection.requestMethod = request.method
     connection.connectTimeout = 15000
     connection.readTimeout = 15000
-    connection.doOutput = true
+    connection.doOutput = request.body != null
     request.headers.forEach { (name, value) ->
         connection.setRequestProperty(name, value)
     }
 
     return try {
-        connection.outputStream.bufferedWriter(Charsets.UTF_8).use { writer ->
-            writer.write(request.body)
+        request.body?.let { body ->
+            connection.outputStream.bufferedWriter(Charsets.UTF_8).use { writer ->
+                writer.write(body)
+            }
         }
         val responseCode = connection.responseCode
         val responseBody = if (responseCode in 200..299) {
@@ -26,7 +28,7 @@ internal fun executeWithHttpUrlConnection(request: TrainingSampleUploadRequest):
         } else {
             readBodySafely(connection.errorStream)
         }
-        TrainingSampleUploadResponse(
+        UploadHttpResponse(
             statusCode = responseCode,
             body = responseBody,
         )

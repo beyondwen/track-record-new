@@ -1,6 +1,7 @@
 package com.wenhao.record.data.tracking
 
 import android.content.Context
+import androidx.core.content.edit
 import com.wenhao.record.tracking.TrackingPhase
 
 data class TrackingRuntimeSnapshot(
@@ -31,7 +32,7 @@ object TrackingRuntimeSnapshotStorage {
 
     fun save(context: Context, snapshot: TrackingRuntimeSnapshot) {
         cached = snapshot
-        prefs(context).edit().putBoolean(KEY_ENABLED, snapshot.isEnabled).apply()
+        prefs(context).edit { putBoolean(KEY_ENABLED, snapshot.isEnabled) }
         TrackDataChangeNotifier.notifyDashboardChanged()
     }
 

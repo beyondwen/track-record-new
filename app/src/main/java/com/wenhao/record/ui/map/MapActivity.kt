@@ -12,12 +12,13 @@ import androidx.compose.runtime.setValue
 import androidx.core.view.WindowCompat
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
-import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.history.RemoteHistoryRepository
 import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.util.AppTaskExecutor
+import kotlinx.coroutines.runBlocking
 
 class MapActivity : AppCompatActivity() {
 
@@ -33,6 +34,7 @@ class MapActivity : AppCompatActivity() {
     private var mapboxAccessToken by mutableStateOf("")
     private var viewportSequence = 0L
     private var renderGeneration = 0L
+    private val remoteHistoryRepository = RemoteHistoryRepository()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -61,20 +63,20 @@ class MapActivity : AppCompatActivity() {
             return
         }
 
-        val item = HistoryStorage.peekDailyByStart(this, dayStartMillis)
-        if (item != null && item.segments.any { segment -> segment.isNotEmpty() }) {
-            renderHistoryItem(item)
-            return
-        }
-
-        HistoryStorage.whenReady(this) {
-            if (isFinishing || isDestroyed) return@whenReady
-            val readyItem = HistoryStorage.peekDailyByStart(this, dayStartMillis)
-            if (readyItem == null || readyItem.segments.none { segment -> segment.isNotEmpty() }) {
-                Toast.makeText(this, R.string.dashboard_history_no_route, Toast.LENGTH_SHORT).show()
-                finish()
-            } else {
-                renderHistoryItem(readyItem)
+        val generation = nextRenderGeneration()
+        val appContext = applicationContext
+        AppTaskExecutor.runOnIo {
+            val item = runBlocking {
+                remoteHistoryRepository.loadDay(appContext, dayStartMillis)
+            }
+            AppTaskExecutor.runOnMain {
+                if (isFinishing || isDestroyed || generation != renderGeneration) return@runOnMain
+                if (item == null || item.segments.none { segment -> segment.isNotEmpty() }) {
+                    Toast.makeText(this, R.string.dashboard_history_no_route, Toast.LENGTH_SHORT).show()
+                    finish()
+                } else {
+                    renderHistoryItem(item)
+                }
             }
         }
     }

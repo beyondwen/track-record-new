@@ -65,10 +65,10 @@ data class HistoryItem(
         get() = String.format(Locale.CHINA, "%.1f 公里/小时", averageSpeedKmh)
 
     val summary: String
-        get() = "${formattedDistance} / ${formattedDuration} / 平均 ${formattedSpeed}"
+        get() = "${formattedDistance} · ${formattedDuration} · 均速 ${formattedSpeed}"
 
     val pointCountLabel: String
-        get() = "共 ${points.size} 个定位点"
+        get() = "${points.size} 个点"
 }
 
 private fun formatHistoryDate(pattern: String, timestamp: Long): String {

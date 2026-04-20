@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Looper
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.wenhao.record.R
@@ -26,6 +27,7 @@ import com.wenhao.record.data.local.stream.AnalysisSegmentEntity
 import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.tracking.AnalysisHistoryProjector
+import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.ContinuousPointStorage
 import com.wenhao.record.data.tracking.RawTrackPoint
 import com.wenhao.record.data.tracking.SamplingTier
@@ -44,6 +46,7 @@ import kotlin.math.max
 
 class BackgroundTrackingService : Service() {
     companion object {
+        private const val TAG = "BackgroundTracking"
         const val ACTION_START = "com.wenhao.record.action.START_BACKGROUND_TRACKING"
         const val ACTION_STOP = "com.wenhao.record.action.STOP_BACKGROUND_TRACKING"
 
@@ -98,10 +101,12 @@ class BackgroundTrackingService : Service() {
     private var lastAnalysisAt: Long? = null
     private var analysisInFlight = false
     private var suspectEnteredAt: Long? = null
+    private var acceptedPointCount = 0
 
     private val suspectTimeoutCheck = Runnable {
-        if (currentPhase == TrackingPhase.SUSPECT_MOVING && suspectEnteredAt != null) {
-            val elapsed = System.currentTimeMillis() - suspectEnteredAt!!
+        val enteredAt = suspectEnteredAt
+        if (currentPhase == TrackingPhase.SUSPECT_MOVING && enteredAt != null) {
+            val elapsed = System.currentTimeMillis() - enteredAt
             if (elapsed >= 90_000L) {
                 enterPhase(TrackingPhase.IDLE, reason = "疑似移动超时未确认，恢复低功耗待命")
             }
@@ -122,6 +127,12 @@ class BackgroundTrackingService : Service() {
         latestPoint = snapshot.latestPoint
         phaseAnchorPoint = snapshot.latestPoint
         lastAnalysisAt = snapshot.lastAnalysisAt
+        acceptedPointCount = AutoTrackDiagnosticsStorage.load(this).acceptedPointCount
+        AutoTrackDiagnosticsStorage.markServiceStatus(
+            this,
+            status = phaseLabel(currentPhase),
+            event = "后台采点服务已创建",
+        )
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -130,7 +141,6 @@ class BackgroundTrackingService : Service() {
         when (intent?.action ?: ACTION_START) {
             ACTION_START -> runOnTrackingThread(::enableTracking)
             ACTION_STOP -> runOnTrackingThread(::disableTracking)
-            }
         }
         return START_STICKY
     }
@@ -140,6 +150,12 @@ class BackgroundTrackingService : Service() {
         if (enabled) {
             saveSnapshot()
         }
+        AutoTrackDiagnosticsStorage.markServiceStatus(
+            this,
+            status = "后台待命中",
+            event = "后台采点服务已销毁",
+        )
+        AutoTrackDiagnosticsStorage.flush(this)
         trackingThread.quitSafely()
         super.onDestroy()
     }
@@ -149,6 +165,11 @@ class BackgroundTrackingService : Service() {
             ensureNotificationChannel()
             startForeground(NOTIFICATION_ID, buildNotification())
             requestLocationUpdatesForPhase(currentPhase)
+            AutoTrackDiagnosticsStorage.markServiceStatus(
+                this,
+                status = phaseLabel(currentPhase),
+                event = "后台采点服务已保持运行",
+            )
             saveSnapshot()
             return
         }
@@ -157,6 +178,11 @@ class BackgroundTrackingService : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
         enterPhase(TrackingPhase.IDLE, reason = "启用连续采点")
         TrackingRuntimeSnapshotStorage.setEnabled(this, true)
+        AutoTrackDiagnosticsStorage.markServiceStatus(
+            this,
+            status = phaseLabel(currentPhase),
+            event = "后台采点服务已启动",
+        )
     }
 
     private fun disableTracking() {
@@ -172,6 +198,11 @@ class BackgroundTrackingService : Service() {
         saveSnapshot()
         TrackingRuntimeSnapshotStorage.setEnabled(this, false)
         stopForeground(STOP_FOREGROUND_REMOVE)
+        AutoTrackDiagnosticsStorage.markServiceStatus(
+            this,
+            status = "后台待命中",
+            event = "后台采点已停止",
+        )
         stopSelf()
     }
 
@@ -194,6 +225,12 @@ class BackgroundTrackingService : Service() {
         requestLocationUpdatesForPhase(phase)
         updateNotification(reason)
         saveSnapshot()
+        AutoTrackDiagnosticsStorage.markServiceStatus(
+            this,
+            status = phaseLabel(phase),
+            event = reason,
+        )
+        Log.i(TAG, "Phase changed to $phase, reason=$reason")
 
         if (
             previousPhase == TrackingPhase.ACTIVE &&
@@ -218,6 +255,19 @@ class BackgroundTrackingService : Service() {
 
         val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
             .filter(locationManager::isProviderEnabled)
+        if (providers.isEmpty()) {
+            AutoTrackDiagnosticsStorage.markEvent(this, "未发现可用定位 Provider")
+            Log.w(TAG, "No enabled location providers for phase=$phase")
+            return
+        }
+        AutoTrackDiagnosticsStorage.markEvent(
+            this,
+            "开始监听 ${providers.joinToString()}，${config.intervalMillis / 1000}s / ${config.minDistanceMeters.toInt()}m"
+        )
+        Log.i(
+            TAG,
+            "Request location updates. phase=$phase, providers=$providers, interval=${config.intervalMillis}, minDistance=${config.minDistanceMeters}"
+        )
         providers.forEach { provider ->
             locationManager.requestLocationUpdates(
                 provider,
@@ -247,7 +297,26 @@ class BackgroundTrackingService : Service() {
     private fun handleLocationUpdate(location: Location) {
         if (!enabled) return
 
-        if (shouldIgnoreLocation(location)) return
+        val accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
+        val speedMetersPerSecond = location.speed.takeIf { location.hasSpeed() && it >= 0f }
+        val ignoredDecision = ignoredLocationDecision(
+            phase = currentPhase,
+            accuracyMeters = accuracyMeters,
+            speedMetersPerSecond = speedMetersPerSecond,
+        )
+        if (ignoredDecision != null && shouldIgnoreLocation(location)) {
+            AutoTrackDiagnosticsStorage.markLocationDecision(
+                context = this,
+                decision = ignoredDecision,
+                acceptedPointCount = acceptedPointCount,
+                accuracyMeters = accuracyMeters,
+            )
+            Log.i(
+                TAG,
+                "Ignored location. phase=$currentPhase, accuracy=$accuracyMeters, speed=$speedMetersPerSecond, lat=${location.latitude}, lng=${location.longitude}"
+            )
+            return
+        }
 
         val point = location.toTrackPoint()
         val previousPoint = latestPoint
@@ -271,6 +340,22 @@ class BackgroundTrackingService : Service() {
         )
 
         latestPoint = point
+        acceptedPointCount += 1
+        val acceptedDecision = acceptedLocationDecision(
+            phase = currentPhase,
+            acceptedPointCount = acceptedPointCount,
+            accuracyMeters = point.accuracyMeters,
+        )
+        AutoTrackDiagnosticsStorage.markLocationDecision(
+            context = this,
+            decision = acceptedDecision,
+            acceptedPointCount = acceptedPointCount,
+            accuracyMeters = point.accuracyMeters,
+        )
+        Log.i(
+            TAG,
+            "Accepted location. phase=$currentPhase, count=$acceptedPointCount, accuracy=${point.accuracyMeters}, speed=$inferredSpeedMetersPerSecond, lat=${point.latitude}, lng=${point.longitude}"
+        )
         appendRawPoint(
             point = point,
             motionType = motionType,
@@ -357,6 +442,10 @@ class BackgroundTrackingService : Service() {
             if (window.size < 3) {
                 runOnTrackingThread {
                     analysisInFlight = false
+                    AutoTrackDiagnosticsStorage.markEvent(
+                        applicationContext,
+                        "分析跳过：有效点不足 3 个（当前 ${window.size}）"
+                    )
                     updateNotification(reason)
                     saveSnapshot()
                 }
@@ -470,6 +559,10 @@ class BackgroundTrackingService : Service() {
             runOnTrackingThread {
                 analysisInFlight = false
                 lastAnalysisAt = System.currentTimeMillis()
+                AutoTrackDiagnosticsStorage.markSessionSaved(
+                    applicationContext,
+                    "已分析 ${persistedSegments.size} 段，使用 ${window.size} 个点"
+                )
                 updateNotification(reason)
                 saveSnapshot()
                 TrackDataChangeNotifier.notifyHistoryChanged()

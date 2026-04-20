@@ -50,7 +50,9 @@ internal object TrackAltitudePalette {
     fun altitudeRange(points: List<TrackPoint>): ClosedFloatingPointRange<Double>? {
         val altitudes = points.mapNotNull { it.altitudeMeters }
         if (altitudes.isEmpty()) return null
-        return altitudes.minOrNull()!!..altitudes.maxOrNull()!!
+        val minAltitude = altitudes.minOrNull() ?: return null
+        val maxAltitude = altitudes.maxOrNull() ?: return null
+        return minAltitude..maxAltitude
     }
 
     fun legendColors(): List<Color> = listOf(lowColor, midColor, highColor, peakColor)

@@ -1,27 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="compose_history_title">我的行程</string>
-    <string name="compose_history_subtitle">查看已经保存的轨迹与统计摘要</string>
-    <string name="compose_history_total_count">%1$d 天记录</string>
     <string name="compose_history_total_distance">累计里程</string>
     <string name="compose_history_total_duration">累计时长</string>
-    <string name="compose_history_export">导出备份</string>
-    <string name="compose_history_import">导入恢复</string>
-    <string name="compose_history_training_export">导出样本</string>
-    <string name="compose_history_model_import">导入模型</string>
     <string name="compose_history_empty_title">还没有历史记录</string>
-    <string name="compose_history_empty_message">完成一次有效出行后，这里会自动沉淀当天的轨迹摘要与统计信息。</string>
-    <string name="compose_history_empty_action">返回记录页</string>
-    <string name="compose_history_record_tab">记录</string>
+    <string name="compose_history_empty_message">完成一次有效出行后，这里会自动生成当天的行程摘要与统计信息。</string>
+    <string name="compose_history_empty_action">返回采点页</string>
+    <string name="compose_history_record_tab">采点</string>
     <string name="compose_history_list_tab">历史</string>
-    <string name="compose_history_card_open">查看轨迹</string>
+    <string name="compose_history_card_open">查看详情</string>
     <string name="compose_history_card_selected">正在查看</string>
-    <string name="compose_history_card_preview_title">轨迹预览</string>
-    <string name="compose_history_card_preview_subtitle">点击卡片打开地图详情</string>
-    <string name="compose_history_metric_distance">距离</string>
-    <string name="compose_history_metric_duration">时长</string>
-    <string name="compose_history_metric_speed">均速</string>
-    <string name="compose_history_metric_days">天数</string>
     <string name="compose_history_days_value">%1$d 天</string>
     <string name="compose_history_delete_title">删除当天行程</string>
     <string name="compose_history_delete_message">删除后无法恢复，确定删除 %1$s 的全部行程吗？</string>
@@ -32,22 +20,10 @@
     <string name="compose_history_day_yesterday">昨天</string>
     <string name="compose_history_day_month">%1$d 月</string>
     <string name="compose_history_day_year_month">%1$d 年 %2$d 月</string>
-    <string name="compose_history_card_accessibility">历史记录 %1$s，%2$s，双击查看详情，长按删除。</string>
-    <string name="compose_history_card_open_action">打开轨迹详情</string>
+    <string name="compose_history_card_accessibility">行程 %1$s，%2$s，双击查看详情，长按删除。</string>
+    <string name="compose_history_card_open_action">打开详情</string>
     <string name="compose_history_card_delete_action">删除当天行程</string>
     <string name="compose_history_log_title">行程日志</string>
     <string name="compose_history_view_all">查看全部</string>
-    <string name="compose_history_card_meta">共 %1$d 段行程 · 最近 %2$s</string>
-    <string name="compose_history_feedback_title">切段纠错</string>
-    <string name="compose_history_feedback_subtitle">这里展示最近的动态段切分决策，点进去可以补录人工反馈。</string>
-    <string name="compose_history_feedback_pending">待纠错</string>
-    <string name="compose_history_feedback_action">提交反馈</string>
-    <string name="compose_history_feedback_update_action">更新反馈</string>
-    <string name="compose_history_feedback_sheet_title">纠正这次切段判定</string>
-    <string name="compose_history_feedback_sheet_subtitle">选择更接近实际情况的反馈，后续可用于训练动态段切分模型。</string>
-    <string name="compose_history_feedback_start_early">动态段起点太早</string>
-    <string name="compose_history_feedback_start_late">动态段起点太晚</string>
-    <string name="compose_history_feedback_stop_early">动态段终点太早</string>
-    <string name="compose_history_feedback_stop_late">动态段终点太晚</string>
-    <string name="compose_history_feedback_correct">判定正确</string>
+    <string name="compose_history_card_meta">%1$d 段 · 最近 %2$s</string>
 </resources>

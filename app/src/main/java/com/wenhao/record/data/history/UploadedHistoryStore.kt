@@ -1,6 +1,7 @@
 package com.wenhao.record.data.history
 
 import android.content.Context
+import androidx.core.content.edit
 
 object UploadedHistoryStore {
     internal const val PREFS_NAME = "uploaded_history_store"
@@ -17,9 +18,9 @@ object UploadedHistoryStore {
             val cleanedStoredValues = cleanedHistoryIds.map { it.toString() }.toSet()
 
             if (storedValues.isNotEmpty() && cleanedStoredValues != storedValues) {
-                prefs(context).edit()
-                    .putStringSet(KEY_UPLOADED_HISTORY_IDS, cleanedStoredValues)
-                    .apply()
+                prefs(context).edit {
+                    putStringSet(KEY_UPLOADED_HISTORY_IDS, cleanedStoredValues)
+                }
             }
 
             return cleanedHistoryIds
@@ -36,17 +37,31 @@ object UploadedHistoryStore {
                 addAll(historyIds)
             }
 
-            prefs(context).edit()
-                .putStringSet(KEY_UPLOADED_HISTORY_IDS, updatedIds.map { it.toString() }.toSet())
-                .apply()
+            prefs(context).edit {
+                putStringSet(KEY_UPLOADED_HISTORY_IDS, updatedIds.map { it.toString() }.toSet())
+            }
+        }
+    }
+
+    fun remove(context: Context, historyIds: List<Long>) {
+        synchronized(lock) {
+            if (historyIds.isEmpty()) {
+                return
+            }
+
+            val updatedIds = load(context).toMutableSet().apply {
+                removeAll(historyIds.toSet())
+            }
+
+            prefs(context).edit {
+                putStringSet(KEY_UPLOADED_HISTORY_IDS, updatedIds.map { it.toString() }.toSet())
+            }
         }
     }
 
     fun clear(context: Context) {
         synchronized(lock) {
-            prefs(context).edit()
-                .remove(KEY_UPLOADED_HISTORY_IDS)
-                .apply()
+            prefs(context).edit { remove(KEY_UPLOADED_HISTORY_IDS) }
         }
     }
 

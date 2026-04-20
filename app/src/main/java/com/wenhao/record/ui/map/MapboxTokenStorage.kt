@@ -1,6 +1,7 @@
 package com.wenhao.record.ui.map
 
 import android.content.Context
+import androidx.core.content.edit
 
 object MapboxTokenStorage {
     private const val PREFS_NAME = "mapbox_token_storage"
@@ -14,18 +15,18 @@ object MapboxTokenStorage {
 
     fun save(context: Context, token: String): String {
         val sanitizedToken = sanitizeMapboxAccessToken(token)
-        prefs(context).edit().apply {
+        prefs(context).edit {
             if (sanitizedToken.isEmpty()) {
                 remove(KEY_ACCESS_TOKEN)
             } else {
                 putString(KEY_ACCESS_TOKEN, sanitizedToken)
             }
-        }.apply()
+        }
         return sanitizedToken
     }
 
     fun clear(context: Context) {
-        prefs(context).edit().remove(KEY_ACCESS_TOKEN).apply()
+        prefs(context).edit { remove(KEY_ACCESS_TOKEN) }
     }
 
     private fun prefs(context: Context) =

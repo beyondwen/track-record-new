@@ -15,6 +15,7 @@ import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.local.stream.UploadCursorEntity
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -23,6 +24,16 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(application = Application::class, manifest = Config.NONE, sdk = [35])
 class RawPointUploadWorkerTest {
+
+    @Test
+    fun `worker exposes workmanager compatible constructor`() {
+        assertNotNull(
+            RawPointUploadWorker::class.java.getDeclaredConstructor(
+                Context::class.java,
+                WorkerParameters::class.java,
+            )
+        )
+    }
 
     @Test
     fun `doWork advances raw point cursor after successful batch`() = runBlocking {
@@ -41,7 +52,7 @@ class RawPointUploadWorkerTest {
             cursorStorage = cursorStorage,
             uploadService = RawPointUploadService(
                 requestExecutor = {
-                    TrainingSampleUploadResponse(
+                    UploadHttpResponse(
                         statusCode = 200,
                         body = """{"ok":true,"insertedCount":2,"dedupedCount":0,"acceptedMaxPointId":12}"""
                     )
@@ -67,7 +78,7 @@ class RawPointUploadWorkerTest {
             cursorStorage = UploadCursorStorage(dao),
             uploadService = RawPointUploadService(
                 requestExecutor = {
-                    TrainingSampleUploadResponse(
+                    UploadHttpResponse(
                         statusCode = 401,
                         body = """{"ok":false,"message":"expired"}"""
                     )
@@ -80,6 +91,41 @@ class RawPointUploadWorkerTest {
         )
 
         assertEquals(ListenableWorker.Result.failure(), worker.doWork())
+    }
+
+    @Test
+    fun `doWork drains backlog across more than three batches`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val dao = FakeContinuousTrackDao(
+            rawPoints = (1L..650L).map(::rawEntity)
+        )
+        val cursorStorage = UploadCursorStorage(dao)
+        var uploadRequestCount = 0
+        val worker = buildWorker(
+            context = context,
+            pointStorage = ContinuousPointStorage(dao),
+            cursorStorage = cursorStorage,
+            uploadService = RawPointUploadService(
+                requestExecutor = { request ->
+                    uploadRequestCount += 1
+                    val payload = org.json.JSONObject(request.body.orEmpty())
+                    val points = payload.getJSONArray("points")
+                    val acceptedMaxPointId = points.getJSONObject(points.length() - 1).getLong("pointId")
+                    UploadHttpResponse(
+                        statusCode = 200,
+                        body = """{"ok":true,"insertedCount":${points.length()},"dedupedCount":0,"acceptedMaxPointId":$acceptedMaxPointId}"""
+                    )
+                }
+            ),
+            configLoader = {
+                TrainingSampleUploadConfig("https://worker.example.com", "token-123")
+            },
+            deviceIdProvider = { "device-1" },
+        )
+
+        assertEquals(ListenableWorker.Result.success(), worker.doWork())
+        assertEquals(650L, cursorStorage.load(UploadCursorType.RAW_POINT).lastUploadedId)
+        assertEquals(4, uploadRequestCount)
     }
 
     private fun buildWorker(

@@ -1,9 +1,9 @@
 package com.wenhao.record.data.history
 
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
-import com.wenhao.record.data.tracking.TrainingSampleUploadRequest
-import com.wenhao.record.data.tracking.TrainingSampleUploadRequestExecutor
-import com.wenhao.record.data.tracking.TrainingSampleUploadResponse
+import com.wenhao.record.data.tracking.UploadHttpRequest
+import com.wenhao.record.data.tracking.UploadHttpRequestExecutor
+import com.wenhao.record.data.tracking.UploadHttpResponse
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -21,7 +21,7 @@ sealed interface HistoryUploadResult {
 }
 
 class HistoryUploadService(
-    private val requestExecutor: TrainingSampleUploadRequestExecutor,
+    private val requestExecutor: UploadHttpRequestExecutor,
 ) {
     constructor() : this(::executeWithHttpUrlConnection)
 
@@ -32,7 +32,7 @@ class HistoryUploadService(
         rows: List<HistoryUploadRow>,
     ): HistoryUploadResult {
         return try {
-            val request = TrainingSampleUploadRequest(
+            val request = UploadHttpRequest(
                 url = "${config.workerBaseUrl.trim().trimEnd('/')}/histories/batch",
                 method = "POST",
                 headers = mapOf(
@@ -55,7 +55,7 @@ class HistoryUploadService(
         }
     }
 
-    private fun parseResponse(response: TrainingSampleUploadResponse): HistoryUploadResult {
+    private fun parseResponse(response: UploadHttpResponse): HistoryUploadResult {
         if (response.statusCode == 401 || response.statusCode == 403) {
             return HistoryUploadResult.Failure(HISTORY_AUTH_FAILURE_MESSAGE)
         }

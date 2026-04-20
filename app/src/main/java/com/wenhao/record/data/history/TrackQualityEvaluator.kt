@@ -150,11 +150,11 @@ object TrackQualityEvaluator {
             }
             append("，共 ")
             append(points.size)
-            append(" 个定位点")
+            append(" 个点")
             if (normalizedSegments.size > 1) {
                 append("，分 ")
                 append(normalizedSegments.size)
-                append(" 段记录")
+                append(" 段")
             }
             when {
                 abnormalJumpCount > 0 -> append("，检测到少量急跳风险")

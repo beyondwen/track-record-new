@@ -1,11 +1,5 @@
 package com.wenhao.record.ui.dashboard
 
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -20,7 +14,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
@@ -39,7 +32,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -63,7 +55,6 @@ import com.wenhao.record.ui.designsystem.TrackRecordSpacing
 import com.wenhao.record.ui.designsystem.TrackRecordStatusColors
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.designsystem.TrackStatChip
-import com.wenhao.record.ui.designsystem.trackGlowPrimary
 import com.wenhao.record.ui.designsystem.trackInnerPanelSurface
 import com.wenhao.record.ui.designsystem.trackSecondarySurface
 
@@ -83,8 +74,6 @@ data class DashboardScreenUiState(
     val autoTrackMeta: String = "",
     val statusLabel: String = "",
     val statusTone: DashboardTone = DashboardTone.MUTED,
-    val recordIconRes: Int = R.drawable.ic_play_dashboard,
-    val isPulseActive: Boolean = false,
     val controlTitle: String = "",
     val controlBody: String = "",
 )
@@ -564,89 +553,6 @@ private fun DashboardStatusPanel(
 }
 
 @Composable
-private fun DashboardRecordIndicator(
-    iconRes: Int,
-    isPulseActive: Boolean,
-    tone: DashboardTone,
-    modifier: Modifier = Modifier,
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "dashboardPulse")
-    val haloScaleState = if (isPulseActive) {
-        infiniteTransition.animateFloat(
-            initialValue = 1f,
-            targetValue = 1.12f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1500),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "haloScale",
-        )
-    } else {
-        null
-    }
-    val haloAlphaState = if (isPulseActive) {
-        infiniteTransition.animateFloat(
-            initialValue = 0.32f,
-            targetValue = 0.78f,
-            animationSpec = infiniteRepeatable(
-                animation = tween(durationMillis = 1500),
-                repeatMode = RepeatMode.Reverse,
-            ),
-            label = "haloAlpha",
-        )
-    } else {
-        null
-    }
-    val accentColor = when (tone) {
-        DashboardTone.ACTIVE -> MaterialTheme.colorScheme.primary
-        DashboardTone.WARNING -> MaterialTheme.colorScheme.tertiary
-        DashboardTone.MUTED -> MaterialTheme.colorScheme.secondary
-        DashboardTone.SUCCESS -> TrackRecordStatusColors.Success
-    }
-
-    Box(
-        modifier = modifier,
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(92.dp)
-                .graphicsLayer {
-                    val scale = haloScaleState?.value ?: 1f
-                    scaleX = scale
-                    scaleY = scale
-                    alpha = haloAlphaState?.value ?: 0.28f
-                }
-                .background(
-            color = accentColor.copy(alpha = 0.18f),
-            shape = CircleShape,
-        ),
-        )
-        Canvas(modifier = Modifier.size(92.dp)) {
-            drawCircle(
-                color = accentColor.copy(alpha = 0.12f),
-            )
-        }
-        Box(
-            modifier = Modifier
-                .size(76.dp)
-                .background(
-                    color = accentColor,
-                    shape = CircleShape,
-                ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                painter = painterResource(iconRes),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(28.dp),
-            )
-        }
-    }
-}
-
-@Composable
 private fun statusContainerColor(tone: DashboardTone): Color = when (tone) {
     DashboardTone.ACTIVE -> MaterialTheme.colorScheme.primaryContainer
     DashboardTone.WARNING -> MaterialTheme.colorScheme.tertiaryContainer
@@ -675,7 +581,6 @@ private fun DashboardComposeScreenPreview() {
                 autoTrackMeta = "The app will quietly wait in the background and begin a trip when clear movement is detected.",
                 statusLabel = "Background standby",
                 statusTone = DashboardTone.ACTIVE,
-                isPulseActive = true,
             ),
             overlayState = DashboardOverlayUiState(
                 gpsLabel = "GPS ready",

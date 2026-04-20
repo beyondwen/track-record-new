@@ -1,7 +1,7 @@
 package com.wenhao.record.data.history
 
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
-import com.wenhao.record.data.tracking.TrainingSampleUploadResponse
+import com.wenhao.record.data.tracking.UploadHttpResponse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -18,11 +18,11 @@ class HistoryUploadServiceTest {
                 assertEquals("POST", request.method)
                 assertEquals("Bearer token-123", request.headers["Authorization"])
                 assertEquals("application/json", request.headers["Content-Type"])
-                val payload = JSONObject(request.body)
+                val payload = JSONObject(request.body.orEmpty())
                 assertEquals("device-1", payload.getString("deviceId"))
                 assertEquals("1.0.22", payload.getString("appVersion"))
 
-                TrainingSampleUploadResponse(
+                UploadHttpResponse(
                     statusCode = 200,
                     body = """{"ok":true,"insertedCount":1,"dedupedCount":0,"acceptedHistoryIds":[7,"bad",null,0]}"""
                 )
@@ -47,7 +47,7 @@ class HistoryUploadServiceTest {
     fun `upload returns auth failure message for unauthorized response`() {
         val service = HistoryUploadService(
             requestExecutor = {
-                TrainingSampleUploadResponse(statusCode = 401, body = """{"ok":false,"message":"expired"}""")
+                UploadHttpResponse(statusCode = 401, body = """{"ok":false,"message":"expired"}""")
             }
         )
 
@@ -66,7 +66,7 @@ class HistoryUploadServiceTest {
     fun `upload forwards failure response message`() {
         val service = HistoryUploadService(
             requestExecutor = {
-                TrainingSampleUploadResponse(statusCode = 400, body = """{"ok":false,"message":"bad history payload"}""")
+                UploadHttpResponse(statusCode = 400, body = """{"ok":false,"message":"bad history payload"}""")
             }
         )
 

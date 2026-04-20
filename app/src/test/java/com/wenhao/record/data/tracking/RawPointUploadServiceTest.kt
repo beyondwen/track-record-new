@@ -16,11 +16,11 @@ class RawPointUploadServiceTest {
                 assertEquals("POST", request.method)
                 assertEquals("Bearer token-123", request.headers["Authorization"])
                 assertEquals("application/json", request.headers["Content-Type"])
-                val payload = JSONObject(request.body)
+                val payload = JSONObject(request.body.orEmpty())
                 assertEquals("device-1", payload.getString("deviceId"))
                 assertEquals("1.0.23", payload.getString("appVersion"))
 
-                TrainingSampleUploadResponse(
+                UploadHttpResponse(
                     statusCode = 200,
                     body = """{"ok":true,"insertedCount":2,"dedupedCount":1,"acceptedMaxPointId":52}"""
                 )
@@ -45,7 +45,7 @@ class RawPointUploadServiceTest {
     fun `upload returns auth failure message for unauthorized response`() {
         val service = RawPointUploadService(
             requestExecutor = {
-                TrainingSampleUploadResponse(statusCode = 401, body = """{"ok":false,"message":"expired"}""")
+                UploadHttpResponse(statusCode = 401, body = """{"ok":false,"message":"expired"}""")
             }
         )
 

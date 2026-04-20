@@ -101,7 +101,7 @@ fun AboutComposeScreen(
             )
             Text(
                 text = if (state.hasConfiguredSampleUpload) {
-                    "自动点位上传、分析结果同步和历史结果同步都会使用这组 Worker 配置。"
+                    "点位、分析和历史同步都使用这组 Worker 配置。"
                 } else {
                     "当前设备未配置 Worker 上传信息。"
                 },
@@ -127,7 +127,7 @@ fun AboutComposeScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
             TrackPrimaryButton(
-                text = if (state.isTestingWorkerConnectivity) "测试中..." else "测试 Worker 连通性",
+                text = if (state.isTestingWorkerConnectivity) "测试中..." else "测试 Worker",
                 onClick = onWorkerConnectivityTestClick,
                 enabled = !state.isCheckingUpdate &&
                     !state.isTestingWorkerConnectivity &&

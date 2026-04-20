@@ -36,6 +36,9 @@ class SegmentCandidateBuilderTest {
         val segmentClass = Class.forName("com.wenhao.record.tracking.analysis.SegmentCandidate")
         val getKind = segmentClass.getMethod("getKind")
 
-        assertEquals(listOf("STATIC", "DYNAMIC", "STATIC"), segments.map { getKind.invoke(it).toString() })
+        assertEquals(
+            listOf("STATIC", "DYNAMIC", "STATIC"),
+            segments.map { requireNotNull(getKind.invoke(it)).toString() }
+        )
     }
 }

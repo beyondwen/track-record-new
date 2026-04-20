@@ -41,6 +41,10 @@ class ContinuousPointStorage(
         return dao.loadRawPoints(afterPointId = afterPointId, limit = limit).map { it.toModel() }
     }
 
+    fun loadCurrentSessionPoints(limit: Int): List<RawTrackPoint> {
+        return loadPendingWindow(afterPointId = 0L, limit = limit)
+    }
+
     fun loadPendingRawUploadRows(afterPointId: Long, limit: Int): List<RawPointUploadRow> {
         return loadPendingWindow(afterPointId = afterPointId, limit = limit).map(RawPointUploadRow::from)
     }

@@ -8,7 +8,6 @@ import android.provider.Settings
 import android.location.GnssStatus
 import android.location.Location
 import android.location.LocationManager
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -20,6 +19,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -27,7 +27,12 @@ import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.local.TrackDatabase
+import com.wenhao.record.data.tracking.AutoTrackDiagnostics
+import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
+import com.wenhao.record.data.tracking.ContinuousPointStorage
+import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
@@ -38,8 +43,8 @@ import com.wenhao.record.data.tracking.WorkerConnectivityService
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.permissions.PermissionHelper
 import com.wenhao.record.stability.CrashLogStore
-import com.wenhao.record.tracking.BackgroundTrackingService
 import com.wenhao.record.tracking.LocationSelectionUtils
+import com.wenhao.record.tracking.TrackingPhase
 import com.wenhao.record.update.ApkDownloadInstaller
 import com.wenhao.record.update.AppUpdateInfo
 import com.wenhao.record.update.GithubReleaseUpdateService
@@ -52,8 +57,6 @@ import com.wenhao.record.ui.map.MapboxTokenStorage
 import com.wenhao.record.ui.map.isMapboxAccessTokenConfigured
 import java.io.File
 import java.util.Calendar
-import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -70,6 +73,9 @@ class MainActivity : AppCompatActivity() {
     }
     private val workerConnectivityService by lazy { WorkerConnectivityService() }
     private val apkDownloadInstaller by lazy { ApkDownloadInstaller(this) }
+    private val continuousPointStorage by lazy {
+        ContinuousPointStorage(TrackDatabase.getInstance(this).continuousTrackDao())
+    }
     private lateinit var dashboardUiController: DashboardUiController
     private lateinit var homeMapController: HomeMapPort
     private lateinit var historyController: HistoryController
@@ -80,7 +86,6 @@ class MainActivity : AppCompatActivity() {
             onRefreshGpsStatus = ::refreshGpsStatus,
             onLocateGranted = ::centerOnCurrentLocation,
             onRefreshDashboard = ::refreshDashboardContent,
-            onManualRecordReady = ::startManualRecording,
         )
     }
 
@@ -95,6 +100,8 @@ class MainActivity : AppCompatActivity() {
     private var aboutState by mutableStateOf(
         AboutUiState(appVersionLabel = "")
     )
+    private var activeSessionPoints: List<TrackPoint> = emptyList()
+    private var activeSessionLoadGeneration = 0L
 
     private val defaultLatLng = GeoCoordinate(39.9042, 116.4074)
     private val dataChangeListener = object : TrackDataChangeNotifier.Listener {
@@ -160,6 +167,7 @@ class MainActivity : AppCompatActivity() {
         refreshDashboardContent()
         showTab(MainTab.RECORD)
         refreshGpsStatus()
+        permissionHelper.ensureSmartTrackingEnabled()
     }
 
     private fun showTab(tab: MainTab) {
@@ -273,7 +281,7 @@ class MainActivity : AppCompatActivity() {
 
         aboutState = aboutState.copy(
             isTestingWorkerConnectivity = true,
-            statusMessage = "正在测试 Worker 连通性…",
+            statusMessage = "正在检查 Worker…",
         )
 
         lifecycleScope.launch(Dispatchers.IO) {
@@ -295,7 +303,7 @@ class MainActivity : AppCompatActivity() {
             } catch (error: Exception) {
                 Log.e(TAG, "Worker connectivity check crashed", error)
                 launch(Dispatchers.Main) {
-                    val message = error.message?.takeIf { it.isNotBlank() } ?: "Worker 连通性测试失败"
+                    val message = error.message?.takeIf { it.isNotBlank() } ?: "Worker 检查失败"
                     aboutState = aboutState.copy(statusMessage = message)
                 }
             } finally {
@@ -308,7 +316,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun checkForAppUpdate() {
         if (aboutState.isTestingWorkerConnectivity) {
-            aboutState = aboutState.copy(statusMessage = "Worker 连通性测试进行中，请稍后再检查更新")
+            aboutState = aboutState.copy(statusMessage = "Worker 检查进行中，请稍后再检查更新")
             return
         }
         aboutState = aboutState.copy(isCheckingUpdate = true, statusMessage = null)
@@ -351,7 +359,7 @@ class MainActivity : AppCompatActivity() {
             startActivity(
                 Intent(
                     Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:$packageName")
+                    "package:$packageName".toUri()
                 )
             )
             return
@@ -437,20 +445,6 @@ class MainActivity : AppCompatActivity() {
         centerOnCurrentLocation()
     }
 
-    private fun startManualRecording() {
-        if (!permissionHelper.hasLocationPermission()) {
-            permissionHelper.requestManualRecordPermissionOrRun()
-            return
-        }
-        if (!isLocationEnabled()) {
-            refreshGpsStatus()
-            Toast.makeText(this, R.string.location_service_disabled, Toast.LENGTH_SHORT).show()
-            return
-        }
-        BackgroundTrackingService.start(this)
-        Toast.makeText(this, "已开启后台采集", Toast.LENGTH_SHORT).show()
-    }
-
     private fun configureHomeMap() {
         homeMapController.configure(
             previewLocation = loadPreviewLocation(forceRefresh = true),
@@ -515,8 +509,14 @@ class MainActivity : AppCompatActivity() {
             runtimeSnapshot = runtimeSnapshot,
             previewLocation = previewLocation,
             todayHistoryItems = todayHistoryItems,
+            activeSessionPoints = activeSessionPoints,
         )
         renderDashboardDiagnosticsRefined()
+        refreshActiveSessionTrack(
+            runtimeSnapshot = runtimeSnapshot,
+            previewLocation = previewLocation,
+            todayHistoryItems = todayHistoryItems,
+        )
 
         if (previousTrackingEnabled && !runtimeSnapshot.isEnabled) {
             homeMapController.shouldRefit = true
@@ -526,7 +526,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun currentDashboardState(runtimeSnapshot: TrackingRuntimeSnapshot): AutoTrackUiState {
-        if (!permissionHelper.hasLocationPermission()) {
+        if (!permissionHelper.canRunBackgroundTracking()) {
             return AutoTrackUiState.WAITING_PERMISSION
         }
 
@@ -539,6 +539,56 @@ class MainActivity : AppCompatActivity() {
             com.wenhao.record.tracking.TrackingPhase.SUSPECT_MOVING -> AutoTrackUiState.PREPARING
             com.wenhao.record.tracking.TrackingPhase.SUSPECT_STOPPING -> AutoTrackUiState.PAUSED_STILL
             com.wenhao.record.tracking.TrackingPhase.IDLE -> AutoTrackUiState.IDLE
+        }
+    }
+
+    private fun refreshActiveSessionTrack(
+        runtimeSnapshot: TrackingRuntimeSnapshot,
+        previewLocation: GeoCoordinate?,
+        todayHistoryItems: List<com.wenhao.record.data.history.HistoryItem>,
+    ) {
+        val shouldLoad = runtimeSnapshot.isEnabled && runtimeSnapshot.phase != TrackingPhase.IDLE
+        if (!shouldLoad) {
+            if (activeSessionPoints.isEmpty()) return
+            activeSessionPoints = emptyList()
+            homeMapController.render(
+                runtimeSnapshot = runtimeSnapshot,
+                previewLocation = previewLocation,
+                todayHistoryItems = todayHistoryItems,
+                activeSessionPoints = emptyList(),
+            )
+            return
+        }
+
+        activeSessionLoadGeneration += 1
+        val generation = activeSessionLoadGeneration
+        lifecycleScope.launch(Dispatchers.IO) {
+            val loadedPoints = continuousPointStorage
+                .loadCurrentSessionPoints(limit = 2_048)
+                .map { rawPoint ->
+                    TrackPoint(
+                        latitude = rawPoint.latitude,
+                        longitude = rawPoint.longitude,
+                        timestampMillis = rawPoint.timestampMillis,
+                        accuracyMeters = rawPoint.accuracyMeters,
+                        altitudeMeters = rawPoint.altitudeMeters,
+                    )
+                }
+            launch(Dispatchers.Main) {
+                if (isFinishing || isDestroyed || generation != activeSessionLoadGeneration) {
+                    return@launch
+                }
+                if (loadedPoints == activeSessionPoints) {
+                    return@launch
+                }
+                activeSessionPoints = loadedPoints
+                homeMapController.render(
+                    runtimeSnapshot = runtimeSnapshot,
+                    previewLocation = previewLocation,
+                    todayHistoryItems = todayHistoryItems,
+                    activeSessionPoints = loadedPoints,
+                )
+            }
         }
     }
 
@@ -557,7 +607,7 @@ class MainActivity : AppCompatActivity() {
             append("服务：").append(diagnostics.serviceStatus).append('\n')
             append("最近事件：").append(eventSummary).append('\n')
             append("最近定位：").append(locationSummary).append('\n')
-                append("最近保存：").append(saveSummary)
+            append("最近保存：").append(saveSummary)
             if (!crashSummary.isNullOrBlank()) {
                 append('\n').append("最近异常：").append(crashSummary)
             }
@@ -578,7 +628,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         dashboardUiController.updateDiagnostics(
-            title = "记录诊断",
+            title = "采点诊断",
             body = body,
             compactBody = compactBody,
         )
@@ -586,6 +636,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildPermissionSummarySafe(): String = when {
         !permissionHelper.hasLocationPermission() -> "缺少定位权限"
+        permissionHelper.needsBackgroundLocationPermission() -> "缺少后台定位权限"
+        !permissionHelper.hasActivityRecognitionPermission() -> "缺少活动识别权限"
         permissionHelper.needsNotificationPermission() -> "通知权限未开启"
         else -> "权限完整"
     }
@@ -602,14 +654,6 @@ class MainActivity : AppCompatActivity() {
                 append("，精度约 ").append(accuracy.toInt()).append(" 米")
             }
         }
-    }
-
-        diagnostics.lastStopScore?.let { score ->
-            parts += "终点 ${"%.2f".format(Locale.US, score)}"
-        }
-        return parts.joinToString("，")
-    }
-
     }
 
     private fun buildTimedSummary(timestamp: Long, summary: String): String {
@@ -780,6 +824,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         TrackDataChangeNotifier.addListener(dataChangeListener)
+        permissionHelper.startBackgroundTrackingServiceIfReady()
         registerGnssCallback()
         refreshGpsStatus()
         historyController.reload()

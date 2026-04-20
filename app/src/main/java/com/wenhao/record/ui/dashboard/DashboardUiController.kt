@@ -31,8 +31,6 @@ class DashboardUiController(
             autoTrackMeta = context.getString(R.string.compose_dashboard_meta_idle),
             statusLabel = context.getString(R.string.compose_dashboard_status_idle),
             statusTone = DashboardTone.MUTED,
-            recordIconRes = R.drawable.ic_play_dashboard,
-            isPulseActive = false,
         )
     )
         private set
@@ -64,7 +62,6 @@ class DashboardUiController(
         } else {
             0.0
         }
-        val isTracking = runtimeSnapshot?.isEnabled == true
 
         panelState = panelState.copy(
             distanceText = formatDistance(displayDistanceKm),
@@ -74,12 +71,6 @@ class DashboardUiController(
             autoTrackMeta = metaForState(state),
             statusLabel = statusForState(state),
             statusTone = toneForState(state),
-            recordIconRes = if (isTracking) {
-                R.drawable.ic_stop_dashboard
-            } else {
-                R.drawable.ic_play_dashboard
-            },
-            isPulseActive = isTracking,
             controlTitle = controlTitleForState(state),
             controlBody = controlBodyForState(state),
         )
@@ -174,15 +165,15 @@ class DashboardUiController(
     private fun controlTitleForState(state: AutoTrackUiState): String = when (state) {
         AutoTrackUiState.TRACKING -> "采集中"
         AutoTrackUiState.WAITING_PERMISSION -> "等待权限"
-        AutoTrackUiState.SAVED_RECENTLY -> "已写入历史"
+        AutoTrackUiState.SAVED_RECENTLY -> "已生成行程"
         else -> "待命中"
     }
 
     private fun controlBodyForState(state: AutoTrackUiState): String = when (state) {
-        AutoTrackUiState.TRACKING -> "正在高频采点，移动段会在静止后自动分析并写入历史记录。"
+        AutoTrackUiState.TRACKING -> "正在记录移动轨迹，静止后会自动切段并写入历史。"
         AutoTrackUiState.WAITING_PERMISSION -> "先授予定位权限，后台采点和延迟分析才能正常工作。"
-        AutoTrackUiState.SAVED_RECENTLY -> "最近一段轨迹已完成分析并写入历史记录。"
-        else -> "当前未检测到有效移动，系统持续低功耗采点并等待状态变化。"
+        AutoTrackUiState.SAVED_RECENTLY -> "最近一段轨迹已整理完成，可在历史页查看。"
+        else -> "当前没有明显移动，系统会继续低功耗采点并等待状态变化。"
     }
 
 }

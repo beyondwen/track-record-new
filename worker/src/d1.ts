@@ -47,6 +47,20 @@ function getAcceptedHistoryIds(histories: HistoryRecord[]): number[] {
   return [...new Set(histories.map((history) => history.historyId))];
 }
 
+interface UploadedHistoryRow {
+  history_id: number;
+  timestamp_millis: number;
+  distance_km: number;
+  duration_seconds: number;
+  average_speed_kmh: number;
+  title: string | null;
+  start_source: string | null;
+  stop_source: string | null;
+  manual_start_at: number | null;
+  manual_stop_at: number | null;
+  points_json: string;
+}
+
 export function buildPersistHistoriesResult(
   rawHistories: HistoryRecord[],
   insertedCount: number
@@ -100,6 +114,58 @@ async function executeBatch(
   return results.reduce((sum, result) => sum + extractChanges(result), 0);
 }
 
+function parseHistoryPoints(pointsJson: string): HistoryRecord["points"] {
+  const parsed = JSON.parse(pointsJson);
+  if (!Array.isArray(parsed)) {
+    return [];
+  }
+
+  return parsed.map((point) => ({
+    latitude:
+      typeof point?.latitude === "number" && Number.isFinite(point.latitude)
+        ? point.latitude
+        : 0,
+    longitude:
+      typeof point?.longitude === "number" && Number.isFinite(point.longitude)
+        ? point.longitude
+        : 0,
+    timestampMillis:
+      Number.isSafeInteger(point?.timestampMillis) ? point.timestampMillis : 0,
+    accuracyMeters:
+      typeof point?.accuracyMeters === "number" && Number.isFinite(point.accuracyMeters)
+        ? point.accuracyMeters
+        : null,
+    altitudeMeters:
+      typeof point?.altitudeMeters === "number" && Number.isFinite(point.altitudeMeters)
+        ? point.altitudeMeters
+        : null,
+    wgs84Latitude:
+      typeof point?.wgs84Latitude === "number" && Number.isFinite(point.wgs84Latitude)
+        ? point.wgs84Latitude
+        : null,
+    wgs84Longitude:
+      typeof point?.wgs84Longitude === "number" && Number.isFinite(point.wgs84Longitude)
+        ? point.wgs84Longitude
+        : null
+  }));
+}
+
+function mapUploadedHistoryRow(row: UploadedHistoryRow): HistoryRecord {
+  return {
+    historyId: row.history_id,
+    timestampMillis: row.timestamp_millis,
+    distanceKm: row.distance_km,
+    durationSeconds: row.duration_seconds,
+    averageSpeedKmh: row.average_speed_kmh,
+    title: row.title,
+    startSource: row.start_source,
+    stopSource: row.stop_source,
+    manualStartAt: row.manual_start_at,
+    manualStopAt: row.manual_stop_at,
+    points: parseHistoryPoints(row.points_json)
+  };
+}
+
 export function createD1HistoryPersistence(): HistoryPersistence {
   return {
     async persistHistories(
@@ -151,6 +217,60 @@ export function createD1HistoryPersistence(): HistoryPersistence {
 
       const insertedCount = await executeBatch(env, statements);
       return buildPersistHistoriesResult(histories, insertedCount);
+    },
+
+    async readHistories(deviceId: string, env: Env): Promise<HistoryRecord[]> {
+      const result = await env.DB.prepare(
+        `SELECT
+           history_id,
+           timestamp_millis,
+           distance_km,
+           duration_seconds,
+           average_speed_kmh,
+           title,
+           start_source,
+           stop_source,
+           manual_start_at,
+           manual_stop_at,
+           points_json
+         FROM uploaded_histories
+         WHERE device_id = ?
+         ORDER BY timestamp_millis DESC, history_id DESC`
+      )
+        .bind(deviceId)
+        .all<UploadedHistoryRow>();
+
+      return (result.results ?? []).map(mapUploadedHistoryRow);
+    },
+
+    async readHistoriesByDay(
+      deviceId: string,
+      dayStartMillis: number,
+      env: Env
+    ): Promise<HistoryRecord[]> {
+      const result = await env.DB.prepare(
+        `SELECT
+           history_id,
+           timestamp_millis,
+           distance_km,
+           duration_seconds,
+           average_speed_kmh,
+           title,
+           start_source,
+           stop_source,
+           manual_start_at,
+           manual_stop_at,
+           points_json
+         FROM uploaded_histories
+         WHERE device_id = ?
+           AND timestamp_millis >= ?
+           AND timestamp_millis < ?
+         ORDER BY timestamp_millis DESC, history_id DESC`
+      )
+        .bind(deviceId, dayStartMillis, dayStartMillis + 86_400_000)
+        .all<UploadedHistoryRow>();
+
+      return (result.results ?? []).map(mapUploadedHistoryRow);
     }
   };
 }

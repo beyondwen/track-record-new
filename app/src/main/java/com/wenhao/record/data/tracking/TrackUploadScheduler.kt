@@ -1,6 +1,7 @@
 package com.wenhao.record.data.tracking
 
 import android.content.Context
+import androidx.work.Configuration
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.ExistingWorkPolicy
@@ -21,25 +22,26 @@ object TrackUploadScheduler {
 
     fun ensureScheduled(context: Context) {
         val appContext = context.applicationContext
+        val workManager = workManager(appContext)
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(
+        workManager.enqueueUniquePeriodicWork(
             RAW_PERIODIC_WORK,
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<RawPointUploadWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build(),
         )
-        WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(
+        workManager.enqueueUniquePeriodicWork(
             ANALYSIS_PERIODIC_WORK,
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<AnalysisUploadWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build(),
         )
-        WorkManager.getInstance(appContext).enqueueUniquePeriodicWork(
+        workManager.enqueueUniquePeriodicWork(
             HISTORY_PERIODIC_WORK,
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<HistoryUploadWorker>(15, TimeUnit.MINUTES)
@@ -49,7 +51,7 @@ object TrackUploadScheduler {
     }
 
     fun kickRawPointSync(context: Context) {
-        WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+        workManager(context.applicationContext).enqueueUniqueWork(
             RAW_ONE_TIME_WORK,
             ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<RawPointUploadWorker>().build(),
@@ -57,7 +59,7 @@ object TrackUploadScheduler {
     }
 
     fun kickAnalysisSync(context: Context) {
-        WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+        workManager(context.applicationContext).enqueueUniqueWork(
             ANALYSIS_ONE_TIME_WORK,
             ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<AnalysisUploadWorker>().build(),
@@ -65,10 +67,22 @@ object TrackUploadScheduler {
     }
 
     fun kickHistorySync(context: Context) {
-        WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+        workManager(context.applicationContext).enqueueUniqueWork(
             HISTORY_ONE_TIME_WORK,
             ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<HistoryUploadWorker>().build(),
         )
+    }
+
+    private fun workManager(appContext: Context): WorkManager {
+        return try {
+            WorkManager.getInstance(appContext)
+        } catch (_: IllegalStateException) {
+            WorkManager.initialize(
+                appContext,
+                Configuration.Builder().build(),
+            )
+            WorkManager.getInstance(appContext)
+        }
     }
 }

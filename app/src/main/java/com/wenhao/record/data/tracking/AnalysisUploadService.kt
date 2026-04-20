@@ -1,5 +1,6 @@
 package com.wenhao.record.data.tracking
 
+import com.wenhao.record.data.history.executeWithHttpUrlConnection
 import org.json.JSONObject
 import java.io.IOException
 
@@ -16,7 +17,7 @@ sealed interface AnalysisUploadResult {
 }
 
 class AnalysisUploadService(
-    private val requestExecutor: TrainingSampleUploadRequestExecutor = ::executeWithHttpUrlConnection,
+    private val requestExecutor: UploadHttpRequestExecutor = ::executeWithHttpUrlConnection,
 ) {
     fun upload(
         config: TrainingSampleUploadConfig,
@@ -25,7 +26,7 @@ class AnalysisUploadService(
         rows: List<AnalysisUploadRow>,
     ): AnalysisUploadResult {
         return try {
-            val request = TrainingSampleUploadRequest(
+            val request = UploadHttpRequest(
                 url = "${config.workerBaseUrl.trim().trimEnd('/')}/analysis/batch",
                 method = "POST",
                 headers = mapOf(
@@ -47,7 +48,7 @@ class AnalysisUploadService(
         }
     }
 
-    private fun parseResponse(response: TrainingSampleUploadResponse): AnalysisUploadResult {
+    private fun parseResponse(response: UploadHttpResponse): AnalysisUploadResult {
         if (response.statusCode == 401 || response.statusCode == 403) {
             return AnalysisUploadResult.Failure(ANALYSIS_AUTH_FAILURE_MESSAGE)
         }

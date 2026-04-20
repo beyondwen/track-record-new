@@ -133,6 +133,14 @@ export interface HistoryPersistence {
     histories: HistoryRecord[],
     env: Env
   ): Promise<PersistHistoriesResult>;
+
+  readHistories(deviceId: string, env: Env): Promise<HistoryRecord[]>;
+
+  readHistoriesByDay(
+    deviceId: string,
+    dayStartMillis: number,
+    env: Env
+  ): Promise<HistoryRecord[]>;
 }
 
 export interface RawPointSuccessResponseBody extends PersistRawPointsResult {
@@ -145,6 +153,11 @@ export interface AnalysisSuccessResponseBody extends PersistAnalysisResult {
 
 export interface HistorySuccessResponseBody extends PersistHistoriesResult {
   ok: true;
+}
+
+export interface HistoryReadSuccessResponseBody {
+  ok: true;
+  histories: HistoryRecord[];
 }
 
 export interface ErrorResponseBody {

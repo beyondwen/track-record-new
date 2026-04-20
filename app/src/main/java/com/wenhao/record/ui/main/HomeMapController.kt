@@ -7,6 +7,7 @@ import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
+import com.wenhao.record.tracking.TrackingPhase
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.ui.map.TrackMapMarker
 import com.wenhao.record.ui.map.TrackMapMarkerKind
@@ -47,10 +48,12 @@ class HomeMapController : HomeMapPort {
         runtimeSnapshot: TrackingRuntimeSnapshot?,
         previewLocation: GeoCoordinate?,
         todayHistoryItems: List<HistoryItem>,
+        activeSessionPoints: List<TrackPoint>,
     ) {
         trackingEnabled = runtimeSnapshot?.isEnabled == true
         clearActiveTrack()
         renderTodayTracks(todayHistoryItems)
+        renderActiveTrack(runtimeSnapshot, activeSessionPoints)
 
         val liveCoordinate = runtimeSnapshot?.latestPoint?.toGeoCoordinate()
         when {
@@ -146,6 +149,24 @@ class HomeMapController : HomeMapPort {
             idPrefix = "active",
             width = 6.0,
         )
+    }
+
+    private fun renderActiveTrack(
+        runtimeSnapshot: TrackingRuntimeSnapshot?,
+        activeSessionPoints: List<TrackPoint>,
+    ) {
+        val shouldRenderActiveTrack = trackingEnabled &&
+            runtimeSnapshot?.phase != TrackingPhase.IDLE &&
+            activeSessionPoints.size >= 2
+        if (!shouldRenderActiveTrack) {
+            return
+        }
+
+        currentTrackPoints.clear()
+        currentTrackPoints.addAll(activeSessionPoints.sortedBy { it.timestampMillis })
+        currentTrackSegments = listOf(currentTrackPoints.toList())
+        renderTrackHeatmap()
+        updateLiveTrackMarkers()
     }
 
     private fun clearActiveTrack() {

@@ -14,6 +14,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class ApkInstallIntentTest {
     @Test
+    @Suppress("DEPRECATION")
     fun `build install intent uses package installer action and grants read access`() {
         val contentUri = Uri.parse("content://com.wenhao.record.fileprovider/update/app-release.apk")
 

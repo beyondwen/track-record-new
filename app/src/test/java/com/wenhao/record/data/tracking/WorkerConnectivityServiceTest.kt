@@ -8,12 +8,12 @@ import java.io.IOException
 class WorkerConnectivityServiceTest {
 
     @Test
-    fun `check treats method not allowed as reachable worker`() {
+    fun `check treats health success as reachable worker`() {
         val service = WorkerConnectivityService(
             requestExecutor = { request ->
-                assertEquals("https://worker.example.com/raw-points/batch", request.url)
+                assertEquals("https://worker.example.com/health", request.url)
                 assertEquals("GET", request.method)
-                WorkerConnectivityResponse(statusCode = 405, body = """{"ok":false,"message":"Method not allowed"}""")
+                WorkerConnectivityResponse(statusCode = 200, body = """{"ok":true,"message":"ok"}""")
             }
         )
 
@@ -21,13 +21,13 @@ class WorkerConnectivityServiceTest {
 
         assertTrue(result is WorkerConnectivityResult.Reachable)
         assertEquals(
-            "Worker 可达，接口路径正常（返回 405）",
+            "Worker 可达，健康检查正常（返回 200）",
             (result as WorkerConnectivityResult.Reachable).message,
         )
     }
 
     @Test
-    fun `check reports auth related status as reachable`() {
+    fun `check reports auth related status as suspicious health endpoint`() {
         val service = WorkerConnectivityService(
             requestExecutor = {
                 WorkerConnectivityResponse(statusCode = 403, body = """{"ok":false,"message":"Forbidden"}""")
@@ -38,7 +38,7 @@ class WorkerConnectivityServiceTest {
 
         assertTrue(result is WorkerConnectivityResult.Reachable)
         assertEquals(
-            "Worker 可达，但鉴权会失败（返回 403）",
+            "Worker 可达，但健康检查不该要求鉴权（返回 403）",
             (result as WorkerConnectivityResult.Reachable).message,
         )
     }
