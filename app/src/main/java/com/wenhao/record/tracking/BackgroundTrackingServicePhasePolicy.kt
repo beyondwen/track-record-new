@@ -3,11 +3,11 @@ package com.wenhao.record.tracking
 import com.wenhao.record.data.tracking.SamplingTier
 
 class BackgroundTrackingServicePhasePolicy(
-    private val promoteMotionConfidenceThreshold: Float = 0.8f,
-    private val promoteDistanceThresholdMeters: Float = 90f,
-    private val promoteSpeedThresholdMetersPerSecond: Float = 1.5f,
-    private val suspectDistanceThresholdMeters: Float = 45f,
-    private val suspectSpeedThresholdMetersPerSecond: Float = 0.8f,
+    private val promoteMotionConfidenceThreshold: Float = 0.72f,
+    private val promoteDistanceThresholdMeters: Float = 50f,
+    private val promoteSpeedThresholdMetersPerSecond: Float = 1.0f,
+    private val suspectDistanceThresholdMeters: Float = 25f,
+    private val suspectSpeedThresholdMetersPerSecond: Float = 0.6f,
     private val downshiftDistanceThresholdMeters: Float = 25f,
     private val downshiftSpeedThresholdMetersPerSecond: Float = 0.35f,
     private val activeToStoppingStillDurationMillis: Long = 5 * 60_000L,

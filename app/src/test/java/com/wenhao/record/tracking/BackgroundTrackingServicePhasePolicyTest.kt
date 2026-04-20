@@ -8,15 +8,14 @@ class BackgroundTrackingServicePhasePolicyTest {
     @Test
     fun `promotes to active only when motion and displacement signals both pass`() {
         val policy = BackgroundTrackingServicePhasePolicy()
-
         assertEquals(
             TrackingPhase.ACTIVE,
             policy.nextPhase(
                 current = TrackingPhase.IDLE,
                 motionType = "WALKING",
-                motionConfidence = 0.82f,
-                netDistanceMeters = 96f,
-                inferredSpeedMetersPerSecond = 1.9f,
+                motionConfidence = 0.75f,
+                netDistanceMeters = 55f,
+                inferredSpeedMetersPerSecond = 1.2f,
                 stillDurationMillis = 0L,
             ),
         )
@@ -25,14 +24,13 @@ class BackgroundTrackingServicePhasePolicyTest {
     @Test
     fun `enters suspect when only one side of the dual signal is present`() {
         val policy = BackgroundTrackingServicePhasePolicy()
-
         assertEquals(
             TrackingPhase.SUSPECT_MOVING,
             policy.nextPhase(
                 current = TrackingPhase.IDLE,
                 motionType = "WALKING",
-                motionConfidence = 0.88f,
-                netDistanceMeters = 24f,
+                motionConfidence = 0.76f,
+                netDistanceMeters = 20f,
                 inferredSpeedMetersPerSecond = 0.4f,
                 stillDurationMillis = 0L,
             ),
@@ -43,8 +41,8 @@ class BackgroundTrackingServicePhasePolicyTest {
                 current = TrackingPhase.IDLE,
                 motionType = "STILL",
                 motionConfidence = 0.9f,
-                netDistanceMeters = 120f,
-                inferredSpeedMetersPerSecond = 1.8f,
+                netDistanceMeters = 80f,
+                inferredSpeedMetersPerSecond = 1.2f,
                 stillDurationMillis = 0L,
             ),
         )
@@ -53,7 +51,6 @@ class BackgroundTrackingServicePhasePolicyTest {
     @Test
     fun `downshifts active only after sustained still evidence`() {
         val policy = BackgroundTrackingServicePhasePolicy()
-
         assertEquals(
             TrackingPhase.SUSPECT_STOPPING,
             policy.nextPhase(

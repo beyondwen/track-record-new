@@ -69,4 +69,7 @@ interface ContinuousTrackDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun upsertUploadCursor(entity: UploadCursorEntity)
+
+    @Query("DELETE FROM raw_location_point WHERE pointId <= :upToPointId")
+    fun deleteRawPointsUpTo(upToPointId: Long)
 }

@@ -51,6 +51,9 @@ class BackgroundTrackingService : Service() {
         private const val CHANNEL_ID = "smart_tracking"
         private const val NOTIFICATION_ID = 1107
         private const val ANALYSIS_VERSION = 1
+        private const val MAX_IDLE_ACCURACY_METERS = 80f
+        private const val MAX_ACTIVE_ACCURACY_METERS = 35f
+        private const val MAX_ACTIVE_SPEED_METERS_PER_SECOND = 45f
 
         fun start(context: Context) {
             val intent = Intent(context, BackgroundTrackingService::class.java).apply {
@@ -101,6 +104,16 @@ class BackgroundTrackingService : Service() {
     private var stillSinceMillis: Long? = null
     private var lastAnalysisAt: Long? = null
     private var analysisInFlight = false
+    private var suspectEnteredAt: Long? = null
+
+    private val suspectTimeoutCheck = Runnable {
+        if (currentPhase == TrackingPhase.SUSPECT_MOVING && suspectEnteredAt != null) {
+            val elapsed = System.currentTimeMillis() - suspectEnteredAt!!
+            if (elapsed >= 90_000L) {
+                enterPhase(TrackingPhase.IDLE, reason = "疑似移动超时未确认，恢复低功耗待命")
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -135,12 +148,17 @@ class BackgroundTrackingService : Service() {
 
     override fun onDestroy() {
         stopLocationUpdates()
+        if (enabled) {
+            saveSnapshot()
+        }
         trackingThread.quitSafely()
         super.onDestroy()
     }
 
     private fun enableTracking() {
         if (enabled) {
+            ensureNotificationChannel()
+            startForeground(NOTIFICATION_ID, buildNotification())
             requestLocationUpdatesForPhase(currentPhase)
             saveSnapshot()
             return
@@ -171,8 +189,18 @@ class BackgroundTrackingService : Service() {
     private fun enterPhase(phase: TrackingPhase, reason: String) {
         val previousPhase = currentPhase
         currentPhase = phase
-        if (phase == TrackingPhase.IDLE || previousPhase != phase) {
+        if (phase == TrackingPhase.IDLE) {
             phaseAnchorPoint = latestPoint
+        } else if (previousPhase == TrackingPhase.IDLE) {
+            phaseAnchorPoint = latestPoint
+        }
+
+        trackingHandler.removeCallbacks(suspectTimeoutCheck)
+        if (phase == TrackingPhase.SUSPECT_MOVING) {
+            suspectEnteredAt = System.currentTimeMillis()
+            trackingHandler.postDelayed(suspectTimeoutCheck, 90_000L)
+        } else {
+            suspectEnteredAt = null
         }
         requestLocationUpdatesForPhase(phase)
         updateNotification(reason)
@@ -221,14 +249,16 @@ class BackgroundTrackingService : Service() {
 
     private fun samplingConfigFor(phase: TrackingPhase): SamplingConfig {
         return when (phasePolicy.samplingTierFor(phase)) {
-            SamplingTier.IDLE -> SamplingConfig(intervalMillis = 60_000L, minDistanceMeters = 60f)
-            SamplingTier.SUSPECT -> SamplingConfig(intervalMillis = 15_000L, minDistanceMeters = 18f)
-            SamplingTier.ACTIVE -> SamplingConfig(intervalMillis = 4_000L, minDistanceMeters = 6f)
+            SamplingTier.IDLE -> SamplingConfig(intervalMillis = 30_000L, minDistanceMeters = 30f)
+            SamplingTier.SUSPECT -> SamplingConfig(intervalMillis = 10_000L, minDistanceMeters = 12f)
+            SamplingTier.ACTIVE -> SamplingConfig(intervalMillis = 3_000L, minDistanceMeters = 4f)
         }
     }
 
     private fun handleLocationUpdate(location: Location) {
         if (!enabled) return
+
+        if (shouldIgnoreLocation(location)) return
 
         val point = location.toTrackPoint()
         val previousPoint = latestPoint
@@ -279,7 +309,7 @@ class BackgroundTrackingService : Service() {
 
     private fun shouldTriggerRollingAnalysis(timestampMillis: Long): Boolean {
         val last = lastAnalysisAt ?: return false
-        return timestampMillis - last >= 15 * 60_000L
+        return timestampMillis - last >= 8 * 60_000L
     }
 
     private fun updateStillDuration(
@@ -332,7 +362,9 @@ class BackgroundTrackingService : Service() {
         if (analysisInFlight) return
         analysisInFlight = true
         AppTaskExecutor.runOnIo {
-            val window = pointStorage.loadPendingWindow(afterPointId = 0L, limit = 512)
+            val cursor = pointStorage.loadAnalysisCursor()
+            val afterPointId = cursor?.lastAnalyzedPointId ?: 0L
+            val window = pointStorage.loadPendingWindow(afterPointId = afterPointId, limit = 2048)
             if (window.size < 3) {
                 runOnTrackingThread {
                     analysisInFlight = false
@@ -431,6 +463,11 @@ class BackgroundTrackingService : Service() {
                 segments = persistedSegments,
                 stayClusters = persistedStayClusters,
             )
+
+            val analyzedUpToPointId = window.maxOf { it.pointId }
+            if (persistedSegments.isNotEmpty()) {
+                pointStorage.deleteRawPointsUpTo(analyzedUpToPointId)
+            }
             HistoryStorage.upsertProjectedItems(
                 context = applicationContext,
                 projectedItems = analysisHistoryProjector.project(
@@ -533,7 +570,7 @@ class BackgroundTrackingService : Service() {
         location: Location,
         speedMetersPerSecond: Float,
     ): String {
-        return if (speedMetersPerSecond >= 0.8f || location.hasSpeed() && location.speed >= 0.8f) {
+        return if (speedMetersPerSecond >= 0.5f || location.hasSpeed() && location.speed >= 0.5f) {
             "WALKING"
         } else {
             "STILL"
@@ -545,9 +582,9 @@ class BackgroundTrackingService : Service() {
         speedMetersPerSecond: Float,
     ): Float {
         val accuracyPenalty = ((location.accuracy.takeIf { location.hasAccuracy() } ?: 30f) / 100f)
-            .coerceIn(0.05f, 0.5f)
-        val speedSignal = (speedMetersPerSecond / 2.5f).coerceIn(0f, 1f)
-        return max(0.55f, (0.95f - accuracyPenalty) + (speedSignal * 0.2f)).coerceIn(0f, 0.98f)
+            .coerceIn(0.05f, 0.3f)
+        val speedSignal = (speedMetersPerSecond / 2.0f).coerceIn(0f, 1f)
+        return max(0.65f, (0.95f - accuracyPenalty) + (speedSignal * 0.25f)).coerceIn(0f, 0.98f)
     }
 
     private fun inferredSpeed(
@@ -579,6 +616,8 @@ class BackgroundTrackingService : Service() {
             timestampMillis = time,
             accuracyMeters = accuracy.takeIf { hasAccuracy() },
             altitudeMeters = altitude.takeIf { hasAltitude() },
+            wgs84Latitude = latitude,
+            wgs84Longitude = longitude,
         )
     }
 
@@ -592,6 +631,28 @@ class BackgroundTrackingService : Service() {
             Manifest.permission.ACCESS_COARSE_LOCATION,
         ) == PackageManager.PERMISSION_GRANTED
         return fine || coarse
+    }
+
+    private fun shouldIgnoreLocation(location: Location): Boolean {
+        val accuracyMeters = location.accuracy.takeIf { location.hasAccuracy() }
+
+        if (currentPhase == TrackingPhase.IDLE || currentPhase == TrackingPhase.SUSPECT_MOVING) {
+            if (accuracyMeters == null || accuracyMeters > MAX_IDLE_ACCURACY_METERS) {
+                return true
+            }
+        }
+
+        if (currentPhase == TrackingPhase.ACTIVE || currentPhase == TrackingPhase.SUSPECT_STOPPING) {
+            if (accuracyMeters != null && accuracyMeters > MAX_ACTIVE_ACCURACY_METERS) {
+                return true
+            }
+            val speedMetersPerSecond = location.speed.takeIf { location.hasSpeed() && it >= 0f }
+            if (speedMetersPerSecond != null && speedMetersPerSecond > MAX_ACTIVE_SPEED_METERS_PER_SECOND) {
+                return true
+            }
+        }
+
+        return false
     }
 
     private fun runOnTrackingThread(block: () -> Unit) {

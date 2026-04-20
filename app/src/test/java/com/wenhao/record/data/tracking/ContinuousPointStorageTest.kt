@@ -160,5 +160,7 @@ class ContinuousPointStorageTest {
 
         override fun upsertUploadCursor(entity: UploadCursorEntity) {
         }
+
+        override fun deleteRawPointsUpTo(upToPointId: Long) {}
     }
 }

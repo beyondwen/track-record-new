@@ -73,5 +73,7 @@ class UploadCursorStorageTest {
         override fun upsertUploadCursor(entity: UploadCursorEntity) {
             uploadCursors[entity.cursorType] = entity
         }
+
+        override fun deleteRawPointsUpTo(upToPointId: Long) {}
     }
 }

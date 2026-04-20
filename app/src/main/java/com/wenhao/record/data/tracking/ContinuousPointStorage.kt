@@ -79,6 +79,10 @@ class ContinuousPointStorage(
     fun loadAnalysisCursor(): AnalysisCursorEntity? {
         return dao.loadAnalysisCursor()
     }
+
+    fun deleteRawPointsUpTo(upToPointId: Long) {
+        dao.deleteRawPointsUpTo(upToPointId)
+    }
 }
 
 private fun RawTrackPoint.toEntity(): RawLocationPointEntity {

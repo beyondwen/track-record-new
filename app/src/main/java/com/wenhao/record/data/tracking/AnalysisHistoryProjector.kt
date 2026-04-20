@@ -51,6 +51,8 @@ class AnalysisHistoryProjector {
                             timestampMillis = point.timestampMillis,
                             accuracyMeters = point.accuracyMeters,
                             altitudeMeters = point.altitudeMeters,
+                            wgs84Latitude = point.latitude,
+                            wgs84Longitude = point.longitude,
                         )
                     },
                     startSource = TrackRecordSource.AUTO,
