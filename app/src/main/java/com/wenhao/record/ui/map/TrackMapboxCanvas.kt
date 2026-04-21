@@ -3,10 +3,11 @@ package com.wenhao.record.ui.map
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.foundation.BorderStroke
-import com.mapbox.android.gestures.MoveGestureDetector
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +32,7 @@ import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.ContentScale
 import com.mapbox.maps.EdgeInsets
+import com.mapbox.maps.MapView
 import com.mapbox.common.MapboxOptions
 import com.mapbox.maps.dsl.cameraOptions
 import com.mapbox.maps.extension.compose.MapboxMap
@@ -43,7 +45,6 @@ import com.mapbox.maps.extension.compose.annotation.IconImage
 import com.mapbox.maps.extension.style.layers.properties.generated.IconAnchor
 import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
 import com.mapbox.maps.plugin.gestures.generated.GesturesSettings
-import com.mapbox.maps.plugin.gestures.OnMoveListener
 import com.mapbox.maps.plugin.gestures.gestures
 import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
@@ -131,6 +132,8 @@ fun TrackMapboxCanvas(
 
     val context = LocalContext.current
     val mapViewportState = rememberMapViewportState()
+    var gestureHost by remember { mutableStateOf<MoveGestureListenerHost?>(null) }
+    val moveGestureBinding = remember { MoveGestureListenerBinding() }
     val mapState = rememberMapState(
         key = buildString {
             append(if (interactive) "interactive" else "static-preview")
@@ -248,18 +251,8 @@ fun TrackMapboxCanvas(
                 }
             }
 
-            MapEffect(interactive, onUserGestureMove) { mapView ->
-                if (!interactive || onUserGestureMove == null) return@MapEffect
-                val moveListener = object : OnMoveListener {
-                    override fun onMoveBegin(detector: MoveGestureDetector) {
-                        onUserGestureMove()
-                    }
-
-                    override fun onMove(detector: MoveGestureDetector): Boolean = false
-
-                    override fun onMoveEnd(detector: MoveGestureDetector) = Unit
-                }
-                mapView.gestures.addOnMoveListener(moveListener)
+            MapEffect(Unit) { mapView ->
+                gestureHost = MapboxMoveGestureListenerHost(mapView)
             }
         }
 
@@ -310,6 +303,20 @@ fun TrackMapboxCanvas(
             snapshotRequested = true
         }
     }
+
+    SideEffect {
+        moveGestureBinding.bind(
+            host = gestureHost,
+            interactive = interactive,
+            onUserGestureMove = onUserGestureMove,
+        )
+    }
+
+    DisposableEffect(gestureHost) {
+        onDispose {
+            moveGestureBinding.clear()
+        }
+    }
 }
 
 @Composable
@@ -354,4 +361,16 @@ internal fun isMapboxAccessTokenConfigured(token: String): Boolean {
     val normalized = token.trim()
     if (normalized.isEmpty()) return false
     return !normalized.equals("YOUR_MAPBOX_ACCESS_TOKEN", ignoreCase = true)
+}
+
+private class MapboxMoveGestureListenerHost(
+    private val mapView: MapView,
+) : MoveGestureListenerHost {
+    override fun addOnMoveListener(listener: com.mapbox.maps.plugin.gestures.OnMoveListener) {
+        mapView.gestures.addOnMoveListener(listener)
+    }
+
+    override fun removeOnMoveListener(listener: com.mapbox.maps.plugin.gestures.OnMoveListener) {
+        mapView.gestures.removeOnMoveListener(listener)
+    }
 }
