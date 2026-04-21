@@ -102,8 +102,6 @@ fun HistoryComposeScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        TrackAtmosphericBackground()
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -112,9 +110,9 @@ fun HistoryComposeScreen(
             LazyColumn(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(
-                    start = 24.dp,
+                    start = 20.dp,
                     top = 28.dp,
-                    end = 24.dp,
+                    end = 20.dp,
                     bottom = 32.dp,
                 ),
                 verticalArrangement = Arrangement.spacedBy(28.dp),
@@ -142,28 +140,37 @@ fun HistoryComposeScreen(
                         }
                         val currentLabel = requireNotNull(groupLabels[item.dayStartMillis])
 
-                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                            if (index == 0 || currentLabel != previousLabel) {
-                                HistorySectionHeader(
-                                    title = if (index == 0) {
-                                        stringResource(R.string.compose_history_log_title)
-                                    } else {
-                                        currentLabel
-                                    },
-                                    trailing = if (index == 0) {
-                                        stringResource(R.string.compose_history_view_all)
-                                    } else {
-                                        null
-                                    },
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = true, // 初始入场
+                            enter = androidx.compose.animation.fadeIn(
+                                androidx.compose.animation.core.tween(600, delayMillis = index * 100)
+                            ) + androidx.compose.animation.slideInVertically(
+                                androidx.compose.animation.core.tween(600, delayMillis = index * 100)
+                            ) { it / 2 }
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                                if (index == 0 || currentLabel != previousLabel) {
+                                    HistorySectionHeader(
+                                        title = if (index == 0) {
+                                            stringResource(R.string.compose_history_log_title)
+                                        } else {
+                                            currentLabel
+                                        },
+                                        trailing = if (index == 0) {
+                                            stringResource(R.string.compose_history_view_all)
+                                        } else {
+                                            null
+                                        },
+                                    )
+                                }
+
+                                HistoryDayCard(
+                                    item = item,
+                                    isSelected = item.dayStartMillis == state.selectedDayStartMillis,
+                                    onClick = { onHistoryClick(item) },
+                                    onLongClick = { onHistoryLongClick(item) },
                                 )
                             }
-
-                            HistoryDayCard(
-                                item = item,
-                                isSelected = item.dayStartMillis == state.selectedDayStartMillis,
-                                onClick = { onHistoryClick(item) },
-                                onLongClick = { onHistoryLongClick(item) },
-                            )
                         }
                     }
                 }
@@ -180,26 +187,27 @@ fun HistoryComposeScreen(
 private fun HistoryHeroSection(
     state: HistoryScreenUiState,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             DecorativeMenuGlyph()
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     text = stringResource(R.string.compose_history_title),
-                    style = MaterialTheme.typography.headlineMedium,
+                    style = MaterialTheme.typography.headlineLarge,
                     color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = (-1).sp
                 )
 
                 if (state.totalCountText.isNotBlank()) {
                     Text(
                         text = state.totalCountText,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     )
                 }
             }
@@ -207,7 +215,7 @@ private fun HistoryHeroSection(
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             HistoryOverviewMetricCard(
                 label = stringResource(R.string.compose_history_total_distance),
@@ -230,28 +238,29 @@ private fun HistoryOverviewMetricCard(
     value: String,
     modifier: Modifier = Modifier,
 ) {
-    TrackLiquidPanel(
+    com.wenhao.record.ui.designsystem.TrackGlassCard(
         modifier = modifier,
         shape = RoundedCornerShape(24.dp),
-        tone = TrackLiquidTone.SUBTLE,
-        shadowElevation = 0.dp,
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.Bold
             )
 
             Text(
                 text = value,
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
                 color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold,
-                maxLines = 2,
+                fontWeight = FontWeight.Black,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -327,7 +336,7 @@ private fun HistoryDayCard(
         stringResource(R.string.compose_history_card_open)
     }
 
-    TrackLiquidPanel(
+    com.wenhao.record.ui.designsystem.TrackGlassCard(
         modifier = Modifier
             .fillMaxWidth()
             .semantics(mergeDescendants = true) {
@@ -340,18 +349,11 @@ private fun HistoryDayCard(
                 onClick = onClick,
                 onLongClick = onLongClick,
             ),
-        shape = RoundedCornerShape(34.dp),
-        tone = if (isSelected) TrackLiquidTone.ACCENT else TrackLiquidTone.STRONG,
-        borderColor = when {
-            isSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
-            item.quality.level == TrackQualityLevel.LOW -> MaterialTheme.colorScheme.error.copy(alpha = 0.16f)
-            else -> MaterialTheme.colorScheme.trackInnerPanelBorder.copy(alpha = 0.22f)
-        },
-        shadowElevation = if (isSelected) 10.dp else 4.dp,
-        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 18.dp),
+        shape = RoundedCornerShape(32.dp),
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -360,25 +362,25 @@ private fun HistoryDayCard(
             ) {
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     Text(
                         text = item.displayTitle,
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.Black,
                     )
 
                     Text(
                         text = buildHistoryMetaLine(item),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     )
                 }
 
                 TrackStatChip(
                     text = item.quality.badgeLabel,
-                    containerColor = qualityChipContainerColor(item.quality.level),
+                    containerColor = qualityChipContainerColor(item.quality.level).copy(alpha = 0.15f),
                     contentColor = qualityChipContentColor(item.quality.level),
                 )
             }
@@ -396,32 +398,16 @@ private fun HistoryPreviewCard(
     item: HistoryDayItem,
     modifier: Modifier = Modifier,
 ) {
-    TrackLiquidPanel(
-        modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        tone = TrackLiquidTone.SUBTLE,
-        borderColor = MaterialTheme.colorScheme.trackInnerPanelBorder.copy(alpha = 0.14f),
-        contentPadding = PaddingValues(8.dp),
+    Box(
+        modifier = modifier
+            .height(240.dp)
+            .clip(RoundedCornerShape(24.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f))
     ) {
-        TrackLiquidPanel(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(270.dp),
-            shape = RoundedCornerShape(26.dp),
-            tone = TrackLiquidTone.STANDARD,
-            borderColor = MaterialTheme.colorScheme.trackInnerPanelBorder.copy(alpha = 0.1f),
-        ) {
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .clip(RoundedCornerShape(26.dp)),
-            ) {
-                HistoryRoutePreviewCanvas(
-                    segments = item.segments,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
+        HistoryRoutePreviewCanvas(
+            segments = item.segments,
+            modifier = Modifier.fillMaxSize().padding(12.dp),
+        )
     }
 }
 
@@ -429,25 +415,26 @@ private fun HistoryPreviewCard(
 private fun HistoryBottomBar(
     onRecordClick: () -> Unit,
 ) {
-    TrackLiquidPanel(
-        modifier = Modifier.navigationBarsPadding(),
-        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-        tone = TrackLiquidTone.STRONG,
-        shadowElevation = 0.dp,
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+    Box(
+        modifier = Modifier
+            .navigationBarsPadding()
+            .padding(horizontal = 24.dp, vertical = 16.dp)
     ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
+        com.wenhao.record.ui.designsystem.TrackGlassCard(
+            shape = RoundedCornerShape(40.dp),
+            modifier = Modifier.fillMaxWidth()
         ) {
-            TrackBottomNavigationBar(
-                selectedTab = TrackBottomTab.HISTORY,
-                onRecordClick = onRecordClick,
-                onHistoryClick = {},
-                recordLabel = stringResource(R.string.compose_history_record_tab),
-                historyLabel = stringResource(R.string.compose_history_list_tab),
-                recordEnabled = true,
-                historyEnabled = false,
-            )
+            Box(modifier = Modifier.padding(vertical = 8.dp)) {
+                TrackBottomNavigationBar(
+                    selectedTab = TrackBottomTab.HISTORY,
+                    onRecordClick = onRecordClick,
+                    onHistoryClick = {},
+                    recordLabel = stringResource(R.string.compose_history_record_tab),
+                    historyLabel = stringResource(R.string.compose_history_list_tab),
+                    recordEnabled = true,
+                    historyEnabled = false,
+                )
+            }
         }
     }
 }
