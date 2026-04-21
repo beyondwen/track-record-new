@@ -1,5 +1,10 @@
 package com.wenhao.record.ui.dashboard
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,8 +23,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -29,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -96,17 +100,15 @@ fun DashboardComposeScreen(
     var showStatusDialog by rememberSaveable { mutableStateOf(false) }
     var contentVisible by rememberSaveable { mutableStateOf(false) }
     
-    // 入场动画触发展示
-    androidx.compose.runtime.LaunchedEffect(Unit) {
+    LaunchedEffect(Unit) {
         contentVisible = true
     }
 
     Box(modifier = modifier.fillMaxWidth()) {
         // 1. 顶部状态芯片 (浮动)
-        androidx.compose.animation.AnimatedVisibility(
+        AnimatedVisibility(
             visible = contentVisible,
-            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(600)) + 
-                    androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(600)) { -it },
+            enter = fadeIn(tween(600)) + slideInVertically(tween(600)) { -it },
             modifier = Modifier.align(Alignment.TopStart)
         ) {
             Box(
@@ -142,10 +144,9 @@ fun DashboardComposeScreen(
         }
 
         // 2. 核心里程光轮 (Hero)
-        androidx.compose.animation.AnimatedVisibility(
+        AnimatedVisibility(
             visible = contentVisible,
-            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(800, delayMillis = 200)) + 
-                    androidx.compose.animation.scaleIn(androidx.compose.animation.core.tween(800, delayMillis = 200), initialScale = 0.8f),
+            enter = fadeIn(tween(800, delayMillis = 200)) + scaleIn(tween(800, delayMillis = 200), initialScale = 0.8f),
             modifier = Modifier.align(Alignment.Center)
         ) {
             Column(
@@ -184,10 +185,9 @@ fun DashboardComposeScreen(
         }
 
         // 3. 底部浮动面板 (指标 + 导航)
-        androidx.compose.animation.AnimatedVisibility(
+        AnimatedVisibility(
             visible = contentVisible,
-            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(800, delayMillis = 400)) + 
-                    androidx.compose.animation.slideInVertically(androidx.compose.animation.core.tween(800, delayMillis = 400)) { it },
+            enter = fadeIn(tween(800, delayMillis = 400)) + slideInVertically(tween(800, delayMillis = 400)) { it },
             modifier = Modifier.align(Alignment.BottomCenter)
         ) {
             Column(
@@ -231,7 +231,7 @@ fun DashboardComposeScreen(
                             )
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Stop,
+                                painter = painterResource(R.drawable.ic_tab_record),
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp)
                             )
@@ -242,7 +242,7 @@ fun DashboardComposeScreen(
                             modifier = Modifier.size(56.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.History,
+                                painter = painterResource(R.drawable.ic_history),
                                 contentDescription = null,
                                 modifier = Modifier.size(24.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
@@ -335,7 +335,7 @@ private fun DashboardStatusEntry(
 
             Column(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
                     text = title,
@@ -421,7 +421,7 @@ private fun DashboardStatusDialog(
 
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         TrackStatChip(
                             text = stringResource(R.string.compose_dashboard_dialog_badge),
@@ -541,7 +541,7 @@ private fun DialogInfoRow(
 
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 text = label,
@@ -552,52 +552,6 @@ private fun DialogInfoRow(
                 text = value.ifBlank { stringResource(R.string.compose_dashboard_diagnostics_loading) },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DashboardStatusPanel(
-    state: DashboardScreenUiState,
-) {
-    TrackLiquidPanel(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                stateDescription = state.controlTitle
-            },
-        shape = RoundedCornerShape(22.dp),
-        tone = TrackLiquidTone.STANDARD,
-        shadowElevation = 0.dp,
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.compose_dashboard_panel_caption),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = state.controlBody,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-
-            TrackStatChip(
-                text = state.controlTitle,
-                containerColor = MaterialTheme.colorScheme.trackSecondarySurface.copy(alpha = 0.78f),
-                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
