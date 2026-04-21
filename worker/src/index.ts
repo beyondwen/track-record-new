@@ -7,6 +7,7 @@ import {
 import type {
   AnalysisPersistence,
   AnalysisSuccessResponseBody,
+  AppConfigSuccessResponseBody,
   Env,
   ErrorResponseBody,
   HistoryPersistence,
@@ -41,6 +42,7 @@ function jsonResponse(
         ok: true;
         message: string;
       }
+    | AppConfigSuccessResponseBody
     | HistorySuccessResponseBody
     | HistoryReadSuccessResponseBody
     | RawPointSuccessResponseBody
@@ -53,6 +55,11 @@ function jsonResponse(
       "content-type": "application/json; charset=utf-8"
     }
   });
+}
+
+function readConfiguredMapboxToken(env: Env): string | null {
+  const token = env.MAPBOX_PUBLIC_TOKEN?.trim();
+  return token ? token : null;
 }
 
 function ensureJsonContentType(request: Request): ErrorResponseBody | null {
@@ -122,7 +129,8 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
         url.pathname !== "/histories/day" &&
         url.pathname !== "/histories/batch" &&
         url.pathname !== "/raw-points/batch" &&
-        url.pathname !== "/analysis/batch"
+        url.pathname !== "/analysis/batch" &&
+        url.pathname !== "/app-config"
       ) {
         return jsonResponse(404, {
           ok: false,
@@ -139,6 +147,28 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
       }
 
       try {
+        if (url.pathname === "/app-config") {
+          if (request.method !== "GET") {
+            return jsonResponse(405, {
+              ok: false,
+              message: "Method not allowed"
+            });
+          }
+
+          const mapboxPublicToken = readConfiguredMapboxToken(env);
+          if (!mapboxPublicToken) {
+            return jsonResponse(503, {
+              ok: false,
+              message: "Mapbox public token is not configured"
+            });
+          }
+
+          return jsonResponse(200, {
+            ok: true,
+            mapboxPublicToken
+          });
+        }
+
         if (url.pathname === "/histories" || url.pathname === "/histories/day") {
           if (request.method !== "GET") {
             return jsonResponse(405, {

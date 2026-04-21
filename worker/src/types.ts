@@ -1,5 +1,6 @@
 export interface Env {
   UPLOAD_TOKEN: string;
+  MAPBOX_PUBLIC_TOKEN: string;
   DB: D1Database;
 }
 
@@ -158,6 +159,11 @@ export interface HistorySuccessResponseBody extends PersistHistoriesResult {
 export interface HistoryReadSuccessResponseBody {
   ok: true;
   histories: HistoryRecord[];
+}
+
+export interface AppConfigSuccessResponseBody {
+  ok: true;
+  mapboxPublicToken: string;
 }
 
 export interface ErrorResponseBody {

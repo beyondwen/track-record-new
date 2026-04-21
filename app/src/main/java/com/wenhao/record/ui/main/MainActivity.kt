@@ -38,6 +38,8 @@ import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
+import com.wenhao.record.data.tracking.WorkerAppConfigResult
+import com.wenhao.record.data.tracking.WorkerAppConfigService
 import com.wenhao.record.data.tracking.WorkerConnectivityResult
 import com.wenhao.record.data.tracking.WorkerConnectivityService
 import com.wenhao.record.map.GeoCoordinate
@@ -72,6 +74,7 @@ class MainActivity : AppCompatActivity() {
         )
     }
     private val workerConnectivityService by lazy { WorkerConnectivityService() }
+    private val workerAppConfigService by lazy { WorkerAppConfigService() }
     private val apkDownloadInstaller by lazy { ApkDownloadInstaller(this) }
     private val continuousPointStorage by lazy {
         ContinuousPointStorage(TrackDatabase.getInstance(this).continuousTrackDao())
@@ -168,6 +171,7 @@ class MainActivity : AppCompatActivity() {
         showTab(MainTab.RECORD)
         refreshGpsStatus()
         permissionHelper.ensureSmartTrackingEnabled()
+        syncMapboxTokenFromWorkerIfNeeded()
     }
 
     private fun showTab(tab: MainTab) {
@@ -249,7 +253,12 @@ class MainActivity : AppCompatActivity() {
             uploadTokenInput = savedConfig.uploadToken,
             hasConfiguredSampleUpload = hasConfiguredSampleUpload(savedConfig),
         )
+        aboutState = aboutState.copy(statusMessage = "Worker 上传配置已保存，正在同步 Mapbox Token…")
         Toast.makeText(this, "Worker 上传配置已保存", Toast.LENGTH_SHORT).show()
+        syncMapboxTokenFromWorker(
+            config = savedConfig,
+            forceRefresh = true,
+        )
     }
 
     private fun clearSampleUploadConfig() {
@@ -264,6 +273,60 @@ class MainActivity : AppCompatActivity() {
 
     private fun hasConfiguredSampleUpload(config: TrainingSampleUploadConfig): Boolean {
         return config.workerBaseUrl.isNotBlank() && config.uploadToken.isNotBlank()
+    }
+
+    private fun syncMapboxTokenFromWorkerIfNeeded() {
+        if (isMapboxAccessTokenConfigured(mapboxAccessToken)) {
+            return
+        }
+        val config = TrainingSampleUploadConfigStorage.load(this)
+        if (!hasConfiguredSampleUpload(config)) {
+            return
+        }
+        syncMapboxTokenFromWorker(config, forceRefresh = false)
+    }
+
+    private fun syncMapboxTokenFromWorker(
+        config: TrainingSampleUploadConfig,
+        forceRefresh: Boolean,
+    ) {
+        if (!hasConfiguredSampleUpload(config)) {
+            return
+        }
+        if (!forceRefresh && isMapboxAccessTokenConfigured(mapboxAccessToken)) {
+            return
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                Log.i(TAG, "Syncing Mapbox token from worker ${config.workerBaseUrl}")
+                when (val result = workerAppConfigService.load(config)) {
+                    is WorkerAppConfigResult.Success -> {
+                        val savedToken = MapboxTokenStorage.save(this@MainActivity, result.mapboxPublicToken)
+                        launch(Dispatchers.Main) {
+                            mapboxAccessToken = savedToken
+                            aboutState = aboutState.copy(
+                                mapboxTokenInput = savedToken,
+                                hasConfiguredMapboxToken = isMapboxAccessTokenConfigured(savedToken),
+                                statusMessage = "已从 Worker 同步 Mapbox Token",
+                            )
+                        }
+                    }
+
+                    is WorkerAppConfigResult.Failure -> {
+                        launch(Dispatchers.Main) {
+                            aboutState = aboutState.copy(statusMessage = result.message)
+                        }
+                    }
+                }
+            } catch (error: Exception) {
+                Log.e(TAG, "Mapbox token sync crashed", error)
+                launch(Dispatchers.Main) {
+                    val message = error.message?.takeIf { it.isNotBlank() } ?: "同步 Mapbox Token 失败"
+                    aboutState = aboutState.copy(statusMessage = message)
+                }
+            }
+        }
     }
 
     private fun testWorkerConnectivity() {

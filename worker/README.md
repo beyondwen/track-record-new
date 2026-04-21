@@ -13,6 +13,9 @@
   - 批量接收轨迹分段和停留簇
 - `POST /histories/batch`
   - 批量接收历史轨迹摘要
+- `GET /app-config`
+  - Bearer Token 鉴权（`UPLOAD_TOKEN`）
+  - 返回当前允许下发给 App 的 `mapboxPublicToken`
 - 所有接口统一通过 Cloudflare D1 幂等写入 SQLite（唯一键 + `INSERT OR IGNORE`）
 
 ## 成功响应语义
@@ -55,7 +58,14 @@ cd worker
 wrangler secret put UPLOAD_TOKEN
 ```
 
-4. 在 D1 执行 `src/schema.sql` 创建表：
+4. 配置给 App 下发的 Mapbox 公共 Token：
+
+```bash
+cd worker
+wrangler secret put MAPBOX_PUBLIC_TOKEN
+```
+
+5. 在 D1 执行 `src/schema.sql` 创建表：
 
 ```bash
 cd worker

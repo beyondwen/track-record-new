@@ -22,7 +22,7 @@ function createMockPreparedStatement(
 }
 
 function createMockEnv(changeCounts: number[]): {
-  env: { UPLOAD_TOKEN: string; DB: D1Database };
+  env: { UPLOAD_TOKEN: string; MAPBOX_PUBLIC_TOKEN: string; DB: D1Database };
   prepare: ReturnType<typeof vi.fn>;
   batch: ReturnType<typeof vi.fn>;
   bindCollector: Array<{ sql: string; args: unknown[] }>;
@@ -31,7 +31,7 @@ function createMockEnv(changeCounts: number[]): {
 function createMockReadEnv(
   queryResults: Array<{ sqlIncludes: string; rows: unknown[] }>
 ): {
-  env: { UPLOAD_TOKEN: string; DB: D1Database };
+  env: { UPLOAD_TOKEN: string; MAPBOX_PUBLIC_TOKEN: string; DB: D1Database };
   prepare: ReturnType<typeof vi.fn>;
   bindCollector: Array<{ sql: string; args: unknown[] }>;
 } {
@@ -48,6 +48,7 @@ function createMockReadEnv(
   return {
     env: {
       UPLOAD_TOKEN: "token",
+      MAPBOX_PUBLIC_TOKEN: "pk.worker-token",
       DB: ({
         prepare
       } as unknown) as D1Database
@@ -58,7 +59,7 @@ function createMockReadEnv(
 }
 
 function createMockEnv(changeCounts: number[]): {
-  env: { UPLOAD_TOKEN: string; DB: D1Database };
+  env: { UPLOAD_TOKEN: string; MAPBOX_PUBLIC_TOKEN: string; DB: D1Database };
   prepare: ReturnType<typeof vi.fn>;
   batch: ReturnType<typeof vi.fn>;
   bindCollector: Array<{ sql: string; args: unknown[] }>;
@@ -77,6 +78,7 @@ function createMockEnv(changeCounts: number[]): {
   return {
     env: {
       UPLOAD_TOKEN: "token",
+      MAPBOX_PUBLIC_TOKEN: "pk.worker-token",
       DB: ({
         prepare,
         batch

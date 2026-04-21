@@ -5,6 +5,7 @@ import type { Env } from "./types";
 
 const env: Env = {
   UPLOAD_TOKEN: "correct-token",
+  MAPBOX_PUBLIC_TOKEN: "pk.worker-token",
   DB: {} as D1Database
 };
 
