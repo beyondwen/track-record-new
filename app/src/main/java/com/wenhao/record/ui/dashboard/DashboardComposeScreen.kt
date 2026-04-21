@@ -14,12 +14,16 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -39,14 +43,18 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.wenhao.record.R
 import com.wenhao.record.ui.designsystem.TrackBottomNavigationBar
 import com.wenhao.record.ui.designsystem.TrackBottomTab
+import com.wenhao.record.ui.designsystem.TrackGlassCard
+import com.wenhao.record.ui.designsystem.TrackGlowRing
 import com.wenhao.record.ui.designsystem.TrackInsetPanel
 import com.wenhao.record.ui.designsystem.TrackLiquidPanel
 import com.wenhao.record.ui.designsystem.TrackLiquidTone
@@ -87,41 +95,146 @@ fun DashboardComposeScreen(
 ) {
     var showStatusDialog by rememberSaveable { mutableStateOf(false) }
 
-    TrackLiquidPanel(
-        modifier = modifier,
-        shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
-        tone = TrackLiquidTone.STRONG,
-        shadowElevation = 10.dp,
-        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+    Box(modifier = modifier.fillMaxWidth()) {
+        // 1. 顶部状态芯片 (浮动)
+        Box(
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(TrackRecordSpacing.lg)
+                .align(Alignment.TopStart)
         ) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .size(width = 42.dp, height = 4.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.outlineVariant,
-                        shape = RoundedCornerShape(999.dp),
-                    ),
-            )
+            TrackGlassCard(
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .background(
+                                color = statusContentColor(state.statusTone),
+                                shape = RoundedCornerShape(999.dp)
+                            )
+                    )
+                    Text(
+                        text = state.statusLabel.ifBlank { "GPS: SEARCHING" },
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
 
-            DashboardHeroSection(
-                state = state,
-                onStatusClick = { showStatusDialog = true },
-            )
+        // 2. 核心里程光轮 (Hero)
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .padding(bottom = 60.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                // 进度光轮背景装饰
+                TrackGlassCard(
+                    modifier = Modifier.size(220.dp),
+                    shape = RoundedCornerShape(110.dp)
+                ) { }
 
-            DashboardStatusPanel(state = state)
+                // 动态光轮
+                TrackGlowRing(
+                    progress = 0.65f, // 模拟进度，实际应根据业务逻辑计算
+                    modifier = Modifier.size(190.dp)
+                )
 
-            TrackBottomNavigationBar(
-                selectedTab = TrackBottomTab.RECORD,
-                onRecordClick = {},
-                onHistoryClick = onHistoryClick,
-                recordLabel = stringResource(R.string.compose_dashboard_record),
-                historyLabel = stringResource(R.string.compose_dashboard_history),
-            )
+                // 里程数字
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = state.distanceText,
+                        style = MaterialTheme.typography.displayMedium.copy(
+                            fontFeatureSettings = "tnum",
+                            letterSpacing = (-2).sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.compose_dashboard_distance_unit),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        }
+
+        // 3. 底部浮动面板 (指标 + 导航)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(TrackRecordSpacing.lg),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            // 次要指标卡片
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                DashboardMiniGlassMetric(
+                    label = stringResource(R.string.compose_dashboard_time_label),
+                    value = state.durationText,
+                    modifier = Modifier.weight(1f)
+                )
+                DashboardMiniGlassMetric(
+                    label = stringResource(R.string.compose_dashboard_speed_label),
+                    value = state.speedText.substringBefore(" ").ifBlank { state.speedText },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // 底部操作坞
+            TrackGlassCard(
+                shape = RoundedCornerShape(40.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceAround
+                ) {
+                    // 主操作按钮 (开始/停止)
+                    FilledIconButton(
+                        onClick = { /* TODO */ },
+                        modifier = Modifier.size(56.dp),
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        )
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_record_stop), // 假设存在，否则使用占位
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    // 历史入口
+                    IconButton(
+                        onClick = onHistoryClick,
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_nav_history),
+                            contentDescription = null,
+                            modifier = Modifier.size(24.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -135,108 +248,30 @@ fun DashboardComposeScreen(
 }
 
 @Composable
-private fun DashboardHeroSection(
-    state: DashboardScreenUiState,
-    onStatusClick: () -> Unit,
-) {
-    val accessibilitySummary = stringResource(
-        R.string.compose_dashboard_accessibility_summary,
-        state.distanceText,
-        state.durationText,
-        state.speedText,
-    )
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                contentDescription = accessibilitySummary
-            },
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        TrackStatChip(
-            text = stringResource(R.string.compose_dashboard_primary_metric_label),
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.Start),
-        ) {
-            Text(
-                text = state.distanceText,
-                style = MaterialTheme.typography.displayMedium.copy(fontFeatureSettings = "tnum"),
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            Text(
-                text = stringResource(R.string.compose_dashboard_distance_unit),
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-        }
-
-        Text(
-            text = state.autoTrackMeta,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            DashboardMiniMetric(
-                label = stringResource(R.string.compose_dashboard_time_label),
-                value = state.durationText,
-                modifier = Modifier.weight(1f),
-            )
-            DashboardMiniMetric(
-                label = stringResource(R.string.compose_dashboard_speed_label),
-                value = state.speedText.substringBefore(" ").ifBlank { state.speedText },
-                modifier = Modifier.weight(1f),
-            )
-        }
-
-        DashboardStatusEntry(
-            title = state.autoTrackTitle,
-            badge = state.statusLabel,
-            tone = state.statusTone,
-            onClick = onStatusClick,
-        )
-    }
-}
-
-@Composable
-private fun DashboardMiniMetric(
+private fun DashboardMiniGlassMetric(
     label: String,
     value: String,
     modifier: Modifier = Modifier,
 ) {
-    TrackLiquidPanel(
+    TrackGlassCard(
         modifier = modifier,
-        shape = RoundedCornerShape(22.dp),
-        tone = TrackLiquidTone.SUBTLE,
-        shadowElevation = 0.dp,
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp),
+        shape = RoundedCornerShape(24.dp)
     ) {
         Column(
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                fontWeight = FontWeight.Bold
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleLarge.copy(fontFeatureSettings = "tnum"),
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                fontWeight = FontWeight.Black
             )
         }
     }
