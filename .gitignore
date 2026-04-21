@@ -14,5 +14,7 @@
 /local.properties
 /.track-record-release.jks
 /worker/node_modules/
+/worker/.wrangler/
+/.superpowers/
 **/__pycache__/
 *.pyc
