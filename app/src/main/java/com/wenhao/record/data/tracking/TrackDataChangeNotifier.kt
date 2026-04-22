@@ -2,6 +2,9 @@ package com.wenhao.record.data.tracking
 
 import android.os.Handler
 import android.os.Looper
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
 import java.util.concurrent.CopyOnWriteArraySet
 
 object TrackDataChangeNotifier {
@@ -21,6 +24,18 @@ object TrackDataChangeNotifier {
 
     fun removeListener(listener: Listener) {
         listeners -= listener
+    }
+
+    fun addLifecycleListener(lifecycleOwner: LifecycleOwner, listener: Listener) {
+        addListener(listener)
+        lifecycleOwner.lifecycle.addObserver(object : LifecycleEventObserver {
+            override fun onStateChanged(source: LifecycleOwner, event: Lifecycle.Event) {
+                if (event == Lifecycle.Event.ON_DESTROY) {
+                    removeListener(listener)
+                    lifecycleOwner.lifecycle.removeObserver(this)
+                }
+            }
+        })
     }
 
     fun notifyDashboardChanged() {

@@ -1,22 +1,23 @@
 package com.wenhao.record.ui.designsystem
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -24,14 +25,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.CircleShape
 
 @Composable
 fun TrackFloatingMapButton(
@@ -41,30 +41,22 @@ fun TrackFloatingMapButton(
     modifier: Modifier = Modifier,
     accented: Boolean = false,
 ) {
-    TrackLiquidPanel(
+    FilledTonalIconButton(
+        onClick = onClick,
         modifier = modifier.size(52.dp),
-        shape = RoundedCornerShape(18.dp),
-        tone = if (accented) TrackLiquidTone.ACCENT else TrackLiquidTone.STRONG,
-        shadowElevation = 10.dp,
-    ) {
-        FilledIconButton(
-            onClick = onClick,
-            modifier = Modifier.matchParentSize(),
-            shape = RoundedCornerShape(18.dp),
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = Color.Transparent,
-                contentColor = if (accented) {
-                    MaterialTheme.colorScheme.onPrimary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-            ),
-        ) {
-            Icon(
-                painter = icon,
-                contentDescription = contentDescription,
+        colors = if (accented) {
+            IconButtonDefaults.filledTonalIconButtonColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             )
-        }
+        } else {
+            IconButtonDefaults.filledTonalIconButtonColors()
+        },
+    ) {
+        Icon(
+            painter = icon,
+            contentDescription = contentDescription,
+        )
     }
 }
 
@@ -76,11 +68,12 @@ fun TrackTopOverlayCard(
     eyebrow: String? = null,
     accentColor: Color = MaterialTheme.colorScheme.primary,
 ) {
-    TrackLiquidPanel(
+    Card(
         modifier = modifier,
-        shape = RoundedCornerShape(22.dp),
-        tone = TrackLiquidTone.STANDARD,
-        shadowElevation = 6.dp,
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -93,7 +86,7 @@ fun TrackTopOverlayCard(
                 Box(
                     modifier = Modifier
                         .size(8.dp)
-                        .clip(RoundedCornerShape(999.dp))
+                        .clip(CircleShape)
                         .background(accentColor),
                 )
                 eyebrow?.takeIf { it.isNotBlank() }?.let {
@@ -131,22 +124,18 @@ fun TrackBottomSurface(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    TrackLiquidPanel(
+    Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 34.dp, topEnd = 34.dp),
-        tone = TrackLiquidTone.STRONG,
-        shadowElevation = 26.dp,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = 24.dp,
-            top = 14.dp,
-            end = 24.dp,
-            bottom = 14.dp,
-        ),
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 3.dp,
+        shadowElevation = 6.dp,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.Start,
             content = content,
         )
@@ -191,14 +180,15 @@ fun TrackMapCenterIndicator(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        TrackLiquidPanel(
+        Surface(
             modifier = Modifier.size(36.dp),
             shape = CircleShape,
-            tone = TrackLiquidTone.STRONG,
-            shadowElevation = 12.dp,
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 2.dp,
+            shadowElevation = 2.dp,
         ) {
             Box(
-                modifier = Modifier.matchParentSize(),
+                modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 Box(
@@ -220,14 +210,7 @@ fun TrackMapCenterIndicator(
             modifier = Modifier
                 .size(width = 3.dp, height = 16.dp)
                 .clip(RoundedCornerShape(999.dp))
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.66f),
-                            MaterialTheme.colorScheme.trackGlowSecondary.copy(alpha = 0.42f),
-                        ),
-                    ),
-                ),
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
         )
         Spacer(modifier = Modifier.size(5.dp))
         Box(
@@ -252,21 +235,6 @@ fun TrackTopOverlayColumn(
         content = content,
     )
 }
-
-/*
-@Preview(showBackground = true)
-@Composable
-private fun TrackTopOverlayCardPreview() {
-    TrackRecordTheme {
-        TrackTopOverlayCard(
-            title = "GPS 已就绪",
-            body = "后台待命中 · 最近一次定位精度良好",
-            eyebrow = "实时状态",
-            modifier = Modifier.padding(16.dp),
-        )
-    }
-}
-*/
 
 @Preview(showBackground = true)
 @Composable

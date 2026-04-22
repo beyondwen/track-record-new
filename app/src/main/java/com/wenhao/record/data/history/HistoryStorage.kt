@@ -12,7 +12,9 @@ import com.wenhao.record.util.AppTaskExecutor
 import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 object HistoryStorage {
@@ -113,7 +115,7 @@ object HistoryStorage {
         ensureHistoryCacheAsync(context)
     }
 
-    fun save(context: Context, items: List<HistoryItem>) {
+    suspend fun save(context: Context, items: List<HistoryItem>) {
         ensureHistoryCache(context)
         val normalizedItems = items.map { it.copy(points = it.points.toList()) }
             .sortedWith(compareByDescending<HistoryItem> { it.timestamp }.thenByDescending { it.id })
@@ -122,7 +124,7 @@ object HistoryStorage {
             refreshDailyCacheLocked()
         }
 
-        ioExecutor.execute {
+        withContext(Dispatchers.IO) {
             val dao = TrackDatabase.getInstance(context).historyDao()
             dao.replaceAll(
                 records = normalizedItems.map { item ->
@@ -166,7 +168,7 @@ object HistoryStorage {
         }
     }
 
-    fun add(context: Context, item: HistoryItem) {
+    suspend fun add(context: Context, item: HistoryItem) {
         ensureHistoryCache(context)
         val normalizedItem = item.copy(points = item.points.toList())
         synchronized(cacheLock) {
@@ -175,7 +177,7 @@ object HistoryStorage {
             refreshDailyCacheLocked()
         }
 
-        ioExecutor.execute {
+        withContext(Dispatchers.IO) {
             TrackDatabase.getInstance(context).historyDao().upsertHistory(
                 record = normalizedItem.toRecordEntity(),
                 points = normalizedItem.toPointEntities()
@@ -186,7 +188,7 @@ object HistoryStorage {
         TrackDataChangeNotifier.notifyHistoryChanged()
     }
 
-    fun upsertProjectedItems(context: Context, projectedItems: List<HistoryItem>) {
+    suspend fun upsertProjectedItems(context: Context, projectedItems: List<HistoryItem>) {
         if (projectedItems.isEmpty()) return
         ensureHistoryCache(context)
         val normalizedItems = projectedItems.map { item ->
@@ -203,7 +205,7 @@ object HistoryStorage {
             refreshDailyCacheLocked()
         }
 
-        ioExecutor.execute {
+        withContext(Dispatchers.IO) {
             val dao = TrackDatabase.getInstance(context).historyDao()
             normalizedItems.forEach { item ->
                 dao.upsertHistory(
@@ -217,7 +219,7 @@ object HistoryStorage {
         TrackDataChangeNotifier.notifyHistoryChanged()
     }
 
-    fun rename(context: Context, historyId: Long, newTitle: String?) {
+    suspend fun rename(context: Context, historyId: Long, newTitle: String?) {
         ensureHistoryCache(context)
         var updated = false
         synchronized(cacheLock) {
@@ -235,7 +237,7 @@ object HistoryStorage {
         }
         if (!updated) return
 
-        ioExecutor.execute {
+        withContext(Dispatchers.IO) {
             TrackDatabase.getInstance(context).historyDao().updateTitle(historyId, newTitle)
             persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
@@ -243,7 +245,7 @@ object HistoryStorage {
         TrackDataChangeNotifier.notifyHistoryChanged()
     }
 
-    fun delete(context: Context, historyId: Long) {
+    suspend fun delete(context: Context, historyId: Long) {
         ensureHistoryCache(context)
         var removed = false
         synchronized(cacheLock) {
@@ -256,7 +258,7 @@ object HistoryStorage {
         }
         if (!removed) return
 
-        ioExecutor.execute {
+        withContext(Dispatchers.IO) {
             TrackDatabase.getInstance(context).historyDao().deleteHistory(historyId)
             persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
@@ -264,7 +266,7 @@ object HistoryStorage {
         TrackDataChangeNotifier.notifyHistoryChanged()
     }
 
-    fun deleteMany(context: Context, historyIds: List<Long>) {
+    suspend fun deleteMany(context: Context, historyIds: List<Long>) {
         if (historyIds.isEmpty()) return
         ensureHistoryCache(context)
         val targetIds = historyIds.toSet()
@@ -279,7 +281,7 @@ object HistoryStorage {
         }
         if (!removed) return
 
-        ioExecutor.execute {
+        withContext(Dispatchers.IO) {
             TrackDatabase.getInstance(context).historyDao().deleteHistoryList(historyIds)
             persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
@@ -306,7 +308,9 @@ object HistoryStorage {
 
         val loadedHistory = try {
             ioExecutor.submit<List<HistoryItem>> {
-                loadHistoryFromDisk(context)
+                kotlinx.coroutines.runBlocking {
+                    loadHistoryFromDisk(context)
+                }
             }.get()
         } catch (throwable: Throwable) {
             synchronized(cacheLock) {
@@ -353,7 +357,9 @@ object HistoryStorage {
 
         ioExecutor.execute {
             val loadedHistory = try {
-                loadHistoryFromDisk(context)
+                kotlinx.coroutines.runBlocking {
+                    loadHistoryFromDisk(context)
+                }
             } catch (_: Throwable) {
                 synchronized(cacheLock) {
                     historyCacheLoading = false
@@ -392,7 +398,7 @@ object HistoryStorage {
         }
     }
 
-    private fun loadHistoryFromDisk(context: Context): List<HistoryItem> {
+    private suspend fun loadHistoryFromDisk(context: Context): List<HistoryItem> {
         migrateLegacyHistoryIfNeeded(context)
         restoreSnapshotIfNeeded(context)
         return TrackDatabase.getInstance(context)
@@ -401,7 +407,7 @@ object HistoryStorage {
             .map { it.toModel() }
     }
 
-    private fun migrateLegacyHistoryIfNeeded(context: Context) {
+    private suspend fun migrateLegacyHistoryIfNeeded(context: Context) {
         val raw = prefs(context).getString(KEY_ITEMS, null) ?: return
         val dao = TrackDatabase.getInstance(context).historyDao()
         val hasRoomData = dao.getHistoryCount() > 0
@@ -455,7 +461,7 @@ object HistoryStorage {
         }
     }
 
-    private fun restoreSnapshotIfNeeded(context: Context) {
+    private suspend fun restoreSnapshotIfNeeded(context: Context) {
         val dao = TrackDatabase.getInstance(context).historyDao()
         val hasRoomData = dao.getHistoryCount() > 0
         if (hasRoomData) return

@@ -6,6 +6,8 @@ import com.wenhao.record.data.local.stream.AnalysisSegmentEntity
 import com.wenhao.record.data.local.stream.RawLocationPointEntity
 import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.local.stream.UploadCursorEntity
+import kotlinx.coroutines.runBlocking
+import kotlin.coroutines.Continuation
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -15,9 +17,23 @@ class ContinuousPointStorageTest {
     @Test
     fun `continuous point storage exposes append and pending window apis`() {
         val storageClass = Class.forName("com.wenhao.record.data.tracking.ContinuousPointStorage")
+        val continuationClass = Continuation::class.java
 
-        assertNotNull(storageClass.getDeclaredMethod("appendRawPoint", Class.forName("com.wenhao.record.data.tracking.RawTrackPoint")))
-        assertNotNull(storageClass.getDeclaredMethod("loadPendingWindow", Long::class.javaPrimitiveType, Int::class.javaPrimitiveType))
+        assertNotNull(
+            storageClass.getDeclaredMethod(
+                "appendRawPoint",
+                Class.forName("com.wenhao.record.data.tracking.RawTrackPoint"),
+                continuationClass,
+            )
+        )
+        assertNotNull(
+            storageClass.getDeclaredMethod(
+                "loadPendingWindow",
+                Long::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                continuationClass,
+            )
+        )
     }
 
     @Test
@@ -30,7 +46,7 @@ class ContinuousPointStorageTest {
     }
 
     @Test
-    fun `append raw point and load pending window keeps point order and sampling tier`() {
+    fun `append raw point and load pending window keeps point order and sampling tier`() = runBlocking {
         val dao = FakeContinuousTrackDao()
         val storage = ContinuousPointStorage(dao)
 
@@ -44,7 +60,7 @@ class ContinuousPointStorageTest {
     }
 
     @Test
-    fun `save analysis result persists segments stay clusters and analysis cursor`() {
+    fun `save analysis result persists segments stay clusters and analysis cursor`() = runBlocking {
         val dao = FakeContinuousTrackDao()
         val storage = ContinuousPointStorage(dao)
 
@@ -118,49 +134,49 @@ class ContinuousPointStorageTest {
         private var analysisCursor: AnalysisCursorEntity? = null
         private var nextPointId = 1L
 
-        override fun insertRawPoint(entity: RawLocationPointEntity): Long {
+        override suspend fun insertRawPoint(entity: RawLocationPointEntity): Long {
             val stored = entity.copy(pointId = nextPointId++)
             items += stored
             return stored.pointId
         }
 
-        override fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity> {
+        override suspend fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity> {
             return items.filter { it.pointId > afterPointId }.sortedBy { it.pointId }.take(limit)
         }
 
-        override fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
+        override suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
             return segments.filter { it.segmentId > afterSegmentId }.sortedBy { it.segmentId }.take(limit)
         }
 
-        override fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {
+        override suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {
             return stayClusters.filter { segmentIds.contains(it.segmentId) }.sortedBy { it.segmentId }
         }
 
-        override fun loadAnalysisCursor(): AnalysisCursorEntity? {
+        override suspend fun loadAnalysisCursor(): AnalysisCursorEntity? {
             return analysisCursor
         }
 
-        override fun upsertAnalysisCursor(entity: AnalysisCursorEntity) {
+        override suspend fun upsertAnalysisCursor(entity: AnalysisCursorEntity) {
             analysisCursor = entity
         }
 
-        override fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>) {
+        override suspend fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>) {
             segments.removeAll { existing -> entities.any { it.segmentId == existing.segmentId } }
             segments += entities
         }
 
-        override fun insertStayClusters(entities: List<StayClusterEntity>) {
+        override suspend fun insertStayClusters(entities: List<StayClusterEntity>) {
             stayClusters.removeAll { existing -> entities.any { it.stayId == existing.stayId } }
             stayClusters += entities
         }
 
-        override fun loadUploadCursor(cursorType: String): UploadCursorEntity? {
+        override suspend fun loadUploadCursor(cursorType: String): UploadCursorEntity? {
             return null
         }
 
-        override fun upsertUploadCursor(entity: UploadCursorEntity) {
+        override suspend fun upsertUploadCursor(entity: UploadCursorEntity) {
         }
 
-        override fun deleteRawPointsUpTo(upToPointId: Long) {}
+        override suspend fun deleteRawPointsUpTo(upToPointId: Long) {}
     }
 }

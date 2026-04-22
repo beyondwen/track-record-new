@@ -11,7 +11,7 @@ object HistoryRetentionPolicy {
         uploadedHistoryIds: Set<Long>,
         nowMillis: Long,
         historyLoader: suspend (Context) -> List<HistoryItem> = { HistoryStorage.load(it) },
-        deleteMany: (Context, List<Long>) -> Unit = HistoryStorage::deleteMany,
+        deleteMany: suspend (Context, List<Long>) -> Unit = HistoryStorage::deleteMany,
         removeUploadedIds: (Context, List<Long>) -> Unit = UploadedHistoryStore::remove,
     ): List<Long> {
         if (uploadedHistoryIds.isEmpty()) {

@@ -75,7 +75,11 @@ class HistoryController(
         if (selectedDayStartMillis == item.dayStartMillis) {
             selectedDayStartMillis = historyItems.firstOrNull()?.dayStartMillis
         }
-        HistoryStorage.deleteMany(context, item.sourceIds)
+        AppTaskExecutor.runOnIo {
+            kotlinx.coroutines.runBlocking {
+                HistoryStorage.deleteMany(context, item.sourceIds)
+            }
+        }
         recalculateTotals()
         pushState()
     }

@@ -11,16 +11,18 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.wenhao.record.ui.designsystem.TrackLiquidPanel
-import com.wenhao.record.ui.designsystem.TrackLiquidTone
 import com.wenhao.record.ui.designsystem.TrackPrimaryButton
 
 @Composable
@@ -97,6 +99,7 @@ fun AboutComposeScreen(
                 placeholder = { Text("请输入上传鉴权 Token") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(
@@ -163,12 +166,15 @@ private fun AboutSection(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    TrackLiquidPanel(
+    Card(
         modifier = Modifier.fillMaxWidth(),
-        tone = TrackLiquidTone.SUBTLE,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
     ) {
         Column(
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             content = {
                 Text(

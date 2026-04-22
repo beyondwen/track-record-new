@@ -9,7 +9,7 @@ import androidx.room.Query
 interface ContinuousTrackDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertRawPoint(entity: RawLocationPointEntity): Long
+    suspend fun insertRawPoint(entity: RawLocationPointEntity): Long
 
     @Query(
         """
@@ -19,7 +19,7 @@ interface ContinuousTrackDao {
         LIMIT :limit
         """
     )
-    fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity>
+    suspend fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity>
 
     @Query(
         """
@@ -29,7 +29,7 @@ interface ContinuousTrackDao {
         LIMIT :limit
         """
     )
-    fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity>
+    suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity>
 
     @Query(
         """
@@ -38,7 +38,7 @@ interface ContinuousTrackDao {
         ORDER BY segmentId ASC, stayId ASC
         """
     )
-    fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity>
+    suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity>
 
     @Query(
         """
@@ -47,16 +47,16 @@ interface ContinuousTrackDao {
         LIMIT 1
         """
     )
-    fun loadAnalysisCursor(): AnalysisCursorEntity?
+    suspend fun loadAnalysisCursor(): AnalysisCursorEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun upsertAnalysisCursor(entity: AnalysisCursorEntity)
+    suspend fun upsertAnalysisCursor(entity: AnalysisCursorEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>)
+    suspend fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertStayClusters(entities: List<StayClusterEntity>)
+    suspend fun insertStayClusters(entities: List<StayClusterEntity>)
 
     @Query(
         """
@@ -65,11 +65,11 @@ interface ContinuousTrackDao {
         LIMIT 1
         """
     )
-    fun loadUploadCursor(cursorType: String): UploadCursorEntity?
+    suspend fun loadUploadCursor(cursorType: String): UploadCursorEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun upsertUploadCursor(entity: UploadCursorEntity)
+    suspend fun upsertUploadCursor(entity: UploadCursorEntity)
 
     @Query("DELETE FROM raw_location_point WHERE pointId <= :upToPointId")
-    fun deleteRawPointsUpTo(upToPointId: Long)
+    suspend fun deleteRawPointsUpTo(upToPointId: Long)
 }

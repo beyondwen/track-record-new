@@ -4,31 +4,38 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.shape.CornerSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Close
-import androidx.compose.material3.BottomSheetScaffold
-import androidx.compose.material3.BottomSheetScaffoldState
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberBottomSheetScaffoldState
-import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -40,7 +47,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -50,13 +62,19 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.roundToInt
 import com.wenhao.record.R
 import com.wenhao.record.ui.dashboard.DashboardComposeScreen
 import com.wenhao.record.ui.dashboard.DashboardOverlayUiState
 import com.wenhao.record.ui.dashboard.DashboardScreenUiState
 import com.wenhao.record.ui.dashboard.DashboardTone
+import com.wenhao.record.ui.designsystem.TrackAtmosphericBackground
 import com.wenhao.record.ui.designsystem.TrackFloatingMapButton
 import com.wenhao.record.ui.designsystem.TrackInsetPanel
 import com.wenhao.record.ui.designsystem.TrackLiquidPanel
@@ -65,21 +83,11 @@ import com.wenhao.record.ui.designsystem.TrackPrimaryButton
 import com.wenhao.record.ui.designsystem.TrackRecordSpacing
 import com.wenhao.record.ui.designsystem.TrackStatChip
 import com.wenhao.record.ui.designsystem.TrackTopOverlayColumn
-import com.wenhao.record.ui.designsystem.TrackAtmosphericBackground
-import com.wenhao.record.ui.designsystem.trackInnerPanelSurface
-import com.wenhao.record.ui.designsystem.trackPageBackground
-import com.wenhao.record.ui.designsystem.trackSecondarySurface
-import com.wenhao.record.ui.designsystem.trackSoftOutline
-import com.wenhao.record.ui.designsystem.trackSoftSurface
-import com.wenhao.record.ui.designsystem.rememberSheetAwareBottomPadding
-import com.wenhao.record.ui.designsystem.rememberSheetAwareViewportBottomPadding
-import com.wenhao.record.ui.designsystem.rememberVisibleSheetHeight
 import com.wenhao.record.ui.history.HistoryComposeScreen
 import com.wenhao.record.ui.history.HistoryScreenUiState
 import com.wenhao.record.ui.map.TrackMapSceneState
 import com.wenhao.record.ui.map.TrackMapViewportPadding
 import com.wenhao.record.ui.map.TrackMapboxCanvas
-import kotlinx.coroutines.launch
 
 @Composable
 fun MainComposeScreen(
@@ -117,7 +125,7 @@ fun MainComposeScreen(
                     onRecordClick = onRecordTabClick,
                     onHistoryClick = { onHistoryOpen(it.dayStartMillis) },
                     onHistoryLongClick = { onHistoryDelete(it.dayStartMillis) },
-                            )
+                )
             }
 
             MainTab.ABOUT -> {
@@ -142,7 +150,6 @@ fun MainComposeScreen(
                     overlayState = dashboardOverlayState,
                     mapState = dashboardMapState,
                     mapboxAccessToken = mapboxAccessToken,
-                    onRecordTabClick = onRecordTabClick,
                     onHistoryTabClick = onHistoryTabClick,
                     onAboutTabClick = onAboutTabClick,
                     onLocateClick = onLocateClick,
@@ -159,125 +166,162 @@ private fun DashboardRoot(
     overlayState: DashboardOverlayUiState,
     mapState: TrackMapSceneState,
     mapboxAccessToken: String,
-    onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
     onAboutTabClick: () -> Unit,
     onLocateClick: () -> Unit,
 ) {
     var showOverlayStatusDialog by rememberSaveable { mutableStateOf(false) }
     var showRecenterCue by rememberSaveable { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val dashboardSheetPeekHeight = 72.dp
-        val sheetState = rememberStandardBottomSheetState(
-            initialValue = SheetValue.Expanded,
-            skipHiddenState = true,
-        )
-        val scaffoldState: BottomSheetScaffoldState = rememberBottomSheetScaffoldState(
-            bottomSheetState = sheetState,
-        )
-        val coroutineScope = rememberCoroutineScope()
-        var sheetContentHeightPx by remember { mutableFloatStateOf(0f) }
-        val visibleSheetHeight = rememberVisibleSheetHeight(
-            sheetState = sheetState,
-            layoutHeight = maxHeight,
-            peekHeight = dashboardSheetPeekHeight,
-            expandedHeightPx = sheetContentHeightPx,
-        )
-        val density = LocalDensity.current
-        val settledSheetVisibleHeight = remember(sheetState.currentValue, sheetContentHeightPx, density) {
-            when (sheetState.currentValue) {
-                SheetValue.Expanded -> {
-                    if (sheetContentHeightPx > 0f) {
-                        with(density) { sheetContentHeightPx.toDp() }
-                    } else {
-                        dashboardSheetPeekHeight
-                    }
-                }
+    var progress by remember { mutableFloatStateOf(1f) }
+    val panelHeight = 320.dp
+    val handleHeight = 24.dp
+    val panelHeightPx = with(density) { panelHeight.toPx() }
+    val hiddenOffsetPx = panelHeightPx
+    val visiblePanelHeight = with(density) { (panelHeightPx * progress).toDp() }
 
-                SheetValue.PartiallyExpanded,
-                SheetValue.Hidden,
-                -> dashboardSheetPeekHeight
-            }
+    fun settle() {
+        val target = if (progress > 0.5f) 1f else 0f
+        scope.launch {
+            val anim = Animatable(progress)
+            anim.animateTo(target, spring(stiffness = Spring.StiffnessMediumLow))
+            progress = anim.value
         }
-        val locateButtonBottomPadding = rememberSheetAwareBottomPadding(
-            sheetVisibleHeight = settledSheetVisibleHeight,
-            extraSpacing = 18.dp,
-        )
-        val mapViewportBottomPadding = rememberSheetAwareViewportBottomPadding(
-            sheetVisibleHeight = settledSheetVisibleHeight,
-            extraSpacing = 18.dp,
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        TrackMapboxCanvas(
+            state = mapState,
+            accessToken = mapboxAccessToken,
+            modifier = Modifier.fillMaxSize(),
+            viewportPadding = TrackMapViewportPadding(
+                top = 96.dp,
+                start = 20.dp,
+                end = 20.dp,
+                bottom = visiblePanelHeight + 16.dp,
+            ),
+            showCenterIndicator = true,
+            onUserGestureMove = { showRecenterCue = true },
         )
 
-        BottomSheetScaffold(
-            scaffoldState = scaffoldState,
-            sheetPeekHeight = dashboardSheetPeekHeight,
-            sheetDragHandle = null,
-            sheetContainerColor = Color.Transparent,
-            sheetShadowElevation = 0.dp,
-            sheetTonalElevation = 0.dp,
-            sheetContent = {
-                DashboardComposeScreen(
-                    state = dashboardState,
-                    overlayState = overlayState,
-                    onHistoryClick = onHistoryTabClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onSizeChanged { sheetContentHeightPx = it.height.toFloat() },
-                )
-            },
-        ) {
-            Box(modifier = Modifier.fillMaxSize()) {
-                TrackMapboxCanvas(
-                    state = mapState,
-                    accessToken = mapboxAccessToken,
-                    modifier = Modifier.fillMaxSize(),
-                    viewportPadding = TrackMapViewportPadding(
-                        top = 104.dp,
-                        start = 20.dp,
-                        end = 20.dp,
-                        bottom = mapViewportBottomPadding,
-                    ),
-                    showCenterIndicator = true,
-                    onUserGestureMove = { showRecenterCue = true },
-                )
+        TrackTopOverlayColumn(modifier = Modifier.padding(top = 8.dp)) {
+            MapStatusCollapsedEntry(
+                title = overlayState.gpsLabel.ifBlank { dashboardState.statusLabel },
+                accentColor = overlayAccentColor(dashboardState.statusTone),
+                onClick = { showOverlayStatusDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
 
-                TrackTopOverlayColumn(modifier = Modifier.padding(top = 8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        MapStatusCollapsedEntry(
-                            title = overlayState.gpsLabel.ifBlank { dashboardState.statusLabel },
-                            accentColor = overlayAccentColor(dashboardState.statusTone),
-                            onClick = { showOverlayStatusDialog = true },
-                            modifier = Modifier.weight(1f),
-                        )
-                        Spacer(modifier = Modifier.size(12.dp))
-                        TrackPrimaryButton(
-                            text = "关于",
-                            onClick = onAboutTabClick,
-                        )
+        if (overlayState.locateVisible) {
+            TrackFloatingMapButton(
+                icon = painterResource(R.drawable.ic_locate_dashboard),
+                contentDescription = stringResource(R.string.dashboard_locate),
+                onClick = {
+                    showRecenterCue = false
+                    onLocateClick()
+                },
+                accented = showRecenterCue,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .navigationBarsPadding()
+                    .padding(end = 18.dp, bottom = visiblePanelHeight + 20.dp),
+            )
+        }
+
+        if (progress < 0.1f) {
+            TrackFloatingMapButton(
+                icon = painterResource(R.drawable.ic_tab_record),
+                contentDescription = stringResource(R.string.compose_dashboard_record),
+                onClick = {
+                    progress = 1f
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = 16.dp),
+            )
+        }
+
+    val velocityTracker = remember { VelocityTracker() }
+
+    Surface(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .offset { IntOffset(0, (hiddenOffsetPx * (1f - progress)).roundToInt()) }
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    down.consume()
+                    velocityTracker.resetTracking()
+
+                    var totalDragY = 0f
+                    var isDragging = false
+
+                    do {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: continue
+
+                        if (!isDragging) {
+                            totalDragY += change.positionChange().y
+                            if (abs(totalDragY) > viewConfiguration.touchSlop) {
+                                isDragging = true
+                            }
+                        }
+
+                        if (isDragging) {
+                            progress = calculateDashboardPanelProgress(
+                                currentProgress = progress,
+                                dragDeltaY = change.positionChange().y,
+                                panelHeightPx = hiddenOffsetPx,
+                            )
+                            velocityTracker.addPointerInputChange(change)
+                        }
+                        change.consume()
+                    } while (event.changes.any { it.pressed })
+
+                    if (isDragging) {
+                        settle()
                     }
                 }
-
-                if (overlayState.locateVisible) {
-                    TrackFloatingMapButton(
-                        icon = painterResource(R.drawable.ic_locate_dashboard),
-                        contentDescription = stringResource(R.string.dashboard_locate),
-                        onClick = {
-                            showRecenterCue = false
-                            onLocateClick()
-                        },
-                        accented = showRecenterCue,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .navigationBarsPadding()
-                            .padding(end = 18.dp, bottom = locateButtonBottomPadding),
-                    )
-                }
+            },
+        shape = MaterialTheme.shapes.extraLarge.copy(
+            bottomStart = CornerSize(0.dp),
+            bottomEnd = CornerSize(0.dp),
+        ),
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        shadowElevation = 4.dp,
+    ) {
+        Column {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(36.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(42.dp)
+                        .height(4.dp)
+                        .background(
+                            MaterialTheme.colorScheme.outlineVariant,
+                            RoundedCornerShape(999.dp),
+                        ),
+                )
             }
+
+            DashboardComposeScreen(
+                state = dashboardState,
+                onHistoryClick = onHistoryTabClick,
+                onAboutClick = onAboutTabClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+            )
         }
     }
 
@@ -288,6 +332,7 @@ private fun DashboardRoot(
             onDismiss = { showOverlayStatusDialog = false },
         )
     }
+    } // Box
 }
 
 enum class MainTab {
@@ -329,9 +374,9 @@ private fun MapStatusCollapsedEntry(
                 contentDescription = collapsedDescription
             },
         shape = MaterialTheme.shapes.extraLarge,
-        tone = TrackLiquidTone.STANDARD,
-        shadowElevation = 8.dp,
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 9.dp),
+        tone = TrackLiquidTone.SUBTLE,
+        shadowElevation = 4.dp,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -345,20 +390,12 @@ private fun MapStatusCollapsedEntry(
                         shape = MaterialTheme.shapes.extraLarge,
                     ),
             )
-            Column(
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                Text(
-                    text = collapsedTitle,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-                Text(
-                    text = stringResource(R.string.compose_map_overlay_collapsed_hint),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = collapsedTitle,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
             Spacer(modifier = Modifier.size(2.dp))
             Icon(
                 imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
@@ -392,7 +429,7 @@ private fun MapOverlayStatusDialog(
             shape = MaterialTheme.shapes.extraLarge,
             tone = TrackLiquidTone.STRONG,
             shadowElevation = 24.dp,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 18.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
         ) {
             Column(
                 verticalArrangement = Arrangement.spacedBy(TrackRecordSpacing.lg),

@@ -72,6 +72,9 @@ fun TrackMapboxCanvas(
         runtimeToken = accessToken,
         bundledToken = BuildConfig.MAPBOX_ACCESS_TOKEN,
     )
+    if (resolvedAccessToken.isNotBlank()) {
+        MapboxOptions.accessToken = resolvedAccessToken
+    }
 
     if (LocalInspectionMode.current) {
         Box(
@@ -93,8 +96,6 @@ fun TrackMapboxCanvas(
         MapboxUnavailablePlaceholder(modifier = modifier)
         return
     }
-
-    MapboxOptions.accessToken = resolvedAccessToken
 
     var snapshotBitmap by remember(snapshotCacheKey) {
         mutableStateOf(snapshotCacheKey?.let(TrackMapSnapshotCache::get))
@@ -304,15 +305,12 @@ fun TrackMapboxCanvas(
         }
     }
 
-    SideEffect {
+    DisposableEffect(gestureHost, interactive, onUserGestureMove) {
         moveGestureBinding.bind(
             host = gestureHost,
             interactive = interactive,
             onUserGestureMove = onUserGestureMove,
         )
-    }
-
-    DisposableEffect(gestureHost) {
         onDispose {
             moveGestureBinding.clear()
         }

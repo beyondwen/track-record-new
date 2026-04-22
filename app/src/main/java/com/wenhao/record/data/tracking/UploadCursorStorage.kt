@@ -6,7 +6,7 @@ import com.wenhao.record.data.local.stream.UploadCursorEntity
 class UploadCursorStorage(
     private val dao: ContinuousTrackDao,
 ) {
-    fun load(type: UploadCursorType): UploadCursor {
+    suspend fun load(type: UploadCursorType): UploadCursor {
         val entity = dao.loadUploadCursor(type.name)
         return UploadCursor(
             type = type,
@@ -15,7 +15,7 @@ class UploadCursorStorage(
         )
     }
 
-    fun markUploaded(type: UploadCursorType, lastUploadedId: Long, updatedAt: Long) {
+    suspend fun markUploaded(type: UploadCursorType, lastUploadedId: Long, updatedAt: Long) {
         val current = load(type)
         val nextId = maxOf(current.lastUploadedId, lastUploadedId)
         dao.upsertUploadCursor(

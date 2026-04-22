@@ -159,43 +159,43 @@ class AnalysisUploadWorkerTest {
     ) : ContinuousTrackDao {
         private val uploadCursors = linkedMapOf<String, UploadCursorEntity>()
 
-        override fun insertRawPoint(entity: RawLocationPointEntity): Long {
+        override suspend fun insertRawPoint(entity: RawLocationPointEntity): Long {
             return entity.pointId
         }
 
-        override fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity> {
+        override suspend fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity> {
             return emptyList()
         }
 
-        override fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
+        override suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
             return segments.filter { it.segmentId > afterSegmentId }.sortedBy { it.segmentId }.take(limit)
         }
 
-        override fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {
+        override suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {
             return stayClusters.filter { segmentIds.contains(it.segmentId) }.sortedBy { it.segmentId }
         }
 
-        override fun loadAnalysisCursor(): AnalysisCursorEntity? {
+        override suspend fun loadAnalysisCursor(): AnalysisCursorEntity? {
             return null
         }
 
-        override fun upsertAnalysisCursor(entity: AnalysisCursorEntity) {
+        override suspend fun upsertAnalysisCursor(entity: AnalysisCursorEntity) {
         }
 
-        override fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>) {
+        override suspend fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>) {
         }
 
-        override fun insertStayClusters(entities: List<StayClusterEntity>) {
+        override suspend fun insertStayClusters(entities: List<StayClusterEntity>) {
         }
 
-        override fun loadUploadCursor(cursorType: String): UploadCursorEntity? {
+        override suspend fun loadUploadCursor(cursorType: String): UploadCursorEntity? {
             return uploadCursors[cursorType]
         }
 
-        override fun upsertUploadCursor(entity: UploadCursorEntity) {
+        override suspend fun upsertUploadCursor(entity: UploadCursorEntity) {
             uploadCursors[entity.cursorType] = entity
         }
 
-        override fun deleteRawPointsUpTo(upToPointId: Long) {}
+        override suspend fun deleteRawPointsUpTo(upToPointId: Long) {}
     }
 }

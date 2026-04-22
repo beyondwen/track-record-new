@@ -6,13 +6,14 @@ import com.wenhao.record.data.local.stream.ContinuousTrackDao
 import com.wenhao.record.data.local.stream.RawLocationPointEntity
 import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.local.stream.UploadCursorEntity
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class UploadCursorStorageTest {
 
     @Test
-    fun `load returns zero cursor when storage is empty`() {
+    fun `load returns zero cursor when storage is empty`() = runBlocking {
         val storage = UploadCursorStorage(FakeContinuousTrackDao())
 
         val cursor = storage.load(UploadCursorType.RAW_POINT)
@@ -23,7 +24,7 @@ class UploadCursorStorageTest {
     }
 
     @Test
-    fun `mark uploaded updates cursor and preserves latest id`() {
+    fun `mark uploaded updates cursor and preserves latest id`() = runBlocking {
         val storage = UploadCursorStorage(FakeContinuousTrackDao())
 
         storage.markUploaded(UploadCursorType.RAW_POINT, lastUploadedId = 12L, updatedAt = 1_000L)
@@ -37,43 +38,43 @@ class UploadCursorStorageTest {
     private class FakeContinuousTrackDao : ContinuousTrackDao {
         private val uploadCursors = linkedMapOf<String, UploadCursorEntity>()
 
-        override fun insertRawPoint(entity: RawLocationPointEntity): Long {
+        override suspend fun insertRawPoint(entity: RawLocationPointEntity): Long {
             throw UnsupportedOperationException()
         }
 
-        override fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity> {
+        override suspend fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity> {
             return emptyList()
         }
 
-        override fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
+        override suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
             return emptyList()
         }
 
-        override fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {
+        override suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {
             return emptyList()
         }
 
-        override fun loadAnalysisCursor(): AnalysisCursorEntity? {
+        override suspend fun loadAnalysisCursor(): AnalysisCursorEntity? {
             return null
         }
 
-        override fun upsertAnalysisCursor(entity: AnalysisCursorEntity) {
+        override suspend fun upsertAnalysisCursor(entity: AnalysisCursorEntity) {
         }
 
-        override fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>) {
+        override suspend fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>) {
         }
 
-        override fun insertStayClusters(entities: List<StayClusterEntity>) {
+        override suspend fun insertStayClusters(entities: List<StayClusterEntity>) {
         }
 
-        override fun loadUploadCursor(cursorType: String): UploadCursorEntity? {
+        override suspend fun loadUploadCursor(cursorType: String): UploadCursorEntity? {
             return uploadCursors[cursorType]
         }
 
-        override fun upsertUploadCursor(entity: UploadCursorEntity) {
+        override suspend fun upsertUploadCursor(entity: UploadCursorEntity) {
             uploadCursors[entity.cursorType] = entity
         }
 
-        override fun deleteRawPointsUpTo(upToPointId: Long) {}
+        override suspend fun deleteRawPointsUpTo(upToPointId: Long) {}
     }
 }

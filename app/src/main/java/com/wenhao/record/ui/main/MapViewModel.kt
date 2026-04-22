@@ -1,0 +1,299 @@
+package com.wenhao.record.ui.main
+
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.CreationExtras
+import com.wenhao.record.BuildConfig
+import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryItem
+import com.wenhao.record.data.tracking.TrackPathSanitizer
+import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
+import com.wenhao.record.map.GeoCoordinate
+import com.wenhao.record.tracking.TrackingPhase
+import com.wenhao.record.ui.map.TrackMapMarker
+import com.wenhao.record.ui.map.TrackMapMarkerKind
+import com.wenhao.record.ui.map.TrackMapPolyline
+import com.wenhao.record.ui.map.TrackMapSceneState
+import com.wenhao.record.ui.map.TrackMapViewportRequest
+import com.wenhao.record.ui.map.TrackPolylineBuilder
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.Calendar
+
+private const val KEY_CURRENT_TAB = "current_tab"
+
+class MapViewModel(
+    application: Application,
+    savedStateHandle: SavedStateHandle,
+) : AndroidViewModel(application) {
+
+    private val _renderState = MutableStateFlow(TrackMapSceneState())
+    val renderState: StateFlow<TrackMapSceneState> = _renderState.asStateFlow()
+
+    var shouldRefit = true
+
+    private val currentTrackPoints = mutableListOf<TrackPoint>()
+    private val todayTrackPoints = mutableListOf<GeoCoordinate>()
+    private var currentTrackSegments: List<List<TrackPoint>> = emptyList()
+    private var activeTrackPolylines: List<TrackMapPolyline> = emptyList()
+    private var todayTrackPolylines: List<TrackMapPolyline> = emptyList()
+    private var homeMarker: GeoCoordinate? = null
+    private var liveStartMarker: GeoCoordinate? = null
+    private var liveCurrentMarker: GeoCoordinate? = null
+    private var trackingEnabled = false
+    private var viewportSequence = 0L
+
+    fun configure(previewLocation: GeoCoordinate?, hasLocationPermission: Boolean, defaultCoordinate: GeoCoordinate) {
+        val initialLocation = previewLocation ?: defaultCoordinate
+        updateMarker(initialLocation)
+        issueCenter(initialLocation, if (hasLocationPermission) 16.0 else 15.0)
+    }
+
+    fun hasActiveTrack(): Boolean = trackingEnabled && liveCurrentMarker != null
+
+    fun hasTodayTracks(): Boolean = todayTrackPoints.isNotEmpty()
+
+    fun render(
+        runtimeSnapshot: TrackingRuntimeSnapshot?,
+        previewLocation: GeoCoordinate?,
+        todayHistoryItems: List<HistoryItem>,
+        activeSessionPoints: List<TrackPoint>,
+    ) {
+        trackingEnabled = runtimeSnapshot?.isEnabled == true
+        clearActiveTrack()
+
+        viewModelScope.launch {
+            renderTodayTracksAsync(todayHistoryItems)
+            renderActiveTrack(runtimeSnapshot, activeSessionPoints)
+
+            val liveCoordinate = runtimeSnapshot?.latestPoint?.toGeoCoordinate()
+            when {
+                trackingEnabled && liveCoordinate != null -> {
+                    homeMarker = null
+                    liveCurrentMarker = liveCoordinate
+                    if (shouldRefit) {
+                        focusActiveTrackOnLatestPoint(forceZoom = false)
+                    } else {
+                        syncScene()
+                    }
+                }
+
+                else -> {
+                    clearActiveTrack()
+                    (liveCoordinate ?: previewLocation)?.let(::updateMarker)
+                    syncScene()
+                }
+            }
+        }
+    }
+
+    fun centerOnPreviewLocation(latLng: GeoCoordinate, zoom: Double) {
+        shouldRefit = false
+        issueCenter(latLng, zoom)
+    }
+
+    fun updateCurrentLocation(latLng: GeoCoordinate, shouldCenter: Boolean) {
+        updateMarker(latLng)
+        if (shouldCenter) {
+            shouldRefit = false
+            issueCenter(latLng, 17.0)
+        } else {
+            syncScene()
+        }
+    }
+
+    fun showPreviewLocationIfIdle(previewLocation: GeoCoordinate?) {
+        if (!trackingEnabled) {
+            previewLocation?.let(::updateMarker)
+            syncScene()
+        }
+    }
+
+    fun focusActiveTrackOnLatestPoint(forceZoom: Boolean) {
+        val latestPoint = liveCurrentMarker ?: currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
+        issueCenter(
+            coordinate = latestPoint,
+            zoom = if (forceZoom) 16.8 else 16.2,
+        )
+        shouldRefit = false
+    }
+
+    fun fitTodayTracksToMap(forceSinglePointZoom: Boolean) {
+        when {
+            todayTrackPoints.isEmpty() -> Unit
+            todayTrackPoints.size == 1 -> {
+                if (forceSinglePointZoom || shouldRefit) {
+                    issueCenter(todayTrackPoints.first(), 17.0)
+                }
+                shouldRefit = false
+            }
+
+            else -> {
+                issueFit(todayTrackPoints, maxZoom = if (forceSinglePointZoom) 17.5 else 16.8)
+                shouldRefit = false
+            }
+        }
+    }
+
+    fun onClearedInternal() {
+        clearActiveTrack()
+        clearTodayTrackOverlays()
+        homeMarker = null
+        syncScene(viewportRequest = null)
+    }
+
+    private fun updateMarker(latLng: GeoCoordinate) {
+        if (currentTrackPoints.isNotEmpty()) {
+            homeMarker = null
+            liveCurrentMarker = latLng
+            return
+        }
+
+        liveStartMarker = null
+        liveCurrentMarker = null
+        homeMarker = latLng
+    }
+
+    private fun renderTrackHeatmap() {
+        val renderableSegments = TrackPathSanitizer.renderableSegments(currentTrackSegments)
+        activeTrackPolylines = TrackPolylineBuilder.build(
+            segments = renderableSegments,
+            idPrefix = "active",
+            width = 6.0,
+        )
+    }
+
+    private fun renderActiveTrack(
+        runtimeSnapshot: TrackingRuntimeSnapshot?,
+        activeSessionPoints: List<TrackPoint>,
+    ) {
+        val shouldRenderActiveTrack = trackingEnabled &&
+            runtimeSnapshot?.phase != TrackingPhase.IDLE &&
+            activeSessionPoints.size >= 2
+        if (!shouldRenderActiveTrack) {
+            return
+        }
+
+        currentTrackPoints.clear()
+        currentTrackPoints.addAll(activeSessionPoints.sortedBy { it.timestampMillis })
+        currentTrackSegments = listOf(currentTrackPoints.toList())
+        renderTrackHeatmap()
+        updateLiveTrackMarkers()
+    }
+
+    private fun clearActiveTrack() {
+        activeTrackPolylines = emptyList()
+        currentTrackSegments = emptyList()
+        currentTrackPoints.clear()
+        liveStartMarker = null
+        if (!trackingEnabled) {
+            liveCurrentMarker = null
+        }
+    }
+
+    private fun clearTodayTrackOverlays() {
+        todayTrackPolylines = emptyList()
+        todayTrackPoints.clear()
+    }
+
+    private suspend fun renderTodayTracksAsync(historyItems: List<HistoryItem>) = withContext(Dispatchers.Default) {
+        clearTodayTrackOverlays()
+
+        val sourceSegments = mutableListOf<List<TrackPoint>>()
+        historyItems.forEach { item ->
+            if (!isSameDay(item.timestamp, System.currentTimeMillis())) return@forEach
+            val sanitizedTrack = TrackPathSanitizer.sanitize(item.points, sortByTimestamp = true)
+            val renderableSegments = TrackPathSanitizer.renderableSegments(sanitizedTrack.segments)
+            val geoPoints = renderableSegments.flatten().map { it.toSimpleGeoCoordinate() }
+            todayTrackPoints.addAll(geoPoints)
+            sourceSegments.addAll(renderableSegments)
+        }
+        todayTrackPolylines = TrackPolylineBuilder.build(
+            segments = sourceSegments,
+            idPrefix = "today",
+            width = 4.6,
+        )
+
+        if (todayTrackPoints.isNotEmpty() && shouldRefit) {
+            fitTodayTracksToMap(forceSinglePointZoom = false)
+        }
+    }
+
+    private fun updateLiveTrackMarkers() {
+        val firstPoint = currentTrackPoints.firstOrNull()?.toGeoCoordinate() ?: return
+        val lastPoint = currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
+        liveStartMarker = firstPoint
+        liveCurrentMarker = lastPoint
+    }
+
+    private fun syncScene(viewportRequest: TrackMapViewportRequest? = _renderState.value.viewportRequest) {
+        _renderState.value = TrackMapSceneState(
+            polylines = activeTrackPolylines + todayTrackPolylines,
+            heatPoints = emptyList(),
+            markers = buildList {
+                homeMarker?.let { add(TrackMapMarker("home", it, TrackMapMarkerKind.HOME)) }
+                liveStartMarker?.let { add(TrackMapMarker("start", it, TrackMapMarkerKind.START)) }
+                liveCurrentMarker?.let { add(TrackMapMarker("end", it, TrackMapMarkerKind.END)) }
+            },
+            viewportRequest = viewportRequest,
+        )
+    }
+
+    private fun issueCenter(coordinate: GeoCoordinate, zoom: Double) {
+        syncScene(
+            viewportRequest = TrackMapViewportRequest.Center(
+                sequence = nextViewportSequence(),
+                coordinate = coordinate,
+                zoom = zoom,
+            )
+        )
+    }
+
+    private fun issueFit(coordinates: List<GeoCoordinate>, maxZoom: Double? = null) {
+        syncScene(
+            viewportRequest = TrackMapViewportRequest.Fit(
+                sequence = nextViewportSequence(),
+                coordinates = coordinates.toList(),
+                maxZoom = maxZoom,
+            )
+        )
+    }
+
+    private fun nextViewportSequence(): Long {
+        viewportSequence += 1
+        return viewportSequence
+    }
+
+    private fun isSameDay(firstTimestamp: Long, secondTimestamp: Long): Boolean {
+        val first = Calendar.getInstance().apply { timeInMillis = firstTimestamp }
+        val second = Calendar.getInstance().apply { timeInMillis = secondTimestamp }
+        return first.get(Calendar.YEAR) == second.get(Calendar.YEAR) &&
+            first.get(Calendar.DAY_OF_YEAR) == second.get(Calendar.DAY_OF_YEAR)
+    }
+
+    private fun TrackPoint.toSimpleGeoCoordinate(): GeoCoordinate {
+        return GeoCoordinate(latitude = latitude, longitude = longitude)
+    }
+
+    companion object {
+        fun factory(application: Application): ViewModelProvider.Factory {
+            return object : ViewModelProvider.Factory {
+                override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
+                    val savedStateHandle = extras.createSavedStateHandle()
+                    @Suppress("UNCHECKED_CAST")
+                    return MapViewModel(application, savedStateHandle) as T
+                }
+            }
+        }
+    }
+}

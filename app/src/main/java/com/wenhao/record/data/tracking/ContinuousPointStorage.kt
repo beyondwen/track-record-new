@@ -33,23 +33,23 @@ data class RawTrackPoint(
 class ContinuousPointStorage(
     private val dao: ContinuousTrackDao,
 ) {
-    fun appendRawPoint(point: RawTrackPoint): Long {
+    suspend fun appendRawPoint(point: RawTrackPoint): Long {
         return dao.insertRawPoint(point.toEntity())
     }
 
-    fun loadPendingWindow(afterPointId: Long, limit: Int): List<RawTrackPoint> {
+    suspend fun loadPendingWindow(afterPointId: Long, limit: Int): List<RawTrackPoint> {
         return dao.loadRawPoints(afterPointId = afterPointId, limit = limit).map { it.toModel() }
     }
 
-    fun loadCurrentSessionPoints(limit: Int): List<RawTrackPoint> {
+    suspend fun loadCurrentSessionPoints(limit: Int): List<RawTrackPoint> {
         return loadPendingWindow(afterPointId = 0L, limit = limit)
     }
 
-    fun loadPendingRawUploadRows(afterPointId: Long, limit: Int): List<RawPointUploadRow> {
+    suspend fun loadPendingRawUploadRows(afterPointId: Long, limit: Int): List<RawPointUploadRow> {
         return loadPendingWindow(afterPointId = afterPointId, limit = limit).map(RawPointUploadRow::from)
     }
 
-    fun loadPendingAnalysisUploadRows(afterSegmentId: Long, limit: Int): List<AnalysisUploadRow> {
+    suspend fun loadPendingAnalysisUploadRows(afterSegmentId: Long, limit: Int): List<AnalysisUploadRow> {
         val segments = dao.loadAnalysisSegments(afterSegmentId = afterSegmentId, limit = limit)
         if (segments.isEmpty()) return emptyList()
 
@@ -65,7 +65,7 @@ class ContinuousPointStorage(
         }
     }
 
-    fun saveAnalysisResult(
+    suspend fun saveAnalysisResult(
         analyzedUpToPointId: Long,
         segments: List<AnalysisSegmentEntity>,
         stayClusters: List<StayClusterEntity>,
@@ -80,11 +80,11 @@ class ContinuousPointStorage(
         )
     }
 
-    fun loadAnalysisCursor(): AnalysisCursorEntity? {
+    suspend fun loadAnalysisCursor(): AnalysisCursorEntity? {
         return dao.loadAnalysisCursor()
     }
 
-    fun deleteRawPointsUpTo(upToPointId: Long) {
+    suspend fun deleteRawPointsUpTo(upToPointId: Long) {
         dao.deleteRawPointsUpTo(upToPointId)
     }
 }

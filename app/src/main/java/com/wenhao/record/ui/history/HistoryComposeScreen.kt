@@ -33,6 +33,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -141,13 +142,22 @@ fun HistoryComposeScreen(
                         }
                         val currentLabel = requireNotNull(groupLabels[item.dayStartMillis])
 
+                        val isFirstLoad = remember { mutableStateOf(true) }
+                        val shouldAnimate = isFirstLoad.value && index < 6
+                        if (shouldAnimate) {
+                            isFirstLoad.value = false
+                        }
                         androidx.compose.animation.AnimatedVisibility(
-                            visible = true, // 初始入场
-                            enter = androidx.compose.animation.fadeIn(
-                                androidx.compose.animation.core.tween(600, delayMillis = index * 100)
-                            ) + androidx.compose.animation.slideInVertically(
-                                androidx.compose.animation.core.tween(600, delayMillis = index * 100)
-                            ) { it / 2 }
+                            visible = true,
+                            enter = if (shouldAnimate) {
+                                androidx.compose.animation.fadeIn(
+                                    androidx.compose.animation.core.tween(600, delayMillis = index * 100)
+                                ) + androidx.compose.animation.slideInVertically(
+                                    androidx.compose.animation.core.tween(600, delayMillis = index * 100)
+                                ) { it / 2 }
+                            } else {
+                                androidx.compose.animation.EnterTransition.None
+                            }
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                                 if (index == 0 || currentLabel != previousLabel) {
@@ -270,8 +280,8 @@ private fun HistoryOverviewMetricCard(
 
 @Composable
 private fun DecorativeMenuGlyph(modifier: Modifier = Modifier) {
+    val color = MaterialTheme.colorScheme.primary
     Canvas(modifier = modifier.size(width = 38.dp, height = 38.dp)) {
-        val color = Color(0xFF0B6C6D)
         val startX = size.width * 0.12f
         val endX = size.width * 0.88f
         val ys = listOf(size.height * 0.28f, size.height * 0.5f, size.height * 0.72f)
@@ -402,8 +412,8 @@ private fun HistoryPreviewCard(
     Box(
         modifier = modifier
             .height(240.dp)
-            .clip(RoundedCornerShape(24.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.3f))
+            .clip(MaterialTheme.shapes.large)
+            .background(MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         HistoryRoutePreviewCanvas(
             segments = item.segments,
@@ -419,24 +429,17 @@ private fun HistoryBottomBar(
     Box(
         modifier = Modifier
             .navigationBarsPadding()
-            .padding(horizontal = 24.dp, vertical = 16.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        com.wenhao.record.ui.designsystem.TrackGlassCard(
-            shape = RoundedCornerShape(40.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Box(modifier = Modifier.padding(vertical = 8.dp)) {
-                TrackBottomNavigationBar(
-                    selectedTab = TrackBottomTab.HISTORY,
-                    onRecordClick = onRecordClick,
-                    onHistoryClick = {},
-                    recordLabel = stringResource(R.string.compose_history_record_tab),
-                    historyLabel = stringResource(R.string.compose_history_list_tab),
-                    recordEnabled = true,
-                    historyEnabled = false,
-                )
-            }
-        }
+        TrackBottomNavigationBar(
+            selectedTab = TrackBottomTab.HISTORY,
+            onRecordClick = onRecordClick,
+            onHistoryClick = {},
+            recordLabel = stringResource(R.string.compose_history_record_tab),
+            historyLabel = stringResource(R.string.compose_history_list_tab),
+            recordEnabled = true,
+            historyEnabled = false,
+        )
     }
 }
 

@@ -71,8 +71,6 @@ class DashboardUiController(
             autoTrackMeta = metaForState(state),
             statusLabel = statusForState(state),
             statusTone = toneForState(state),
-            controlTitle = controlTitleForState(state),
-            controlBody = controlBodyForState(state),
         )
     }
 
@@ -160,20 +158,6 @@ class DashboardUiController(
         AutoTrackUiState.WAITING_PERMISSION -> DashboardTone.WARNING
         AutoTrackUiState.SAVED_RECENTLY -> DashboardTone.SUCCESS
         else -> DashboardTone.MUTED
-    }
-
-    private fun controlTitleForState(state: AutoTrackUiState): String = when (state) {
-        AutoTrackUiState.TRACKING -> "采集中"
-        AutoTrackUiState.WAITING_PERMISSION -> "等待权限"
-        AutoTrackUiState.SAVED_RECENTLY -> "已生成行程"
-        else -> "待命中"
-    }
-
-    private fun controlBodyForState(state: AutoTrackUiState): String = when (state) {
-        AutoTrackUiState.TRACKING -> "正在记录移动轨迹，静止后会自动切段并写入历史。"
-        AutoTrackUiState.WAITING_PERMISSION -> "先授予定位权限，后台采点和延迟分析才能正常工作。"
-        AutoTrackUiState.SAVED_RECENTLY -> "最近一段轨迹已整理完成，可在历史页查看。"
-        else -> "当前没有明显移动，系统会继续低功耗采点并等待状态变化。"
     }
 
 }

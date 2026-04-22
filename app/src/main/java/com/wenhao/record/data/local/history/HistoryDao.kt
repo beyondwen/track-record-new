@@ -23,50 +23,50 @@ interface HistoryDao {
 
     @Transaction
     @Query("SELECT * FROM history_record ORDER BY timestamp DESC, historyId DESC")
-    fun getHistoryWithPoints(): List<HistoryRecordWithPoints>
+    suspend fun getHistoryWithPoints(): List<HistoryRecordWithPoints>
 
     @Transaction
     @Query("SELECT * FROM history_record WHERE historyId = :historyId LIMIT 1")
-    fun getHistoryWithPoints(historyId: Long): HistoryRecordWithPoints?
+    suspend fun getHistoryWithPoints(historyId: Long): HistoryRecordWithPoints?
 
     @Query("SELECT COUNT(*) FROM history_record")
-    fun getHistoryCount(): Int
+    suspend fun getHistoryCount(): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertRecords(records: List<HistoryRecordEntity>)
+    suspend fun insertRecords(records: List<HistoryRecordEntity>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertRecord(record: HistoryRecordEntity)
+    suspend fun insertRecord(record: HistoryRecordEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    fun insertPoints(points: List<HistoryPointEntity>)
+    suspend fun insertPoints(points: List<HistoryPointEntity>)
 
     @Query("SELECT MAX(historyId) FROM history_record")
-    fun getMaxHistoryId(): Long?
+    suspend fun getMaxHistoryId(): Long?
 
     @Query("UPDATE history_record SET title = :title WHERE historyId = :historyId")
-    fun updateTitle(historyId: Long, title: String?)
+    suspend fun updateTitle(historyId: Long, title: String?)
 
     @Query("DELETE FROM history_point WHERE historyId = :historyId")
-    fun deletePointsForHistory(historyId: Long)
+    suspend fun deletePointsForHistory(historyId: Long)
 
     @Query("DELETE FROM history_record WHERE historyId = :historyId")
-    fun deleteRecordById(historyId: Long)
+    suspend fun deleteRecordById(historyId: Long)
 
     @Query("DELETE FROM history_point WHERE historyId IN (:historyIds)")
-    fun deletePointsForHistoryList(historyIds: List<Long>)
+    suspend fun deletePointsForHistoryList(historyIds: List<Long>)
 
     @Query("DELETE FROM history_record WHERE historyId IN (:historyIds)")
-    fun deleteRecordsByIds(historyIds: List<Long>)
+    suspend fun deleteRecordsByIds(historyIds: List<Long>)
 
     @Query("DELETE FROM history_point")
-    fun deleteAllPoints()
+    suspend fun deleteAllPoints()
 
     @Query("DELETE FROM history_record")
-    fun deleteAllRecords()
+    suspend fun deleteAllRecords()
 
     @Transaction
-    fun replaceAll(
+    suspend fun replaceAll(
         records: List<HistoryRecordEntity>,
         points: List<HistoryPointEntity>
     ) {
@@ -81,7 +81,7 @@ interface HistoryDao {
     }
 
     @Transaction
-    fun upsertHistory(
+    suspend fun upsertHistory(
         record: HistoryRecordEntity,
         points: List<HistoryPointEntity>
     ) {
@@ -93,13 +93,13 @@ interface HistoryDao {
     }
 
     @Transaction
-    fun deleteHistory(historyId: Long) {
+    suspend fun deleteHistory(historyId: Long) {
         deletePointsForHistory(historyId)
         deleteRecordById(historyId)
     }
 
     @Transaction
-    fun deleteHistoryList(historyIds: List<Long>) {
+    suspend fun deleteHistoryList(historyIds: List<Long>) {
         if (historyIds.isEmpty()) return
         deletePointsForHistoryList(historyIds)
         deleteRecordsByIds(historyIds)

@@ -427,7 +427,9 @@ class BackgroundTrackingService : Service() {
             samplingTier = phasePolicy.samplingTierFor(currentPhase),
         )
         AppTaskExecutor.runOnIo {
-            pointStorage.appendRawPoint(rawPoint)
+            kotlinx.coroutines.runBlocking {
+                pointStorage.appendRawPoint(rawPoint)
+            }
             TrackUploadScheduler.kickRawPointSync(applicationContext)
         }
     }
@@ -436,136 +438,138 @@ class BackgroundTrackingService : Service() {
         if (analysisInFlight) return
         analysisInFlight = true
         AppTaskExecutor.runOnIo {
-            val cursor = pointStorage.loadAnalysisCursor()
-            val afterPointId = cursor?.lastAnalyzedPointId ?: 0L
-            val window = pointStorage.loadPendingWindow(afterPointId = afterPointId, limit = 2048)
-            if (window.size < 3) {
+            kotlinx.coroutines.runBlocking {
+                val cursor = pointStorage.loadAnalysisCursor()
+                val afterPointId = cursor?.lastAnalyzedPointId ?: 0L
+                val window = pointStorage.loadPendingWindow(afterPointId = afterPointId, limit = 2048)
+                if (window.size < 3) {
+                    runOnTrackingThread {
+                        analysisInFlight = false
+                        AutoTrackDiagnosticsStorage.markEvent(
+                            applicationContext,
+                            "分析跳过：有效点不足 3 个（当前 ${window.size}）"
+                        )
+                        updateNotification(reason)
+                        saveSnapshot()
+                    }
+                    return@runBlocking
+                }
+
+                val analysisResult = analysisRunner.analyze(
+                    points = window.map { rawPoint ->
+                        AnalyzedPoint(
+                            timestampMillis = rawPoint.timestampMillis,
+                            latitude = rawPoint.latitude,
+                            longitude = rawPoint.longitude,
+                            accuracyMeters = rawPoint.accuracyMeters,
+                            speedMetersPerSecond = rawPoint.speedMetersPerSecond,
+                            activityType = rawPoint.activityType,
+                            activityConfidence = rawPoint.activityConfidence,
+                            wifiFingerprintDigest = rawPoint.wifiFingerprintDigest,
+                        )
+                    },
+                )
+                val persistedSegments = analysisResult.segments.mapNotNull { segment ->
+                    if (segment.kind == SegmentKind.UNCERTAIN) {
+                        return@mapNotNull null
+                    }
+
+                    val segmentPoints = window.filter { point ->
+                        point.timestampMillis in segment.startTimestamp..segment.endTimestamp
+                    }
+                    if (segmentPoints.isEmpty()) {
+                        return@mapNotNull null
+                    }
+
+                    val distanceMeters = segmentPoints.zipWithNext { first, second ->
+                        GeoMath.distanceMeters(
+                            first.latitude,
+                            first.longitude,
+                            second.latitude,
+                            second.longitude,
+                        )
+                    }.sum()
+                    val durationMillis = (segment.endTimestamp - segment.startTimestamp).coerceAtLeast(0L)
+                    val speedSamples = segmentPoints.mapNotNull { it.speedMetersPerSecond?.toDouble() }
+                    val avgSpeedMetersPerSecond = when {
+                        speedSamples.isNotEmpty() -> speedSamples.average()
+                        durationMillis <= 0L -> 0.0
+                        else -> distanceMeters / (durationMillis / 1_000.0)
+                    }
+                    val maxSpeedMetersPerSecond = speedSamples.maxOrNull() ?: avgSpeedMetersPerSecond
+
+                    AnalysisSegmentEntity(
+                        segmentId = stableSegmentId(
+                            startPointId = segmentPoints.first().pointId,
+                            endPointId = segmentPoints.last().pointId,
+                        ),
+                        startPointId = segmentPoints.first().pointId,
+                        endPointId = segmentPoints.last().pointId,
+                        startTimestamp = segment.startTimestamp,
+                        endTimestamp = segment.endTimestamp,
+                        segmentType = segment.kind.name,
+                        confidence = defaultSegmentConfidence(segment.kind),
+                        distanceMeters = distanceMeters.toFloat(),
+                        durationMillis = durationMillis,
+                        avgSpeedMetersPerSecond = avgSpeedMetersPerSecond.toFloat(),
+                        maxSpeedMetersPerSecond = maxSpeedMetersPerSecond.toFloat(),
+                        analysisVersion = ANALYSIS_VERSION,
+                    )
+                }
+                val persistedStayClusters = analysisResult.stayClusters.mapNotNull { stay ->
+                    val ownerSegment = persistedSegments.firstOrNull { segment ->
+                        segment.segmentType == SegmentKind.STATIC.name &&
+                            stay.arrivalTime <= segment.endTimestamp &&
+                            stay.departureTime >= segment.startTimestamp
+                    } ?: return@mapNotNull null
+
+                    StayClusterEntity(
+                        stayId = stableStayId(
+                            segmentId = ownerSegment.segmentId,
+                            arrivalTime = stay.arrivalTime,
+                            departureTime = stay.departureTime,
+                        ),
+                        segmentId = ownerSegment.segmentId,
+                        centerLat = stay.centerLat,
+                        centerLng = stay.centerLng,
+                        radiusMeters = stay.radiusMeters,
+                        arrivalTime = stay.arrivalTime,
+                        departureTime = stay.departureTime,
+                        confidence = stay.confidence,
+                        analysisVersion = ANALYSIS_VERSION,
+                    )
+                }
+                pointStorage.saveAnalysisResult(
+                    analyzedUpToPointId = window.maxOf { it.pointId },
+                    segments = persistedSegments,
+                    stayClusters = persistedStayClusters,
+                )
+
+                val analyzedUpToPointId = window.maxOf { it.pointId }
+                if (persistedSegments.isNotEmpty()) {
+                    pointStorage.deleteRawPointsUpTo(analyzedUpToPointId)
+                }
+                HistoryStorage.upsertProjectedItems(
+                    context = applicationContext,
+                    projectedItems = analysisHistoryProjector.project(
+                        segments = analysisResult.segments,
+                        rawPoints = window,
+                    ),
+                )
+                TrackUploadScheduler.kickAnalysisSync(applicationContext)
+                TrackUploadScheduler.kickHistorySync(applicationContext)
+
                 runOnTrackingThread {
                     analysisInFlight = false
-                    AutoTrackDiagnosticsStorage.markEvent(
+                    lastAnalysisAt = System.currentTimeMillis()
+                    AutoTrackDiagnosticsStorage.markSessionSaved(
                         applicationContext,
-                        "分析跳过：有效点不足 3 个（当前 ${window.size}）"
+                        "已分析 ${persistedSegments.size} 段，使用 ${window.size} 个点"
                     )
                     updateNotification(reason)
                     saveSnapshot()
+                    TrackDataChangeNotifier.notifyHistoryChanged()
                 }
-                return@runOnIo
-            }
-
-            val analysisResult = analysisRunner.analyze(
-                points = window.map { rawPoint ->
-                    AnalyzedPoint(
-                        timestampMillis = rawPoint.timestampMillis,
-                        latitude = rawPoint.latitude,
-                        longitude = rawPoint.longitude,
-                        accuracyMeters = rawPoint.accuracyMeters,
-                        speedMetersPerSecond = rawPoint.speedMetersPerSecond,
-                        activityType = rawPoint.activityType,
-                        activityConfidence = rawPoint.activityConfidence,
-                        wifiFingerprintDigest = rawPoint.wifiFingerprintDigest,
-                    )
-                },
-            )
-            val persistedSegments = analysisResult.segments.mapNotNull { segment ->
-                if (segment.kind == SegmentKind.UNCERTAIN) {
-                    return@mapNotNull null
-                }
-
-                val segmentPoints = window.filter { point ->
-                    point.timestampMillis in segment.startTimestamp..segment.endTimestamp
-                }
-                if (segmentPoints.isEmpty()) {
-                    return@mapNotNull null
-                }
-
-                val distanceMeters = segmentPoints.zipWithNext { first, second ->
-                    GeoMath.distanceMeters(
-                        first.latitude,
-                        first.longitude,
-                        second.latitude,
-                        second.longitude,
-                    )
-                }.sum()
-                val durationMillis = (segment.endTimestamp - segment.startTimestamp).coerceAtLeast(0L)
-                val speedSamples = segmentPoints.mapNotNull { it.speedMetersPerSecond?.toDouble() }
-                val avgSpeedMetersPerSecond = when {
-                    speedSamples.isNotEmpty() -> speedSamples.average()
-                    durationMillis <= 0L -> 0.0
-                    else -> distanceMeters / (durationMillis / 1_000.0)
-                }
-                val maxSpeedMetersPerSecond = speedSamples.maxOrNull() ?: avgSpeedMetersPerSecond
-
-                AnalysisSegmentEntity(
-                    segmentId = stableSegmentId(
-                        startPointId = segmentPoints.first().pointId,
-                        endPointId = segmentPoints.last().pointId,
-                    ),
-                    startPointId = segmentPoints.first().pointId,
-                    endPointId = segmentPoints.last().pointId,
-                    startTimestamp = segment.startTimestamp,
-                    endTimestamp = segment.endTimestamp,
-                    segmentType = segment.kind.name,
-                    confidence = defaultSegmentConfidence(segment.kind),
-                    distanceMeters = distanceMeters.toFloat(),
-                    durationMillis = durationMillis,
-                    avgSpeedMetersPerSecond = avgSpeedMetersPerSecond.toFloat(),
-                    maxSpeedMetersPerSecond = maxSpeedMetersPerSecond.toFloat(),
-                    analysisVersion = ANALYSIS_VERSION,
-                )
-            }
-            val persistedStayClusters = analysisResult.stayClusters.mapNotNull { stay ->
-                val ownerSegment = persistedSegments.firstOrNull { segment ->
-                    segment.segmentType == SegmentKind.STATIC.name &&
-                        stay.arrivalTime <= segment.endTimestamp &&
-                        stay.departureTime >= segment.startTimestamp
-                } ?: return@mapNotNull null
-
-                StayClusterEntity(
-                    stayId = stableStayId(
-                        segmentId = ownerSegment.segmentId,
-                        arrivalTime = stay.arrivalTime,
-                        departureTime = stay.departureTime,
-                    ),
-                    segmentId = ownerSegment.segmentId,
-                    centerLat = stay.centerLat,
-                    centerLng = stay.centerLng,
-                    radiusMeters = stay.radiusMeters,
-                    arrivalTime = stay.arrivalTime,
-                    departureTime = stay.departureTime,
-                    confidence = stay.confidence,
-                    analysisVersion = ANALYSIS_VERSION,
-                )
-            }
-            pointStorage.saveAnalysisResult(
-                analyzedUpToPointId = window.maxOf { it.pointId },
-                segments = persistedSegments,
-                stayClusters = persistedStayClusters,
-            )
-
-            val analyzedUpToPointId = window.maxOf { it.pointId }
-            if (persistedSegments.isNotEmpty()) {
-                pointStorage.deleteRawPointsUpTo(analyzedUpToPointId)
-            }
-            HistoryStorage.upsertProjectedItems(
-                context = applicationContext,
-                projectedItems = analysisHistoryProjector.project(
-                    segments = analysisResult.segments,
-                    rawPoints = window,
-                ),
-            )
-            TrackUploadScheduler.kickAnalysisSync(applicationContext)
-            TrackUploadScheduler.kickHistorySync(applicationContext)
-
-            runOnTrackingThread {
-                analysisInFlight = false
-                lastAnalysisAt = System.currentTimeMillis()
-                AutoTrackDiagnosticsStorage.markSessionSaved(
-                    applicationContext,
-                    "已分析 ${persistedSegments.size} 段，使用 ${window.size} 个点"
-                )
-                updateNotification(reason)
-                saveSnapshot()
-                TrackDataChangeNotifier.notifyHistoryChanged()
             }
         }
     }

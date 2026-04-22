@@ -17,85 +17,137 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-private val StoneBackground = Color(0xFFD8D4F6)
-private val StoneBackgroundDark = Color(0xFF0A1028)
-private val IvorySurface = Color(0xFFF4F1FF)
-private val SlateSurface = Color(0xFF141B3A)
-private val MistSurface = Color(0xFFE6E6FF)
-private val MistSurfaceDark = Color(0xFF1F2954)
-private val LakePrimary = Color(0xFF5A66FF)
-private val LakePrimaryDark = Color(0xFFB8C2FF)
-private val LakePrimaryContainer = Color(0xFFDCE0FF)
-private val LakePrimaryContainerDark = Color(0xFF3240A5)
-private val ForestSecondary = Color(0xFF7A70E6)
-private val ForestSecondaryDark = Color(0xFFD1C8FF)
-private val ForestSecondaryContainer = Color(0xFFEAE4FF)
-private val ForestSecondaryContainerDark = Color(0xFF473E86)
-private val AmberAccent = Color(0xFFFF8AA8)
-private val AmberAccentDark = Color(0xFFFFB5C9)
-private val Ink = Color(0xFF1F2247)
-private val InkDark = Color(0xFFF4F3FF)
-private val MutedInk = Color(0xFF6C7099)
-private val MutedInkDark = Color(0xFFC2C6F4)
-private val Outline = Color(0xFFFCFBFF)
-private val OutlineDark = Color(0xFF5A6497)
-private val SuccessColor = Color(0xFF52D5B4)
-private val WarningColor = Color(0xFFFFB86B)
-private val ErrorColor = Color(0xFFFF8B9F)
+// ===== Material 3 Color Tokens (Teal/Natural Palette) =====
+
+private val PrimaryLight = Color(0xFF006A60)
+private val OnPrimaryLight = Color(0xFFFFFFFF)
+private val PrimaryContainerLight = Color(0xFF9CF2E5)
+private val OnPrimaryContainerLight = Color(0xFF00201C)
+
+private val SecondaryLight = Color(0xFF4A6360)
+private val OnSecondaryLight = Color(0xFFFFFFFF)
+private val SecondaryContainerLight = Color(0xFFCCE8E4)
+private val OnSecondaryContainerLight = Color(0xFF051F1D)
+
+private val TertiaryLight = Color(0xFF6B5B4F)
+private val OnTertiaryLight = Color(0xFFFFFFFF)
+private val TertiaryContainerLight = Color(0xFFF4DDC7)
+private val OnTertiaryContainerLight = Color(0xFF241A13)
+
+private val ErrorLight = Color(0xFFBA1A1A)
+private val OnErrorLight = Color(0xFFFFFFFF)
+private val ErrorContainerLight = Color(0xFFFFDAD6)
+private val OnErrorContainerLight = Color(0xFF410002)
+
+private val BackgroundLight = Color(0xFFF4FBF9)
+private val OnBackgroundLight = Color(0xFF171D1C)
+private val SurfaceLight = Color(0xFFFFFFFF)
+private val OnSurfaceLight = Color(0xFF171D1C)
+private val SurfaceVariantLight = Color(0xFFDAE5E2)
+private val OnSurfaceVariantLight = Color(0xFF3F4947)
+private val OutlineLight = Color(0xFF6F7977)
+private val OutlineVariantLight = Color(0xFFBEC9C6)
+
+private val PrimaryDark = Color(0xFF82D5C8)
+private val OnPrimaryDark = Color(0xFF003731)
+private val PrimaryContainerDark = Color(0xFF005048)
+private val OnPrimaryContainerDark = Color(0xFF9CF2E5)
+
+private val SecondaryDark = Color(0xFFB2CCC8)
+private val OnSecondaryDark = Color(0xFF1C3532)
+private val SecondaryContainerDark = Color(0xFF334B48)
+private val OnSecondaryContainerDark = Color(0xFFCCE8E4)
+
+private val TertiaryDark = Color(0xFFD5C3B5)
+private val OnTertiaryDark = Color(0xFF3A2E25)
+private val TertiaryContainerDark = Color(0xFF52443B)
+private val OnTertiaryContainerDark = Color(0xFFF4DDC7)
+
+private val ErrorDark = Color(0xFFFFB4AB)
+private val OnErrorDark = Color(0xFF690005)
+private val ErrorContainerDark = Color(0xFF93000A)
+private val OnErrorContainerDark = Color(0xFFFFDAD6)
+
+private val BackgroundDark = Color(0xFF191C1C)
+private val OnBackgroundDark = Color(0xFFE0E3E1)
+private val SurfaceDark = Color(0xFF111414)
+private val OnSurfaceDark = Color(0xFFE0E3E1)
+private val SurfaceVariantDark = Color(0xFF3F4947)
+private val OnSurfaceVariantDark = Color(0xFFBEC9C6)
+private val OutlineDark = Color(0xFF899390)
+private val OutlineVariantDark = Color(0xFF3F4947)
 
 private val TrackRecordLightColors: ColorScheme = lightColorScheme(
-    primary = LakePrimary,
-    onPrimary = Color.White,
-    primaryContainer = LakePrimaryContainer,
-    onPrimaryContainer = Color(0xFF062C37),
-    secondary = ForestSecondary,
-    onSecondary = Color.White,
-    secondaryContainer = ForestSecondaryContainer,
-    onSecondaryContainer = Color(0xFF142728),
-    tertiary = AmberAccent,
-    onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFF8E0B7),
-    onTertiaryContainer = Color(0xFF452B00),
-    background = StoneBackground,
-    onBackground = Ink,
-    surface = IvorySurface,
-    onSurface = Ink,
-    surfaceVariant = MistSurface,
-    onSurfaceVariant = MutedInk,
-    outline = Outline,
-    outlineVariant = Outline,
-    error = ErrorColor,
-    onError = Color.White,
-    errorContainer = Color(0xFFF7DCDC),
-    onErrorContainer = Color(0xFF4A1212),
+    primary = PrimaryLight,
+    onPrimary = OnPrimaryLight,
+    primaryContainer = PrimaryContainerLight,
+    onPrimaryContainer = OnPrimaryContainerLight,
+    secondary = SecondaryLight,
+    onSecondary = OnSecondaryLight,
+    secondaryContainer = SecondaryContainerLight,
+    onSecondaryContainer = OnSecondaryContainerLight,
+    tertiary = TertiaryLight,
+    onTertiary = OnTertiaryLight,
+    tertiaryContainer = TertiaryContainerLight,
+    onTertiaryContainer = OnTertiaryContainerLight,
+    error = ErrorLight,
+    onError = OnErrorLight,
+    errorContainer = ErrorContainerLight,
+    onErrorContainer = OnErrorContainerLight,
+    background = BackgroundLight,
+    onBackground = OnBackgroundLight,
+    surface = SurfaceLight,
+    onSurface = OnSurfaceLight,
+    surfaceVariant = SurfaceVariantLight,
+    onSurfaceVariant = OnSurfaceVariantLight,
+    outline = OutlineLight,
+    outlineVariant = OutlineVariantLight,
+    inversePrimary = PrimaryDark,
+    inverseSurface = SurfaceDark,
+    inverseOnSurface = OnSurfaceDark,
+    scrim = Color(0xFF000000),
 )
 
 private val TrackRecordDarkColors: ColorScheme = darkColorScheme(
-    primary = LakePrimaryDark,
-    onPrimary = Color(0xFF003544),
-    primaryContainer = LakePrimaryContainerDark,
-    onPrimaryContainer = Color(0xFFD7EEF3),
-    secondary = ForestSecondaryDark,
-    onSecondary = Color(0xFF1C3435),
-    secondaryContainer = ForestSecondaryContainerDark,
-    onSecondaryContainer = Color(0xFFDCE8E6),
-    tertiary = AmberAccentDark,
-    onTertiary = Color(0xFF452B00),
-    tertiaryContainer = Color(0xFF624000),
-    onTertiaryContainer = Color(0xFFF8E0B7),
-    background = StoneBackgroundDark,
-    onBackground = InkDark,
-    surface = SlateSurface,
-    onSurface = InkDark,
-    surfaceVariant = MistSurfaceDark,
-    onSurfaceVariant = MutedInkDark,
+    primary = PrimaryDark,
+    onPrimary = OnPrimaryDark,
+    primaryContainer = PrimaryContainerDark,
+    onPrimaryContainer = OnPrimaryContainerDark,
+    secondary = SecondaryDark,
+    onSecondary = OnSecondaryDark,
+    secondaryContainer = SecondaryContainerDark,
+    onSecondaryContainer = OnSecondaryContainerDark,
+    tertiary = TertiaryDark,
+    onTertiary = OnTertiaryDark,
+    tertiaryContainer = TertiaryContainerDark,
+    onTertiaryContainer = OnTertiaryContainerDark,
+    error = ErrorDark,
+    onError = OnErrorDark,
+    errorContainer = ErrorContainerDark,
+    onErrorContainer = OnErrorContainerDark,
+    background = BackgroundDark,
+    onBackground = OnBackgroundDark,
+    surface = SurfaceDark,
+    onSurface = OnSurfaceDark,
+    surfaceVariant = SurfaceVariantDark,
+    onSurfaceVariant = OnSurfaceVariantDark,
     outline = OutlineDark,
-    outlineVariant = OutlineDark,
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF8C1D1D),
-    onErrorContainer = Color(0xFFFFDAD6),
+    outlineVariant = OutlineVariantDark,
+    inversePrimary = PrimaryLight,
+    inverseSurface = SurfaceLight,
+    inverseOnSurface = OnSurfaceLight,
+    scrim = Color(0xFF000000),
 )
+
+// ===== Status Colors =====
+
+object TrackRecordStatusColors {
+    val Success: Color = Color(0xFF2E7D52)
+    val Warning: Color = Color(0xFFB07000)
+    val Error: Color = Color(0xFFBA1A1A)
+}
+
+// ===== Spacing =====
 
 val TrackRecordSpacing = TrackRecordSpacingTokens()
 
@@ -110,98 +162,126 @@ class TrackRecordSpacingTokens(
     val xxxl: Dp = 40.dp,
 )
 
+// ===== Typography (Material 3) =====
+
 private val TrackRecordTypography = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Black,
-        fontSize = 56.sp,
-        lineHeight = 56.sp,
+        fontWeight = FontWeight.Normal,
+        fontSize = 57.sp,
+        lineHeight = 64.sp,
+        letterSpacing = (-0.25).sp,
     ),
     displayMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Black,
-        fontSize = 46.sp,
-        lineHeight = 48.sp,
+        fontWeight = FontWeight.Normal,
+        fontSize = 45.sp,
+        lineHeight = 52.sp,
+        letterSpacing = 0.sp,
+    ),
+    displaySmall = TextStyle(
+        fontFamily = FontFamily.Default,
+        fontWeight = FontWeight.Normal,
+        fontSize = 36.sp,
+        lineHeight = 44.sp,
+        letterSpacing = 0.sp,
     ),
     headlineLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Bold,
-        fontSize = 30.sp,
-        lineHeight = 36.sp,
+        fontWeight = FontWeight.Normal,
+        fontSize = 32.sp,
+        lineHeight = 40.sp,
+        letterSpacing = 0.sp,
     ),
     headlineMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.Bold,
-        fontSize = 24.sp,
-        lineHeight = 30.sp,
+        fontWeight = FontWeight.Normal,
+        fontSize = 28.sp,
+        lineHeight = 36.sp,
+        letterSpacing = 0.sp,
     ),
     headlineSmall = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
-        lineHeight = 26.sp,
+        fontWeight = FontWeight.Normal,
+        fontSize = 24.sp,
+        lineHeight = 32.sp,
+        letterSpacing = 0.sp,
     ),
     titleLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 18.sp,
-        lineHeight = 24.sp,
+        fontWeight = FontWeight.Medium,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
+        letterSpacing = 0.sp,
     ),
     titleMedium = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Medium,
         fontSize = 16.sp,
-        lineHeight = 22.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.15.sp,
     ),
     titleSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
         fontSize = 14.sp,
         lineHeight = 20.sp,
+        letterSpacing = 0.1.sp,
     ),
     bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
-        fontSize = 15.sp,
-        lineHeight = 22.sp,
+        fontSize = 16.sp,
+        lineHeight = 24.sp,
+        letterSpacing = 0.5.sp,
     ),
     bodyMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
-        fontSize = 13.sp,
+        fontSize = 14.sp,
         lineHeight = 20.sp,
+        letterSpacing = 0.25.sp,
     ),
     bodySmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
         fontSize = 12.sp,
-        lineHeight = 18.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.4.sp,
     ),
     labelLarge = TextStyle(
         fontFamily = FontFamily.Default,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 13.sp,
-        lineHeight = 18.sp,
+        fontWeight = FontWeight.Medium,
+        fontSize = 14.sp,
+        lineHeight = 20.sp,
+        letterSpacing = 0.1.sp,
     ),
     labelMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
-        fontSize = 11.sp,
+        fontSize = 12.sp,
         lineHeight = 16.sp,
+        letterSpacing = 0.5.sp,
     ),
     labelSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
-        fontSize = 10.sp,
-        lineHeight = 14.sp,
+        fontSize = 11.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.5.sp,
     ),
 )
 
+// ===== Shapes (Material 3) =====
+
 private val TrackRecordShapes = Shapes(
-    small = RoundedCornerShape(18.dp),
-    medium = RoundedCornerShape(24.dp),
-    large = RoundedCornerShape(32.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    extraLarge = RoundedCornerShape(28.dp),
 )
+
+// ===== Theme =====
 
 @Composable
 fun TrackRecordTheme(
@@ -216,121 +296,74 @@ fun TrackRecordTheme(
     )
 }
 
-object TrackRecordStatusColors {
-    val Success: Color = SuccessColor
-    val Warning: Color = WarningColor
-    val Error: Color = ErrorColor
-}
-
-object TrackRecordStyle {
-    val PageBackgroundLight: Color = Color(0xFFD9D5F8)
-    val PageBackgroundDark: Color = Color(0xFF0A1028)
-    val SoftSurfaceLight: Color = Color(0xA7E8E6FF)
-    val SoftSurfaceDark: Color = Color(0x8C1B234B)
-    val SoftAccentLight: Color = Color(0x99D8D1FF)
-    val SoftAccentDark: Color = Color(0xA6323C7E)
-    val SecondarySurfaceLight: Color = Color(0x99D7D8FF)
-    val SecondarySurfaceDark: Color = Color(0x8A222D5A)
-    val SoftOutlineLight: Color = Color(0x73F4F3FF)
-    val SoftOutlineDark: Color = Color(0x66E7E9FF)
-    val GlassSurfaceLight: Color = Color(0x96DFE1FF)
-    val GlassSurfaceDark: Color = Color(0x8C171E43)
-    val GlassStrongSurfaceLight: Color = Color(0xB6EEF0FF)
-    val GlassStrongSurfaceDark: Color = Color(0xB31B224B)
-    val GlassBorderLight: Color = Color(0x8AEFF0FF)
-    val GlassBorderDark: Color = Color(0x80F1F0FF)
-    val InnerPanelSurfaceLight: Color = Color(0x8BCED3FF)
-    val InnerPanelSurfaceDark: Color = Color(0xAA232F66)
-    val InnerPanelBorderLight: Color = Color(0x66EEF1FF)
-    val InnerPanelBorderDark: Color = Color(0x66C6CCFF)
-    val GlowPrimaryLight: Color = Color(0xFF6786FF)
-    val GlowPrimaryDark: Color = Color(0xFF8D9CFF)
-    val GlowSecondaryLight: Color = Color(0xFFFF92BC)
-    val GlowSecondaryDark: Color = Color(0xFFFFA7C8)
-}
+// ===== Legacy ColorScheme Extensions (redirect to Material 3 standard) =====
+// These are kept for backward compatibility during the migration.
+// They map old custom colors to standard Material 3 color roles.
 
 val ColorScheme.trackPageBackground: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.PageBackgroundLight
-    } else {
-        TrackRecordStyle.PageBackgroundDark
-    }
+    get() = background
 
 val ColorScheme.trackSoftSurface: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.SoftSurfaceLight
-    } else {
-        TrackRecordStyle.SoftSurfaceDark
-    }
+    get() = surfaceVariant
 
 val ColorScheme.trackSecondarySurface: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.SecondarySurfaceLight
-    } else {
-        TrackRecordStyle.SecondarySurfaceDark
-    }
+    get() = surfaceVariant
 
 val ColorScheme.trackSoftAccent: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.SoftAccentLight
-    } else {
-        TrackRecordStyle.SoftAccentDark
-    }
+    get() = primaryContainer
 
 val ColorScheme.trackSoftOutline: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.SoftOutlineLight
-    } else {
-        TrackRecordStyle.SoftOutlineDark
-    }
+    get() = outline
 
 val ColorScheme.trackGlassSurface: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.GlassSurfaceLight
-    } else {
-        TrackRecordStyle.GlassSurfaceDark
-    }
+    get() = surface
 
 val ColorScheme.trackGlassStrongSurface: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.GlassStrongSurfaceLight
-    } else {
-        TrackRecordStyle.GlassStrongSurfaceDark
-    }
+    get() = surface
 
 val ColorScheme.trackGlassBorder: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.GlassBorderLight
-    } else {
-        TrackRecordStyle.GlassBorderDark
-    }
+    get() = outline
 
 val ColorScheme.trackInnerPanelSurface: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.InnerPanelSurfaceLight
-    } else {
-        TrackRecordStyle.InnerPanelSurfaceDark
-    }
+    get() = surfaceVariant
 
 val ColorScheme.trackInnerPanelBorder: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.InnerPanelBorderLight
-    } else {
-        TrackRecordStyle.InnerPanelBorderDark
-    }
+    get() = outlineVariant
 
 val ColorScheme.trackGlowPrimary: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.GlowPrimaryLight
-    } else {
-        TrackRecordStyle.GlowPrimaryDark
-    }
+    get() = primary
 
 val ColorScheme.trackGlowSecondary: Color
-    get() = if (isLightTrackPalette()) {
-        TrackRecordStyle.GlowSecondaryLight
-    } else {
-        TrackRecordStyle.GlowSecondaryDark
-    }
+    get() = tertiary
 
-private fun ColorScheme.isLightTrackPalette(): Boolean = background == StoneBackground
+private fun ColorScheme.isLightTrackPalette(): Boolean =
+    background == BackgroundLight || surface == SurfaceLight
+
+// ===== Legacy Style Object (deprecated, kept for compatibility) =====
+
+object TrackRecordStyle {
+    val PageBackgroundLight: Color = BackgroundLight
+    val PageBackgroundDark: Color = BackgroundDark
+    val SoftSurfaceLight: Color = SurfaceVariantLight
+    val SoftSurfaceDark: Color = SurfaceVariantDark
+    val SoftAccentLight: Color = PrimaryContainerLight
+    val SoftAccentDark: Color = PrimaryContainerDark
+    val SecondarySurfaceLight: Color = SurfaceVariantLight
+    val SecondarySurfaceDark: Color = SurfaceVariantDark
+    val SoftOutlineLight: Color = OutlineLight
+    val SoftOutlineDark: Color = OutlineDark
+    val GlassSurfaceLight: Color = SurfaceLight
+    val GlassSurfaceDark: Color = SurfaceDark
+    val GlassStrongSurfaceLight: Color = SurfaceLight
+    val GlassStrongSurfaceDark: Color = SurfaceDark
+    val GlassBorderLight: Color = OutlineLight
+    val GlassBorderDark: Color = OutlineDark
+    val InnerPanelSurfaceLight: Color = SurfaceVariantLight
+    val InnerPanelSurfaceDark: Color = SurfaceVariantDark
+    val InnerPanelBorderLight: Color = OutlineVariantLight
+    val InnerPanelBorderDark: Color = OutlineVariantDark
+    val GlowPrimaryLight: Color = PrimaryLight
+    val GlowPrimaryDark: Color = PrimaryDark
+    val GlowSecondaryLight: Color = TertiaryLight
+    val GlowSecondaryDark: Color = TertiaryDark
+}
