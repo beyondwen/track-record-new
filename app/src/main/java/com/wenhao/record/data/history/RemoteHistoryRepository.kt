@@ -39,10 +39,6 @@ class RemoteHistoryRepository(
 
     suspend fun loadDay(context: Context, dayStartMillis: Long): HistoryDayItem? {
         val localDay = localDayLoader(context, dayStartMillis)
-        if (localDay?.hasVisibleRoute() == true) {
-            return localDay
-        }
-
         val config = configLoader(context)
         if (!config.isConfigured()) {
             return localDay
@@ -69,8 +65,8 @@ class RemoteHistoryRepository(
         localHistories: List<HistoryItem>,
         remoteHistories: List<HistoryItem>,
     ): List<HistoryItem> {
-        val mergedById = remoteHistories.associateBy { item -> item.id }.toMutableMap()
-        localHistories.forEach { item ->
+        val mergedById = localHistories.associateBy { item -> item.id }.toMutableMap()
+        remoteHistories.forEach { item ->
             mergedById[item.id] = item
         }
         return mergedById.values
@@ -79,9 +75,5 @@ class RemoteHistoryRepository(
 
     private fun TrainingSampleUploadConfig.isConfigured(): Boolean {
         return workerBaseUrl.isNotBlank() && uploadToken.isNotBlank()
-    }
-
-    private fun HistoryDayItem.hasVisibleRoute(): Boolean {
-        return segments.any { segment -> segment.isNotEmpty() }
     }
 }

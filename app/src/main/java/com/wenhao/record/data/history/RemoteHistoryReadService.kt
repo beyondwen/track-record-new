@@ -28,7 +28,7 @@ class RemoteHistoryReadService(
         deviceId: String,
     ): RemoteHistoryReadResult {
         return executeRead(
-            url = "${config.workerBaseUrl.trim().trimEnd('/')}/histories?deviceId=${deviceId.encodeUrlQuery()}",
+            url = "${config.workerBaseUrl.trim().trimEnd('/')}/processed-histories?deviceId=${deviceId.encodeUrlQuery()}",
             token = config.uploadToken,
         )
     }
@@ -41,7 +41,7 @@ class RemoteHistoryReadService(
         return executeRead(
             url = buildString {
                 append(config.workerBaseUrl.trim().trimEnd('/'))
-                append("/histories/day?deviceId=")
+                append("/processed-histories/day?deviceId=")
                 append(deviceId.encodeUrlQuery())
                 append("&dayStartMillis=")
                 append(dayStartMillis)

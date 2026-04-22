@@ -16,8 +16,6 @@ import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.tracking.TrackingPhase
-import com.wenhao.record.ui.map.TrackMapMarker
-import com.wenhao.record.ui.map.TrackMapMarkerKind
 import com.wenhao.record.ui.map.TrackMapPolyline
 import com.wenhao.record.ui.map.TrackMapSceneState
 import com.wenhao.record.ui.map.TrackMapViewportRequest
@@ -47,19 +45,15 @@ class MapViewModel(
     private var currentTrackSegments: List<List<TrackPoint>> = emptyList()
     private var activeTrackPolylines: List<TrackMapPolyline> = emptyList()
     private var todayTrackPolylines: List<TrackMapPolyline> = emptyList()
-    private var homeMarker: GeoCoordinate? = null
-    private var liveStartMarker: GeoCoordinate? = null
-    private var liveCurrentMarker: GeoCoordinate? = null
     private var trackingEnabled = false
     private var viewportSequence = 0L
 
     fun configure(previewLocation: GeoCoordinate?, hasLocationPermission: Boolean, defaultCoordinate: GeoCoordinate) {
         val initialLocation = previewLocation ?: defaultCoordinate
-        updateMarker(initialLocation)
         issueCenter(initialLocation, if (hasLocationPermission) 16.0 else 15.0)
     }
 
-    fun hasActiveTrack(): Boolean = trackingEnabled && liveCurrentMarker != null
+    fun hasActiveTrack(): Boolean = trackingEnabled && currentTrackPoints.isNotEmpty()
 
     fun hasTodayTracks(): Boolean = todayTrackPoints.isNotEmpty()
 
@@ -79,8 +73,6 @@ class MapViewModel(
             val liveCoordinate = runtimeSnapshot?.latestPoint?.toGeoCoordinate()
             when {
                 trackingEnabled && liveCoordinate != null -> {
-                    homeMarker = null
-                    liveCurrentMarker = liveCoordinate
                     if (shouldRefit) {
                         focusActiveTrackOnLatestPoint(forceZoom = false)
                     } else {
@@ -90,7 +82,6 @@ class MapViewModel(
 
                 else -> {
                     clearActiveTrack()
-                    (liveCoordinate ?: previewLocation)?.let(::updateMarker)
                     syncScene()
                 }
             }
@@ -103,7 +94,6 @@ class MapViewModel(
     }
 
     fun updateCurrentLocation(latLng: GeoCoordinate, shouldCenter: Boolean) {
-        updateMarker(latLng)
         if (shouldCenter) {
             shouldRefit = false
             issueCenter(latLng, 17.0)
@@ -114,13 +104,12 @@ class MapViewModel(
 
     fun showPreviewLocationIfIdle(previewLocation: GeoCoordinate?) {
         if (!trackingEnabled) {
-            previewLocation?.let(::updateMarker)
             syncScene()
         }
     }
 
     fun focusActiveTrackOnLatestPoint(forceZoom: Boolean) {
-        val latestPoint = liveCurrentMarker ?: currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
+        val latestPoint = currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
         issueCenter(
             coordinate = latestPoint,
             zoom = if (forceZoom) 16.8 else 16.2,
@@ -148,20 +137,7 @@ class MapViewModel(
     fun onClearedInternal() {
         clearActiveTrack()
         clearTodayTrackOverlays()
-        homeMarker = null
         syncScene(viewportRequest = null)
-    }
-
-    private fun updateMarker(latLng: GeoCoordinate) {
-        if (currentTrackPoints.isNotEmpty()) {
-            homeMarker = null
-            liveCurrentMarker = latLng
-            return
-        }
-
-        liveStartMarker = null
-        liveCurrentMarker = null
-        homeMarker = latLng
     }
 
     private fun renderTrackHeatmap() {
@@ -188,17 +164,12 @@ class MapViewModel(
         currentTrackPoints.addAll(activeSessionPoints.sortedBy { it.timestampMillis })
         currentTrackSegments = listOf(currentTrackPoints.toList())
         renderTrackHeatmap()
-        updateLiveTrackMarkers()
     }
 
     private fun clearActiveTrack() {
         activeTrackPolylines = emptyList()
         currentTrackSegments = emptyList()
         currentTrackPoints.clear()
-        liveStartMarker = null
-        if (!trackingEnabled) {
-            liveCurrentMarker = null
-        }
     }
 
     private fun clearTodayTrackOverlays() {
@@ -229,22 +200,11 @@ class MapViewModel(
         }
     }
 
-    private fun updateLiveTrackMarkers() {
-        val firstPoint = currentTrackPoints.firstOrNull()?.toGeoCoordinate() ?: return
-        val lastPoint = currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
-        liveStartMarker = firstPoint
-        liveCurrentMarker = lastPoint
-    }
-
     private fun syncScene(viewportRequest: TrackMapViewportRequest? = _renderState.value.viewportRequest) {
         _renderState.value = TrackMapSceneState(
             polylines = activeTrackPolylines + todayTrackPolylines,
             heatPoints = emptyList(),
-            markers = buildList {
-                homeMarker?.let { add(TrackMapMarker("home", it, TrackMapMarkerKind.HOME)) }
-                liveStartMarker?.let { add(TrackMapMarker("start", it, TrackMapMarkerKind.START)) }
-                liveCurrentMarker?.let { add(TrackMapMarker("end", it, TrackMapMarkerKind.END)) }
-            },
+            markers = emptyList(),
             viewportRequest = viewportRequest,
         )
     }
@@ -282,7 +242,7 @@ class MapViewModel(
     }
 
     private fun TrackPoint.toSimpleGeoCoordinate(): GeoCoordinate {
-        return GeoCoordinate(latitude = latitude, longitude = longitude)
+        return toGeoCoordinate()
     }
 
     companion object {

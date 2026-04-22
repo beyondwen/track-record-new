@@ -10,13 +10,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -24,9 +28,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,6 +52,7 @@ import com.wenhao.record.R
 enum class TrackBottomTab {
     RECORD,
     HISTORY,
+    SETTINGS,
 }
 
 enum class TrackLiquidTone {
@@ -233,61 +235,115 @@ fun TrackBottomNavigationBar(
     selectedTab: TrackBottomTab,
     onRecordClick: () -> Unit,
     onHistoryClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     modifier: Modifier = Modifier,
     recordLabel: String = stringResource(R.string.compose_dashboard_record),
     historyLabel: String = stringResource(R.string.compose_dashboard_history),
+    settingsLabel: String = stringResource(R.string.compose_dashboard_about),
     recordEnabled: Boolean = true,
     historyEnabled: Boolean = true,
+    settingsEnabled: Boolean = true,
 ) {
-    NavigationBar(
+    Surface(
         modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding(),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 3.dp,
+            .navigationBarsPadding()
+            .widthIn(max = 420.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        contentColor = MaterialTheme.colorScheme.onSurface,
+        shape = RoundedCornerShape(32.dp),
+        tonalElevation = 2.dp,
+        shadowElevation = 18.dp,
     ) {
-        NavigationBarItem(
-            selected = selectedTab == TrackBottomTab.RECORD,
-            onClick = onRecordClick,
-            enabled = recordEnabled,
-            icon = {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            TrackBottomNavigationItem(
+                selected = selectedTab == TrackBottomTab.RECORD,
+                onClick = onRecordClick,
+                enabled = recordEnabled,
+                label = recordLabel,
+            ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_tab_record),
                     contentDescription = null,
                 )
-            },
-            label = { Text(recordLabel) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                selectedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                disabledIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-                disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-            ),
-        )
-        NavigationBarItem(
-            selected = selectedTab == TrackBottomTab.HISTORY,
-            onClick = onHistoryClick,
-            enabled = historyEnabled,
-            icon = {
+            }
+            TrackBottomNavigationItem(
+                selected = selectedTab == TrackBottomTab.HISTORY,
+                onClick = onHistoryClick,
+                enabled = historyEnabled,
+                label = historyLabel,
+            ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_tab_history),
                     contentDescription = null,
                 )
-            },
-            label = { Text(historyLabel) },
-            colors = NavigationBarItemDefaults.colors(
-                selectedIconColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                selectedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                indicatorColor = MaterialTheme.colorScheme.secondaryContainer,
-                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                disabledIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-                disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
-            ),
-        )
+            }
+            TrackBottomNavigationItem(
+                selected = selectedTab == TrackBottomTab.SETTINGS,
+                onClick = onSettingsClick,
+                enabled = settingsEnabled,
+                label = settingsLabel,
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = null,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.TrackBottomNavigationItem(
+    selected: Boolean,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    label: String,
+    icon: @Composable () -> Unit,
+) {
+    val containerColor = if (selected) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        Color.Transparent
+    }
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Surface(
+        modifier = Modifier.weight(1f),
+        shape = RoundedCornerShape(24.dp),
+        color = containerColor,
+        contentColor = contentColor,
+        onClick = onClick,
+        enabled = enabled,
+    ) {
+        Column(
+            modifier = Modifier
+                .heightIn(min = 72.dp)
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Box(
+                modifier = Modifier.size(24.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                icon()
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 

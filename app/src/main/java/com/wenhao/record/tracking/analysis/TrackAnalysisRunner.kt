@@ -1,6 +1,7 @@
 package com.wenhao.record.tracking.analysis
 
 class TrackAnalysisRunner(
+    private val cleaner: PointSequenceCleaner = PointSequenceCleaner(),
     private val classifier: PointSignalClassifier = PointSignalClassifier(),
     private val candidateBuilder: SegmentCandidateBuilder = SegmentCandidateBuilder(),
     private val postProcessor: SegmentPostProcessor = SegmentPostProcessor(),
@@ -10,9 +11,7 @@ class TrackAnalysisRunner(
         points: List<AnalyzedPoint>,
         previousContext: AnalysisContext? = null,
     ): TrackAnalysisResult {
-        val workingPoints = (previousContext?.trailingPoints.orEmpty() + points)
-            .sortedBy { it.timestampMillis }
-            .distinctBy { Triple(it.timestampMillis, it.latitude, it.longitude) }
+        val workingPoints = cleaner.clean(previousContext?.trailingPoints.orEmpty() + points)
         if (workingPoints.isEmpty()) {
             return TrackAnalysisResult(
                 scoredPoints = emptyList(),

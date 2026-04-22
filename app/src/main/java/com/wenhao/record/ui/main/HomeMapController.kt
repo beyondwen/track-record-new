@@ -9,11 +9,9 @@ import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.tracking.TrackingPhase
 import com.wenhao.record.map.GeoCoordinate
-import com.wenhao.record.ui.map.TrackMapMarker
-import com.wenhao.record.ui.map.TrackMapMarkerKind
 import com.wenhao.record.ui.map.TrackMapPolyline
-import com.wenhao.record.ui.map.TrackMapSceneState
 import com.wenhao.record.ui.map.TrackPolylineBuilder
+import com.wenhao.record.ui.map.TrackMapSceneState
 import com.wenhao.record.ui.map.TrackMapViewportRequest
 import java.util.Calendar
 
@@ -28,19 +26,15 @@ class HomeMapController : HomeMapPort {
     private var currentTrackSegments: List<List<TrackPoint>> = emptyList()
     private var activeTrackPolylines: List<TrackMapPolyline> = emptyList()
     private var todayTrackPolylines: List<TrackMapPolyline> = emptyList()
-    private var homeMarker: GeoCoordinate? = null
-    private var liveStartMarker: GeoCoordinate? = null
-    private var liveCurrentMarker: GeoCoordinate? = null
     private var trackingEnabled = false
     private var viewportSequence = 0L
 
     override fun configure(previewLocation: GeoCoordinate?, hasLocationPermission: Boolean, defaultCoordinate: GeoCoordinate) {
         val initialLocation = previewLocation ?: defaultCoordinate
-        updateMarker(initialLocation)
         issueCenter(initialLocation, if (hasLocationPermission) 16.0 else 15.0)
     }
 
-    override fun hasActiveTrack(): Boolean = trackingEnabled && liveCurrentMarker != null
+    override fun hasActiveTrack(): Boolean = trackingEnabled && currentTrackPoints.isNotEmpty()
 
     override fun hasTodayTracks(): Boolean = todayTrackPoints.isNotEmpty()
 
@@ -58,8 +52,6 @@ class HomeMapController : HomeMapPort {
         val liveCoordinate = runtimeSnapshot?.latestPoint?.toGeoCoordinate()
         when {
             trackingEnabled && liveCoordinate != null -> {
-                homeMarker = null
-                liveCurrentMarker = liveCoordinate
                 if (shouldRefit) {
                     focusActiveTrackOnLatestPoint(forceZoom = false)
                 } else {
@@ -69,7 +61,9 @@ class HomeMapController : HomeMapPort {
 
             else -> {
                 clearActiveTrack()
-                (liveCoordinate ?: previewLocation)?.let(::updateMarker)
+                if (liveCoordinate != null || previewLocation != null) {
+                    shouldRefit = shouldRefit
+                }
                 syncScene()
             }
         }
@@ -81,7 +75,6 @@ class HomeMapController : HomeMapPort {
     }
 
     override fun updateCurrentLocation(latLng: GeoCoordinate, shouldCenter: Boolean) {
-        updateMarker(latLng)
         if (shouldCenter) {
             shouldRefit = false
             issueCenter(latLng, 17.0)
@@ -92,13 +85,12 @@ class HomeMapController : HomeMapPort {
 
     override fun showPreviewLocationIfIdle(previewLocation: GeoCoordinate?) {
         if (!trackingEnabled) {
-            previewLocation?.let(::updateMarker)
             syncScene()
         }
     }
 
     override fun focusActiveTrackOnLatestPoint(forceZoom: Boolean) {
-        val latestPoint = liveCurrentMarker ?: currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
+        val latestPoint = currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
         issueCenter(
             coordinate = latestPoint,
             zoom = if (forceZoom) 16.8 else 16.2,
@@ -126,20 +118,7 @@ class HomeMapController : HomeMapPort {
     override fun onCleared() {
         clearActiveTrack()
         clearTodayTrackOverlays()
-        homeMarker = null
         syncScene(viewportRequest = null)
-    }
-
-    private fun updateMarker(latLng: GeoCoordinate) {
-        if (currentTrackPoints.isNotEmpty()) {
-            homeMarker = null
-            liveCurrentMarker = latLng
-            return
-        }
-
-        liveStartMarker = null
-        liveCurrentMarker = null
-        homeMarker = latLng
     }
 
     private fun renderTrackHeatmap() {
@@ -166,17 +145,12 @@ class HomeMapController : HomeMapPort {
         currentTrackPoints.addAll(activeSessionPoints.sortedBy { it.timestampMillis })
         currentTrackSegments = listOf(currentTrackPoints.toList())
         renderTrackHeatmap()
-        updateLiveTrackMarkers()
     }
 
     private fun clearActiveTrack() {
         activeTrackPolylines = emptyList()
         currentTrackSegments = emptyList()
         currentTrackPoints.clear()
-        liveStartMarker = null
-        if (!trackingEnabled) {
-            liveCurrentMarker = null
-        }
     }
 
     private fun clearTodayTrackOverlays() {
@@ -207,22 +181,11 @@ class HomeMapController : HomeMapPort {
         }
     }
 
-    private fun updateLiveTrackMarkers() {
-        val firstPoint = currentTrackPoints.firstOrNull()?.toGeoCoordinate() ?: return
-        val lastPoint = currentTrackPoints.lastOrNull()?.toGeoCoordinate() ?: return
-        liveStartMarker = firstPoint
-        liveCurrentMarker = lastPoint
-    }
-
     private fun syncScene(viewportRequest: TrackMapViewportRequest? = renderState.viewportRequest) {
         renderState = TrackMapSceneState(
             polylines = activeTrackPolylines + todayTrackPolylines,
             heatPoints = emptyList(),
-            markers = buildList {
-                homeMarker?.let { add(TrackMapMarker("home", it, TrackMapMarkerKind.HOME)) }
-                liveStartMarker?.let { add(TrackMapMarker("start", it, TrackMapMarkerKind.START)) }
-                liveCurrentMarker?.let { add(TrackMapMarker("end", it, TrackMapMarkerKind.END)) }
-            },
+            markers = emptyList(),
             viewportRequest = viewportRequest,
         )
     }

@@ -68,4 +68,30 @@ class SegmentPostProcessorTest {
         assertEquals(0L, refined.single().startTimestamp)
         assertEquals(920_000L, refined.single().endTimestamp)
     }
+
+    @Test
+    fun `refine recovers edge uncertain segment into neighboring static stay`() {
+        val processor = SegmentPostProcessor()
+        val segments = listOf(
+            SegmentCandidate(
+                kind = SegmentKind.UNCERTAIN,
+                startTimestamp = 0L,
+                endTimestamp = 50_000L,
+                pointCount = 2,
+            ),
+            SegmentCandidate(
+                kind = SegmentKind.STATIC,
+                startTimestamp = 51_000L,
+                endTimestamp = 420_000L,
+                pointCount = 6,
+            ),
+        )
+
+        val refined = processor.refine(segments)
+
+        assertEquals(1, refined.size)
+        assertEquals(SegmentKind.STATIC, refined.single().kind)
+        assertEquals(0L, refined.single().startTimestamp)
+        assertEquals(420_000L, refined.single().endTimestamp)
+    }
 }

@@ -196,7 +196,7 @@ object AutoTrackDiagnosticsStorage {
         if (shouldPersistImmediately) {
             persist(preferences, updated)
         }
-        TrackDataChangeNotifier.notifyDashboardChanged()
+        TrackDataChangeNotifier.notifyDiagnosticsChanged()
     }
 
     private fun flushPendingSnapshot() {

@@ -48,4 +48,42 @@ class DashboardPanelDragTest {
             ),
         )
     }
+
+    @Test
+    fun `dragging only updates visual progress until panel is settled`() {
+        val dragged = dragDashboardPanel(
+            state = DashboardPanelPresentation(
+                visualProgress = 1f,
+                committedProgress = 1f,
+            ),
+            dragDeltaY = 80f,
+            panelHeightPx = 320f,
+        )
+
+        assertEquals(
+            DashboardPanelPresentation(
+                visualProgress = 0.75f,
+                committedProgress = 1f,
+            ),
+            dragged,
+        )
+    }
+
+    @Test
+    fun `settling commits the nearest panel state for map padding updates`() {
+        val settled = settleDashboardPanel(
+            DashboardPanelPresentation(
+                visualProgress = 0.2f,
+                committedProgress = 1f,
+            ),
+        )
+
+        assertEquals(
+            DashboardPanelPresentation(
+                visualProgress = 0f,
+                committedProgress = 0f,
+            ),
+            settled,
+        )
+    }
 }

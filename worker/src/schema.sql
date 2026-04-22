@@ -20,6 +20,31 @@ CREATE TABLE IF NOT EXISTS uploaded_histories (
 CREATE UNIQUE INDEX IF NOT EXISTS uk_uploaded_histories_device_history
   ON uploaded_histories (device_id, history_id);
 
+CREATE TABLE IF NOT EXISTS processed_histories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  history_id INTEGER NOT NULL,
+  app_version TEXT NOT NULL,
+  timestamp_millis INTEGER NOT NULL,
+  distance_km REAL NOT NULL,
+  duration_seconds INTEGER NOT NULL,
+  average_speed_kmh REAL NOT NULL,
+  title TEXT,
+  start_source TEXT,
+  stop_source TEXT,
+  manual_start_at INTEGER,
+  manual_stop_at INTEGER,
+  points_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_processed_histories_device_history
+  ON processed_histories (device_id, history_id);
+
+CREATE INDEX IF NOT EXISTS idx_processed_histories_device_timestamp
+  ON processed_histories (device_id, timestamp_millis);
+
 CREATE TABLE IF NOT EXISTS raw_location_point (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   device_id TEXT NOT NULL,

@@ -10,15 +10,18 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.wenhao.record.data.history.HistoryUploadWorker
+import com.wenhao.record.data.history.ProcessedHistorySyncWorker
 import java.util.concurrent.TimeUnit
 
 object TrackUploadScheduler {
     private const val RAW_PERIODIC_WORK = "raw-point-upload-periodic"
     private const val ANALYSIS_PERIODIC_WORK = "analysis-upload-periodic"
     private const val HISTORY_PERIODIC_WORK = "history-upload-periodic"
+    private const val PROCESSED_HISTORY_SYNC_PERIODIC_WORK = "processed-history-sync-periodic"
     private const val RAW_ONE_TIME_WORK = "raw-point-upload-once"
     private const val ANALYSIS_ONE_TIME_WORK = "analysis-upload-once"
     private const val HISTORY_ONE_TIME_WORK = "history-upload-once"
+    private const val PROCESSED_HISTORY_SYNC_ONE_TIME_WORK = "processed-history-sync-once"
 
     fun ensureScheduled(context: Context) {
         val appContext = context.applicationContext
@@ -48,6 +51,13 @@ object TrackUploadScheduler {
                 .setConstraints(constraints)
                 .build(),
         )
+        workManager.enqueueUniquePeriodicWork(
+            PROCESSED_HISTORY_SYNC_PERIODIC_WORK,
+            ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<ProcessedHistorySyncWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(constraints)
+                .build(),
+        )
     }
 
     fun kickRawPointSync(context: Context) {
@@ -71,6 +81,14 @@ object TrackUploadScheduler {
             HISTORY_ONE_TIME_WORK,
             ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<HistoryUploadWorker>().build(),
+        )
+    }
+
+    fun kickProcessedHistorySync(context: Context) {
+        workManager(context.applicationContext).enqueueUniqueWork(
+            PROCESSED_HISTORY_SYNC_ONE_TIME_WORK,
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<ProcessedHistorySyncWorker>().build(),
         )
     }
 

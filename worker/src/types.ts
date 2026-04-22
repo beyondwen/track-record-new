@@ -22,6 +22,12 @@ export interface RawLocationPoint {
   samplingTier: string;
 }
 
+export interface RawPointDaySummary {
+  dayStartMillis: number;
+  pointCount: number;
+  maxPointId: number;
+}
+
 export interface AnalysisStayCluster {
   stayId: number;
   centerLat: number;
@@ -116,6 +122,18 @@ export interface RawPointPersistence {
     points: RawLocationPoint[],
     env: Env
   ): Promise<PersistRawPointsResult>;
+
+  readRawPointsByDay(
+    deviceId: string,
+    dayStartMillis: number,
+    env: Env
+  ): Promise<RawLocationPoint[]>;
+
+  readRawPointDays(
+    deviceId: string,
+    utcOffsetMinutes: number,
+    env: Env
+  ): Promise<RawPointDaySummary[]>;
 }
 
 export interface AnalysisPersistence {
@@ -128,6 +146,23 @@ export interface AnalysisPersistence {
 }
 
 export interface HistoryPersistence {
+  persistHistories(
+    deviceId: string,
+    appVersion: string,
+    histories: HistoryRecord[],
+    env: Env
+  ): Promise<PersistHistoriesResult>;
+
+  readHistories(deviceId: string, env: Env): Promise<HistoryRecord[]>;
+
+  readHistoriesByDay(
+    deviceId: string,
+    dayStartMillis: number,
+    env: Env
+  ): Promise<HistoryRecord[]>;
+}
+
+export interface ProcessedHistoryPersistence {
   persistHistories(
     deviceId: string,
     appVersion: string,
@@ -159,6 +194,16 @@ export interface HistorySuccessResponseBody extends PersistHistoriesResult {
 export interface HistoryReadSuccessResponseBody {
   ok: true;
   histories: HistoryRecord[];
+}
+
+export interface RawPointReadSuccessResponseBody {
+  ok: true;
+  points: RawLocationPoint[];
+}
+
+export interface RawPointDayReadSuccessResponseBody {
+  ok: true;
+  days: RawPointDaySummary[];
 }
 
 export interface AppConfigSuccessResponseBody {

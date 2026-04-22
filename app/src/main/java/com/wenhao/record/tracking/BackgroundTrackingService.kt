@@ -382,8 +382,8 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun shouldTriggerRollingAnalysis(timestampMillis: Long): Boolean {
-        val last = lastAnalysisAt ?: return false
-        return timestampMillis - last >= 8 * 60_000L
+        val referenceTimestamp = lastAnalysisAt ?: phaseAnchorPoint?.timestampMillis ?: return false
+        return timestampMillis - referenceTimestamp >= 8 * 60_000L
     }
 
     private fun updateStillDuration(
@@ -431,6 +431,7 @@ class BackgroundTrackingService : Service() {
                 pointStorage.appendRawPoint(rawPoint)
             }
             TrackUploadScheduler.kickRawPointSync(applicationContext)
+            TrackUploadScheduler.kickProcessedHistorySync(applicationContext)
         }
     }
 

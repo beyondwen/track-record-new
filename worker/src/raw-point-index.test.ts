@@ -40,6 +40,12 @@ function createSemanticMockPersistence(
         dedupedCount: points.length - insertedPointIds.length,
         acceptedMaxPointId: acceptedPointIds.length === 0 ? 0 : Math.max(...acceptedPointIds)
       };
+    },
+    async readRawPointsByDay() {
+      return [];
+    },
+    async readRawPointDays() {
+      return [];
     }
   };
 }

@@ -36,6 +36,26 @@ class AnalysisHistoryProjectorTest {
         assertEquals(rawPoints.size, projected.single().points.size)
     }
 
+    @Test
+    fun `project keeps raw points as wgs84 coordinates for history points`() {
+        val projector = AnalysisHistoryProjector()
+        val rawPoints = demoSegmentPoints()
+        val segment = SegmentCandidate(
+            kind = SegmentKind.DYNAMIC,
+            startTimestamp = rawPoints.first().timestampMillis,
+            endTimestamp = rawPoints.last().timestampMillis,
+            pointCount = rawPoints.size,
+        )
+
+        val projectedPoint = projector.project(
+            segments = listOf(segment),
+            rawPoints = rawPoints,
+        ).single().points.first()
+
+        assertEquals(rawPoints.first().latitude, projectedPoint.wgs84Latitude ?: Double.NaN, 1e-6)
+        assertEquals(rawPoints.first().longitude, projectedPoint.wgs84Longitude ?: Double.NaN, 1e-6)
+    }
+
     private fun demoSegmentPoints(): List<RawTrackPoint> {
         return listOf(
             rawPoint(pointId = 101L, timestampMillis = 1_000L, latitude = 30.00000, longitude = 120.00000),

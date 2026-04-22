@@ -1,6 +1,5 @@
 package com.wenhao.record.data.tracking
 
-import com.wenhao.record.map.CoordinateTransformUtils
 import com.wenhao.record.map.GeoCoordinate
 
 data class TrackPoint(
@@ -20,11 +19,7 @@ data class TrackPoint(
         }
         if (directWgs84 != null) return directWgs84
 
-        return if (CoordinateTransformUtils.isOutOfChina(latitude, longitude)) {
-            GeoCoordinate(latitude = latitude, longitude = longitude)
-        } else {
-            CoordinateTransformUtils.gcj02ToWgs84(latitude, longitude)
-        }
+        return GeoCoordinate(latitude = latitude, longitude = longitude)
     }
 
     fun getLatitudeForDistance(): Double = wgs84Latitude ?: latitude

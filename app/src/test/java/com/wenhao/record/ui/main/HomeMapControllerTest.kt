@@ -39,7 +39,21 @@ class HomeMapControllerTest {
 
         assertTrue(controller.hasActiveTrack())
         assertTrue(controller.renderState.polylines.any { it.id.startsWith("active-") })
-        assertEquals(2, controller.renderState.markers.size)
+        assertTrue(controller.renderState.markers.isEmpty())
+    }
+
+    @Test
+    fun `idle preview location uses map puck instead of a dedicated marker`() {
+        val controller = HomeMapController()
+
+        controller.render(
+            runtimeSnapshot = null,
+            previewLocation = GeoCoordinate(37.0, -122.0),
+            todayHistoryItems = emptyList(),
+            activeSessionPoints = emptyList(),
+        )
+
+        assertTrue(controller.renderState.markers.isEmpty())
     }
 
     @Test

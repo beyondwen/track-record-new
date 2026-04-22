@@ -10,8 +10,11 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
+import com.wenhao.record.data.history.HistoryProjectionRecovery
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.history.RemoteHistoryRepository
+import com.wenhao.record.data.local.TrackDatabase
+import com.wenhao.record.data.tracking.ContinuousPointStorage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +29,7 @@ class HistoryViewModel(
     application: Application,
     private val savedStateHandle: SavedStateHandle,
     private val remoteHistoryRepository: RemoteHistoryRepository = RemoteHistoryRepository(),
+    private val historyProjectionRecovery: HistoryProjectionRecovery = HistoryProjectionRecovery(),
 ) : AndroidViewModel(application) {
 
     private var historyItems: List<HistoryDayItem> = emptyList()
@@ -53,8 +57,22 @@ class HistoryViewModel(
         updateContent()
 
         viewModelScope.launch(Dispatchers.IO) {
+            val application = getApplication<Application>()
+            val recoveredItems = historyProjectionRecovery.rebuildProjectedItems(
+                existingHistories = HistoryStorage.load(application),
+                rawPoints = ContinuousPointStorage(
+                    TrackDatabase.getInstance(application).continuousTrackDao()
+                ).loadCurrentSessionPoints(limit = Int.MAX_VALUE),
+            )
+            if (recoveredItems.isNotEmpty()) {
+                HistoryStorage.upsertProjectedItems(
+                    context = application,
+                    projectedItems = recoveredItems,
+                )
+            }
+
             val mergedDaily = try {
-                remoteHistoryRepository.loadMergedDaily(getApplication())
+                remoteHistoryRepository.loadMergedDaily(application)
             } catch (_: Exception) {
                 emptyList()
             }

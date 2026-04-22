@@ -86,6 +86,7 @@ data class HistoryScreenUiState(
 fun HistoryComposeScreen(
     state: HistoryScreenUiState,
     onRecordClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     onHistoryClick: (HistoryDayItem) -> Unit,
     onHistoryLongClick: (HistoryDayItem) -> Unit,
     modifier: Modifier = Modifier,
@@ -189,6 +190,7 @@ fun HistoryComposeScreen(
 
             HistoryBottomBar(
                 onRecordClick = onRecordClick,
+                onSettingsClick = onSettingsClick,
             )
         }
     }
@@ -198,47 +200,49 @@ fun HistoryComposeScreen(
 private fun HistoryHeroSection(
     state: HistoryScreenUiState,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            DecorativeMenuGlyph()
+    TrackLiquidPanel(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(30.dp),
+        tone = TrackLiquidTone.STRONG,
+        shadowElevation = 14.dp,
+        contentPadding = PaddingValues(18.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                DecorativeMenuGlyph()
 
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = stringResource(R.string.compose_history_title),
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = (-1).sp
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TrackStatChip(text = stringResource(R.string.compose_history_title))
 
-                if (state.totalCountText.isNotBlank()) {
-                    Text(
-                        text = state.totalCountText,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                    )
+                    if (state.totalCountText.isNotBlank()) {
+                        Text(
+                            text = state.totalCountText,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                        )
+                    }
                 }
             }
-        }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            HistoryOverviewMetricCard(
-                label = stringResource(R.string.compose_history_total_distance),
-                value = state.totalDistanceText,
-                modifier = Modifier.weight(1f),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                HistoryOverviewMetricCard(
+                    label = stringResource(R.string.compose_history_total_distance),
+                    value = state.totalDistanceText,
+                    modifier = Modifier.weight(1f),
+                )
 
-            HistoryOverviewMetricCard(
-                label = stringResource(R.string.compose_history_total_duration),
-                value = state.totalDurationText,
-                modifier = Modifier.weight(1f),
-            )
+                HistoryOverviewMetricCard(
+                    label = stringResource(R.string.compose_history_total_duration),
+                    value = state.totalDurationText,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -425,22 +429,20 @@ private fun HistoryPreviewCard(
 @Composable
 private fun HistoryBottomBar(
     onRecordClick: () -> Unit,
+    onSettingsClick: () -> Unit,
 ) {
-    Box(
-        modifier = Modifier
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-    ) {
-        TrackBottomNavigationBar(
-            selectedTab = TrackBottomTab.HISTORY,
-            onRecordClick = onRecordClick,
-            onHistoryClick = {},
-            recordLabel = stringResource(R.string.compose_history_record_tab),
-            historyLabel = stringResource(R.string.compose_history_list_tab),
-            recordEnabled = true,
-            historyEnabled = false,
-        )
-    }
+    TrackBottomNavigationBar(
+        selectedTab = TrackBottomTab.HISTORY,
+        onRecordClick = onRecordClick,
+        onHistoryClick = {},
+        onSettingsClick = onSettingsClick,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        recordLabel = stringResource(R.string.compose_dashboard_record),
+        historyLabel = stringResource(R.string.compose_dashboard_history),
+        settingsLabel = stringResource(R.string.compose_dashboard_about),
+        recordEnabled = true,
+        historyEnabled = false,
+    )
 }
 
 @Composable
@@ -557,6 +559,7 @@ private fun HistoryComposeScreenPreview() {
                 totalCountText = "14 days",
             ),
             onRecordClick = {},
+            onSettingsClick = {},
             onHistoryClick = {},
             onHistoryLongClick = {},
         )

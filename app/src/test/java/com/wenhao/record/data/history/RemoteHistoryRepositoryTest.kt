@@ -18,7 +18,7 @@ import org.robolectric.annotation.Config
 class RemoteHistoryRepositoryTest {
 
     @Test
-    fun `loadMergedDaily merges remote histories and prefers local duplicates`() = runBlocking {
+    fun `loadMergedDaily merges remote histories and prefers remote duplicates`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val localItem = historyItem(
             historyId = 8L,
@@ -32,7 +32,7 @@ class RemoteHistoryRepositoryTest {
         )
         val remoteDuplicate = historyItem(
             historyId = 8L,
-            timestamp = 1713510000000,
+            timestamp = 1713510600000,
             title = "远端重复",
         )
         val repository = RemoteHistoryRepository(
@@ -52,6 +52,37 @@ class RemoteHistoryRepositoryTest {
         assertEquals(listOf(8L), result[0].sourceIds)
         assertEquals("2024年4月19日", result[0].displayTitle)
         assertEquals(listOf(7L), result[1].sourceIds)
+        assertEquals(1713510600000, result[0].latestTimestamp)
+    }
+
+    @Test
+    fun `loadDay prefers remote day even when local route is visible`() = runBlocking {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val localItem = historyItem(
+            historyId = 12L,
+            timestamp = 1713420000000,
+            title = "本地结果",
+        )
+        val remoteItem = historyItem(
+            historyId = 12L,
+            timestamp = 1713420600000,
+            title = "远端权威结果",
+        )
+        val repository = RemoteHistoryRepository(
+            localHistoryLoader = { listOf(localItem) },
+            localDayLoader = { _, _ ->
+                HistoryDayAggregator.aggregate(listOf(localItem)).first()
+            },
+            remoteHistoryLoader = { _, _ -> RemoteHistoryReadResult.Success(emptyList()) },
+            remoteHistoryDayLoader = { _, _, _ -> RemoteHistoryReadResult.Success(listOf(remoteItem)) },
+            configLoader = { TrainingSampleUploadConfig("https://worker.example.com", "token") },
+            deviceIdProvider = { "device-1" },
+        )
+
+        val result = repository.loadDay(context, HistoryDayAggregator.startOfDay(remoteItem.timestamp))
+
+        assertEquals(listOf(12L), result?.sourceIds)
+        assertEquals(1713420600000, result?.latestTimestamp)
     }
 
     @Test
@@ -100,6 +131,7 @@ class RemoteHistoryRepositoryTest {
         historyId: Long,
         timestamp: Long,
         title: String,
+        pointCount: Int = 2,
     ): HistoryItem {
         return HistoryItem(
             id = historyId,
@@ -108,18 +140,13 @@ class RemoteHistoryRepositoryTest {
             durationSeconds = 300,
             averageSpeedKmh = 14.4,
             title = title,
-            points = listOf(
+            points = List(pointCount) { index ->
                 TrackPoint(
-                    latitude = 30.1,
-                    longitude = 120.1,
-                    timestampMillis = timestamp,
-                ),
-                TrackPoint(
-                    latitude = 30.2,
-                    longitude = 120.2,
-                    timestampMillis = timestamp + 60_000,
-                ),
-            ),
+                    latitude = 30.1 + (index * 0.1),
+                    longitude = 120.1 + (index * 0.1),
+                    timestampMillis = timestamp + (index * 60_000L),
+                )
+            },
         )
     }
 }

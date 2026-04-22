@@ -14,7 +14,7 @@ class RemoteHistoryReadServiceTest {
             requestExecutor = { request ->
                 assertEquals("GET", request.method)
                 assertEquals(
-                    "https://worker.example.com/histories?deviceId=device-1",
+                    "https://worker.example.com/processed-histories?deviceId=device-1",
                     request.url,
                 )
                 assertEquals("Bearer token-123", request.headers["Authorization"])
@@ -69,7 +69,7 @@ class RemoteHistoryReadServiceTest {
             requestExecutor = { request ->
                 assertEquals("GET", request.method)
                 assertEquals(
-                    "https://worker.example.com/histories/day?deviceId=device-1&dayStartMillis=1713398400000",
+                    "https://worker.example.com/processed-histories/day?deviceId=device-1&dayStartMillis=1713398400000",
                     request.url,
                 )
                 UploadHttpResponse(

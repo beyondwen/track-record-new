@@ -16,7 +16,23 @@ class PointSignalClassifier {
             points.last().latitude,
             points.last().longitude,
         )
-        val avgSpeed = points.mapNotNull { it.speedMetersPerSecond }.average().toFloat()
+        val pathDistanceMeters = points.zipWithNext { first, second ->
+            GeoMath.distanceMeters(
+                first.latitude,
+                first.longitude,
+                second.latitude,
+                second.longitude,
+            )
+        }.sum()
+        val observedSpeed = points.mapNotNull { it.speedMetersPerSecond }.average().toFloat()
+        val inferredSpeed = when {
+            durationMillis <= 0L -> 0f
+            else -> pathDistanceMeters / (durationMillis / 1_000f)
+        }
+        val blendedSpeed = maxOf(observedSpeed, inferredSpeed)
+        val averageAccuracy = points.mapNotNull { it.accuracyMeters }.average().toFloat()
+            .takeIf { it.isFinite() }
+            ?: 20f
 
         val stillConfidence = points.mapNotNull { point ->
             point.activityConfidence?.takeIf { point.activityType == "STILL" }
@@ -31,19 +47,58 @@ class PointSignalClassifier {
         }.average().toFloat()
 
         val stableWifi = points.mapNotNull { it.wifiFingerprintDigest }.distinct().size <= 1
+        val lowAccuracyPenalty = when {
+            averageAccuracy >= 80f -> 0.32f
+            averageAccuracy >= 60f -> 0.2f
+            averageAccuracy >= 40f -> 0.08f
+            else -> 0f
+        }
 
-        val dynamicScore = when {
-            durationMillis >= 90_000L && netDistanceMeters >= 120f && avgSpeed >= 0.8f && movingConfidence >= 0.72f -> 0.92f
-            durationMillis >= 45_000L && netDistanceMeters >= 60f && avgSpeed >= 0.5f -> 0.75f
-            netDistanceMeters >= 30f && avgSpeed >= 0.4f -> 0.55f
+        val dynamicScoreBase = when {
+            durationMillis >= 90_000L &&
+                pathDistanceMeters >= 160f &&
+                netDistanceMeters >= 120f &&
+                blendedSpeed >= 0.8f &&
+                movingConfidence >= 0.72f -> 0.92f
+            durationMillis >= 60_000L &&
+                pathDistanceMeters >= 90f &&
+                netDistanceMeters >= 60f &&
+                blendedSpeed >= 0.55f -> 0.76f
+            pathDistanceMeters >= 45f &&
+                netDistanceMeters >= 30f &&
+                blendedSpeed >= 0.4f &&
+                movingConfidence >= 0.5f -> 0.56f
             else -> 0.12f
         }
+        val dynamicSuppression = when {
+            stableWifi && stillConfidence >= 0.75f && netDistanceMeters <= 60f -> 0.28f
+            stableWifi && netDistanceMeters <= 45f -> 0.15f
+            else -> 0f
+        }
+        val dynamicScore = (dynamicScoreBase - lowAccuracyPenalty - dynamicSuppression)
+            .coerceIn(0.05f, 1f)
 
-        val staticScore = when {
-            netDistanceMeters <= 30f && avgSpeed <= 0.35f && stableWifi && stillConfidence >= 0.8f -> 0.9f
-            netDistanceMeters <= 45f && avgSpeed <= 0.5f && stableWifi -> 0.72f
+        val staticScoreBase = when {
+            netDistanceMeters <= 25f &&
+                pathDistanceMeters <= 40f &&
+                blendedSpeed <= 0.25f &&
+                stableWifi &&
+                stillConfidence >= 0.8f -> 0.92f
+            netDistanceMeters <= 40f &&
+                pathDistanceMeters <= 55f &&
+                blendedSpeed <= 0.35f &&
+                (stableWifi || stillConfidence >= 0.75f) -> 0.78f
+            netDistanceMeters <= 60f &&
+                pathDistanceMeters <= 85f &&
+                blendedSpeed <= 0.5f -> 0.58f
             else -> 0.18f
         }
+        val staticBoost = when {
+            averageAccuracy >= 60f && netDistanceMeters <= 80f -> 0.18f
+            averageAccuracy >= 40f && netDistanceMeters <= 60f -> 0.08f
+            else -> 0f
+        }
+        val staticScore = (staticScoreBase + staticBoost).coerceIn(0.05f, 1f)
 
         return PointSignalScore(staticScore = staticScore, dynamicScore = dynamicScore)
     }

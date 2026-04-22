@@ -73,6 +73,7 @@ class MainActivity : AppCompatActivity() {
     private var previewLocationCachedAt = 0L
     private var activeSessionPoints: List<TrackPoint> = emptyList()
     private var activeSessionLoadGeneration = 0L
+    private var skipNextResumeContentRefresh = true
 
     private val defaultLatLng = GeoCoordinate(39.9042, 116.4074)
     private val dataChangeListener = object : TrackDataChangeNotifier.Listener {
@@ -81,12 +82,13 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onHistoryDataChanged() {
-            val historyViewModel = getHistoryViewModel()
-            historyViewModel?.reload()
-            historyViewModel?.updateContent()
-            val mapViewModel = getMapViewModel()
-            mapViewModel?.shouldRefit = true
-            refreshDashboardContent()
+            applyRefreshDecision(
+                MainUiRefreshPolicy.forHistoryChanged(currentTab = currentTab()),
+            )
+        }
+
+        override fun onDiagnosticsChanged() {
+            renderDashboardDiagnosticsRefined()
         }
     }
     private val freshLocationListener = android.location.LocationListener(::handleLocationUpdate)
@@ -134,10 +136,10 @@ class MainActivity : AppCompatActivity() {
                     aboutState = aboutState,
                     mapboxAccessToken = mapboxAccessToken,
                     dashboardMapState = dashboardMapState,
-                    onRecordTabClick = { mainVm.setCurrentTab(MainTab.RECORD) },
-                    onHistoryTabClick = { mainVm.setCurrentTab(MainTab.HISTORY) },
-                    onAboutTabClick = { mainVm.setCurrentTab(MainTab.ABOUT) },
-                    onAboutBackClick = { mainVm.setCurrentTab(MainTab.RECORD) },
+                    onRecordTabClick = { showTab(MainTab.RECORD) },
+                    onHistoryTabClick = { showTab(MainTab.HISTORY) },
+                    onAboutTabClick = { showTab(MainTab.ABOUT) },
+                    onAboutBackClick = { showTab(MainTab.RECORD) },
                     onCheckUpdateClick = {
                         mainVm.checkForAppUpdate { info -> showUpdateConfirmDialog(info) }
                     },
@@ -159,8 +161,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         initGnssStatusCallback()
-        historyViewModel?.reload()
-        historyViewModel?.updateContent()
+        warmUpHistoryCache()
         refreshDashboardContent()
         mainViewModel?.setCurrentTab(MainTab.RECORD)
         refreshGpsStatus()
@@ -172,14 +173,36 @@ class MainActivity : AppCompatActivity() {
         val isRecord = tab == MainTab.RECORD
         dashboardViewModel?.setRecordTabSelected(isRecord)
 
-        if (tab == MainTab.HISTORY) {
-            historyViewModel?.reload()
-            historyViewModel?.updateContent()
-            return
-        }
-
+        applyRefreshDecision(MainUiRefreshPolicy.forTabSelection(tab))
         if (tab == MainTab.RECORD) {
             syncRecordTabToCurrentLocation()
+        }
+    }
+
+    private fun currentTab(): MainTab {
+        return mainViewModel?.currentTab?.value ?: MainTab.RECORD
+    }
+
+    private fun warmUpHistoryCache() {
+        HistoryStorage.warmUp(applicationContext)
+    }
+
+    private fun refreshHistoryContent() {
+        historyViewModel?.reload()
+        historyViewModel?.updateContent()
+    }
+
+    private fun applyRefreshDecision(decision: MainUiRefreshDecision) {
+        if (decision.warmUpHistory) {
+            warmUpHistoryCache()
+        }
+        if (decision.refitMap) {
+            mapViewModel?.shouldRefit = true
+        }
+        if (decision.reloadHistory) {
+            refreshHistoryContent()
+        }
+        if (decision.refreshDashboard) {
             refreshDashboardContent()
         }
     }
@@ -663,10 +686,13 @@ class MainActivity : AppCompatActivity() {
         permissionHelper.startBackgroundTrackingServiceIfReady()
         registerGnssCallback()
         refreshGpsStatus()
-        historyViewModel?.reload()
-        historyViewModel?.updateContent()
-        mapViewModel?.shouldRefit = true
-        refreshDashboardContent()
+        applyRefreshDecision(
+            MainUiRefreshPolicy.forResume(
+                currentTab = currentTab(),
+                skipContentRefresh = skipNextResumeContentRefresh,
+            )
+        )
+        skipNextResumeContentRefresh = false
     }
 
     override fun onPause() {

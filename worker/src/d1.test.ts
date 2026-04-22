@@ -362,4 +362,80 @@ describe("createD1 persistence", () => {
     ]);
     expect(histories.map((history) => history.historyId)).toEqual([301]);
   });
+
+  it("reads raw points for a specific day from D1", async () => {
+    const { createD1RawPointPersistence } = await import("./d1");
+    const { env, bindCollector } = createMockReadEnv([
+      {
+        sqlIncludes: "FROM raw_location_point",
+        rows: [
+          {
+            point_id: 18,
+            timestamp_millis: 1700000000000,
+            latitude: 30.1,
+            longitude: 120.1,
+            accuracy_meters: 5.5,
+            altitude_meters: 20.2,
+            speed_meters_per_second: 1.1,
+            bearing_degrees: 90,
+            provider: "gps",
+            source_type: "LOCATION_MANAGER",
+            is_mock: 0,
+            wifi_fingerprint_digest: "wifi",
+            activity_type: "WALKING",
+            activity_confidence: 0.9,
+            sampling_tier: "ACTIVE"
+          }
+        ]
+      }
+    ]);
+
+    const points = await createD1RawPointPersistence().readRawPointsByDay(
+      "device-1",
+      1700000000000,
+      env
+    );
+
+    expect(bindCollector[0]?.args).toEqual([
+      "device-1",
+      1700000000000,
+      1700086400000
+    ]);
+    expect(points.map((point) => point.pointId)).toEqual([18]);
+  });
+
+  it("reads raw point day summaries from D1", async () => {
+    const { createD1RawPointPersistence } = await import("./d1");
+    const { env, bindCollector } = createMockReadEnv([
+      {
+        sqlIncludes: "GROUP BY day_start_millis",
+        rows: [
+          {
+            day_start_millis: 1699891200000,
+            point_count: 128,
+            max_point_id: 631
+          }
+        ]
+      }
+    ]);
+
+    const days = await createD1RawPointPersistence().readRawPointDays(
+      "device-1",
+      480,
+      env
+    );
+
+    expect(bindCollector[0]?.args).toEqual([
+      28_800_000,
+      28_800_000,
+      "device-1"
+    ]);
+    expect(days).toEqual([
+      {
+        dayStartMillis: 1699891200000,
+        pointCount: 128,
+        maxPointId: 631
+      }
+    ]);
+  });
 });

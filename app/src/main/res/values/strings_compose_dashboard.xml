@@ -7,7 +7,7 @@
     <string name="compose_dashboard_record">记录</string>
     <string name="compose_dashboard_history">历史</string>
     <string name="compose_dashboard_view_history">查看历史</string>
-    <string name="compose_dashboard_about">关于</string>
+    <string name="compose_dashboard_about">设置</string>
     <string name="compose_dashboard_status_idle">待记录</string>
     <string name="compose_dashboard_status_tracking">记录中</string>
     <string name="compose_dashboard_status_saved">已整理完成</string>

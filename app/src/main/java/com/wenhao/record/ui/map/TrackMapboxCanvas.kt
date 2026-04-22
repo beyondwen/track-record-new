@@ -44,8 +44,11 @@ import com.mapbox.maps.extension.compose.annotation.generated.PolylineAnnotation
 import com.mapbox.maps.extension.compose.annotation.IconImage
 import com.mapbox.maps.extension.style.layers.properties.generated.IconAnchor
 import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
+import com.mapbox.maps.plugin.PuckBearing
 import com.mapbox.maps.plugin.gestures.generated.GesturesSettings
 import com.mapbox.maps.plugin.gestures.gestures
+import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
+import com.mapbox.maps.plugin.locationcomponent.location
 import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
 import com.wenhao.record.map.MapMarkerIconFactory
@@ -63,6 +66,7 @@ fun TrackMapboxCanvas(
     modifier: Modifier = Modifier,
     viewportPadding: TrackMapViewportPadding = TrackMapViewportPadding(),
     showCenterIndicator: Boolean = false,
+    showUserLocationPuck: Boolean = false,
     interactive: Boolean = true,
     onUserGestureMove: (() -> Unit)? = null,
     snapshotCacheKey: String? = null,
@@ -255,6 +259,17 @@ fun TrackMapboxCanvas(
             MapEffect(Unit) { mapView ->
                 gestureHost = MapboxMoveGestureListenerHost(mapView)
             }
+
+            MapEffect(showUserLocationPuck) { mapView ->
+                mapView.location.updateSettings {
+                    enabled = showUserLocationPuck
+                    locationPuck = createDefault2DPuck(withBearing = true)
+                    puckBearingEnabled = showUserLocationPuck
+                    puckBearing = PuckBearing.HEADING
+                    showAccuracyRing = false
+                    pulsingEnabled = false
+                }
+            }
         }
 
         if (showCenterIndicator) {
@@ -345,7 +360,7 @@ private fun MapboxUnavailablePlaceholder(modifier: Modifier = Modifier) {
                     textAlign = TextAlign.Center,
                 )
                 Text(
-                    text = "当前设备尚未配置 Mapbox Token，请先到关于页输入并保存后再使用地图。",
+                    text = "当前设备尚未配置 Mapbox Token，请先到设置页输入并保存后再使用地图。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,

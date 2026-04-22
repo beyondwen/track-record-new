@@ -13,6 +13,8 @@ object TrackDataChangeNotifier {
         fun onDashboardDataChanged() = Unit
 
         fun onHistoryDataChanged() = Unit
+
+        fun onDiagnosticsChanged() = Unit
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -47,6 +49,12 @@ object TrackDataChangeNotifier {
     fun notifyHistoryChanged() {
         mainHandler.post {
             listeners.forEach { it.onHistoryDataChanged() }
+        }
+    }
+
+    fun notifyDiagnosticsChanged() {
+        mainHandler.post {
+            listeners.forEach { it.onDiagnosticsChanged() }
         }
     }
 }
