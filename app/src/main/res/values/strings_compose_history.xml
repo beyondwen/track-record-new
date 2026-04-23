@@ -16,6 +16,7 @@
     <string name="compose_history_delete_confirm">删除</string>
     <string name="compose_history_delete_cancel">取消</string>
     <string name="compose_history_delete_success">当天行程已删除</string>
+    <string name="compose_history_delete_failed">删除失败，请稍后重试</string>
     <string name="compose_history_day_today">今天</string>
     <string name="compose_history_day_yesterday">昨天</string>
     <string name="compose_history_day_month">%1$d 月</string>

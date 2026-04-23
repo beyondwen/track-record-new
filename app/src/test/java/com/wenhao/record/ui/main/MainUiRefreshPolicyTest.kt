@@ -37,6 +37,22 @@ class MainUiRefreshPolicyTest {
     }
 
     @Test
+    fun `resume on record tab refreshes dashboard without forcing map refit`() {
+        val decision = MainUiRefreshPolicy.forResume(
+            currentTab = MainTab.RECORD,
+            skipContentRefresh = false,
+        )
+
+        assertEquals(
+            MainUiRefreshDecision(
+                warmUpHistory = true,
+                refreshDashboard = true,
+            ),
+            decision,
+        )
+    }
+
+    @Test
     fun `history change on record tab refreshes dashboard without forcing history reload`() {
         val decision = MainUiRefreshPolicy.forHistoryChanged(MainTab.RECORD)
 
@@ -57,6 +73,18 @@ class MainUiRefreshPolicyTest {
         assertEquals(
             MainUiRefreshDecision(
                 reloadHistory = true,
+            ),
+            decision,
+        )
+    }
+
+    @Test
+    fun `switching back to record tab keeps the existing map viewport stable`() {
+        val decision = MainUiRefreshPolicy.forTabSelection(MainTab.RECORD)
+
+        assertEquals(
+            MainUiRefreshDecision(
+                warmUpHistory = true,
             ),
             decision,
         )

@@ -45,6 +45,26 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_processed_histories_device_history
 CREATE INDEX IF NOT EXISTS idx_processed_histories_device_timestamp
   ON processed_histories (device_id, timestamp_millis);
 
+CREATE TABLE IF NOT EXISTS history_day_summary (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  day_start_millis INTEGER NOT NULL,
+  latest_timestamp INTEGER NOT NULL,
+  session_count INTEGER NOT NULL,
+  total_distance_km REAL NOT NULL,
+  total_duration_seconds INTEGER NOT NULL,
+  average_speed_kmh REAL NOT NULL,
+  source_ids_json TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_history_day_summary_device_day
+  ON history_day_summary (device_id, day_start_millis);
+
+CREATE INDEX IF NOT EXISTS idx_history_day_summary_device_day
+  ON history_day_summary (device_id, day_start_millis DESC);
+
 CREATE TABLE IF NOT EXISTS raw_location_point (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   device_id TEXT NOT NULL,

@@ -55,6 +55,12 @@ class MapActivity : AppCompatActivity() {
         renderHistory()
     }
 
+    override fun onDestroy() {
+        uiState = MapScreenUiState()
+        mapboxAccessToken = ""
+        super.onDestroy()
+    }
+
     private fun renderHistory() {
         val dayStartMillis = intent.getLongExtra(EXTRA_DAY_START, -1L).takeIf { it > 0L }
         if (dayStartMillis == null) {
@@ -75,14 +81,13 @@ class MapActivity : AppCompatActivity() {
                     Toast.makeText(this, R.string.dashboard_history_no_route, Toast.LENGTH_SHORT).show()
                     finish()
                 } else {
-                    renderHistoryItem(item)
+                    renderHistoryItem(item, generation)
                 }
             }
         }
     }
 
-    private fun renderHistoryItem(item: HistoryDayItem) {
-        val generation = nextRenderGeneration()
+    private fun renderHistoryItem(item: HistoryDayItem, generation: Long = nextRenderGeneration()) {
         val appContext = applicationContext
         AppTaskExecutor.runOnIo {
             val preparedGeometry = prepareHistoryGeometry(item.segments)
@@ -156,6 +161,8 @@ class MapActivity : AppCompatActivity() {
                 segments = preparedGeometry.renderableSegments,
                 idPrefix = "history",
                 width = 6.6,
+                maxPointsPerSegment = 90,
+                altitudeBuckets = 2,
             ),
             markers = markers,
             viewportRequest = TrackMapViewportRequest.Fit(
@@ -186,17 +193,19 @@ class MapActivity : AppCompatActivity() {
             }
         }
 
-        val renderableSegments = TrackPathSanitizer.renderableSegments(collapsedSegments)
-        val processedPoints = collapsedSegments.flatten()
+        val limitedSegments = HistoryMapGeometryLimiter.limitSegments(collapsedSegments)
+        val limitedClusterMarkers = HistoryMapGeometryLimiter.limitMarkers(clusterMarkers)
+        val renderableSegments = TrackPathSanitizer.renderableSegments(limitedSegments)
+        val processedPoints = limitedSegments.flatten()
         val viewportPoints = renderableSegments.flatten()
-            .ifEmpty { clusterMarkers.map { it.coordinate }.map(::toTrackPoint) }
+            .ifEmpty { limitedClusterMarkers.map { it.coordinate }.map(::toTrackPoint) }
             .ifEmpty { processedPoints }
             .ifEmpty { sourceSegments.flatten() }
 
         return PreparedHistoryGeometry(
             renderableSegments = renderableSegments,
             viewportPoints = viewportPoints,
-            clusterMarkers = clusterMarkers,
+            clusterMarkers = limitedClusterMarkers,
         )
     }
 

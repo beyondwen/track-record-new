@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryDayAggregator
 import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
@@ -41,7 +42,10 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     val overlayState: StateFlow<DashboardOverlayUiState> = _overlayState.asStateFlow()
 
     fun setRecordTabSelected(isRecord: Boolean) {
-        _panelState.value = _panelState.value.copy(isRecordTabSelected = isRecord)
+        val nextState = _panelState.value.copy(isRecordTabSelected = isRecord)
+        if (nextState != _panelState.value) {
+            _panelState.value = nextState
+        }
     }
 
     fun render(
@@ -49,15 +53,16 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         state: AutoTrackUiState,
         todayHistoryItems: List<HistoryItem>,
     ) {
-        val displayDistanceKm = todayHistoryItems.sumOf { it.distanceKm }
-        val durationSeconds = todayHistoryItems.sumOf { it.durationSeconds }
+        val todayDays = HistoryDayAggregator.aggregate(todayHistoryItems)
+        val displayDistanceKm = todayDays.sumOf { it.totalDistanceKm }
+        val durationSeconds = todayDays.sumOf { it.totalDurationSeconds }
         val averageSpeed = if (durationSeconds > 0) {
             displayDistanceKm / (durationSeconds / 3600.0)
         } else {
             0.0
         }
 
-        _panelState.value = _panelState.value.copy(
+        val nextState = _panelState.value.copy(
             distanceText = formatDistance(displayDistanceKm),
             durationText = formatDuration(durationSeconds),
             speedText = getApplication<Application>().getString(R.string.compose_dashboard_speed_value, averageSpeed),
@@ -66,10 +71,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             statusLabel = statusForState(state),
             statusTone = toneForState(state),
         )
+        if (nextState != _panelState.value) {
+            _panelState.value = nextState
+        }
     }
 
     fun updateGpsStatusBadge(label: String, dotColorRes: Int) {
-        _overlayState.value = _overlayState.value.copy(
+        val nextState = _overlayState.value.copy(
             gpsLabel = label,
             gpsTone = when (dotColorRes) {
                 R.color.dashboard_badge_green -> DashboardTone.SUCCESS
@@ -78,6 +86,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 else -> DashboardTone.MUTED
             }
         )
+        if (nextState != _overlayState.value) {
+            _overlayState.value = nextState
+        }
     }
 
     fun updateDiagnostics(
@@ -86,10 +97,13 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
         compactBody: String = body,
         isVisible: Boolean = true,
     ) {
-        _overlayState.value = _overlayState.value.copy(
+        val nextState = _overlayState.value.copy(
             diagnosticsTitle = if (isVisible) title else "",
             diagnosticsCompactBody = if (isVisible) compactBody else "",
         )
+        if (nextState != _overlayState.value) {
+            _overlayState.value = nextState
+        }
     }
 
     private fun formatDuration(durationSeconds: Int): String {

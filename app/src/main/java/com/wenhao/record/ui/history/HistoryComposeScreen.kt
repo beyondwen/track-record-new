@@ -5,31 +5,24 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -38,7 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
@@ -51,11 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.wenhao.record.R
-import com.wenhao.record.data.history.HistoryDayItem
-import com.wenhao.record.data.history.TrackQualityLevel
+import com.wenhao.record.data.history.HistoryDaySummaryItem
 import com.wenhao.record.data.history.buildHistoryDayItem
+import com.wenhao.record.data.history.toSummaryItem
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.ui.designsystem.TrackEmptyStateCard
 import com.wenhao.record.ui.designsystem.TrackBottomNavigationBar
@@ -64,18 +55,14 @@ import com.wenhao.record.ui.designsystem.TrackLiquidPanel
 import com.wenhao.record.ui.designsystem.TrackLiquidTone
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.ui.designsystem.TrackStatChip
-import com.wenhao.record.ui.designsystem.TrackAtmosphericBackground
-import com.wenhao.record.ui.designsystem.trackInnerPanelBorder
-import com.wenhao.record.ui.designsystem.trackInnerPanelSurface
 import com.wenhao.record.ui.designsystem.trackSecondarySurface
 import com.wenhao.record.ui.designsystem.trackSoftAccent
-import com.wenhao.record.ui.designsystem.trackSoftOutline
 import com.wenhao.record.ui.designsystem.trackSoftSurface
 import java.util.Calendar
 
 @Immutable
 data class HistoryScreenUiState(
-    val items: List<HistoryDayItem> = emptyList(),
+    val items: List<HistoryDaySummaryItem> = emptyList(),
     val selectedDayStartMillis: Long? = null,
     val totalDistanceText: String = "",
     val totalDurationText: String = "",
@@ -87,8 +74,8 @@ fun HistoryComposeScreen(
     state: HistoryScreenUiState,
     onRecordClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onHistoryClick: (HistoryDayItem) -> Unit,
-    onHistoryLongClick: (HistoryDayItem) -> Unit,
+    onHistoryClick: (HistoryDaySummaryItem) -> Unit,
+    onHistoryLongClick: (HistoryDaySummaryItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -114,11 +101,11 @@ fun HistoryComposeScreen(
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(
                     start = 20.dp,
-                    top = 28.dp,
+                    top = 24.dp,
                     end = 20.dp,
                     bottom = 32.dp,
                 ),
-                verticalArrangement = Arrangement.spacedBy(28.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 item {
                     HistoryHeroSection(state = state)
@@ -143,46 +130,28 @@ fun HistoryComposeScreen(
                         }
                         val currentLabel = requireNotNull(groupLabels[item.dayStartMillis])
 
-                        val isFirstLoad = remember { mutableStateOf(true) }
-                        val shouldAnimate = isFirstLoad.value && index < 6
-                        if (shouldAnimate) {
-                            isFirstLoad.value = false
-                        }
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = true,
-                            enter = if (shouldAnimate) {
-                                androidx.compose.animation.fadeIn(
-                                    androidx.compose.animation.core.tween(600, delayMillis = index * 100)
-                                ) + androidx.compose.animation.slideInVertically(
-                                    androidx.compose.animation.core.tween(600, delayMillis = index * 100)
-                                ) { it / 2 }
-                            } else {
-                                androidx.compose.animation.EnterTransition.None
-                            }
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                                if (index == 0 || currentLabel != previousLabel) {
-                                    HistorySectionHeader(
-                                        title = if (index == 0) {
-                                            stringResource(R.string.compose_history_log_title)
-                                        } else {
-                                            currentLabel
-                                        },
-                                        trailing = if (index == 0) {
-                                            stringResource(R.string.compose_history_view_all)
-                                        } else {
-                                            null
-                                        },
-                                    )
-                                }
-
-                                HistoryDayCard(
-                                    item = item,
-                                    isSelected = item.dayStartMillis == state.selectedDayStartMillis,
-                                    onClick = { onHistoryClick(item) },
-                                    onLongClick = { onHistoryLongClick(item) },
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            if (index == 0 || currentLabel != previousLabel) {
+                                HistorySectionHeader(
+                                    title = if (index == 0) {
+                                        stringResource(R.string.compose_history_log_title)
+                                    } else {
+                                        currentLabel
+                                    },
+                                    trailing = if (index == 0) {
+                                        stringResource(R.string.compose_history_view_all)
+                                    } else {
+                                        null
+                                    },
                                 )
                             }
+
+                            HistoryDayCard(
+                                item = item,
+                                isSelected = item.dayStartMillis == state.selectedDayStartMillis,
+                                onClick = { onHistoryClick(item) },
+                                onLongClick = { onHistoryLongClick(item) },
+                            )
                         }
                     }
                 }
@@ -335,7 +304,7 @@ private fun HistorySectionHeader(
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun HistoryDayCard(
-    item: HistoryDayItem,
+    item: HistoryDaySummaryItem,
     isSelected: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -368,7 +337,7 @@ private fun HistoryDayCard(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -394,35 +363,88 @@ private fun HistoryDayCard(
                 }
 
                 TrackStatChip(
-                    text = item.quality.badgeLabel,
-                    containerColor = qualityChipContainerColor(item.quality.level).copy(alpha = 0.15f),
-                    contentColor = qualityChipContentColor(item.quality.level),
+                    text = item.sessionCountLabel,
+                    containerColor = MaterialTheme.colorScheme.trackSoftAccent.copy(alpha = 0.14f),
+                    contentColor = MaterialTheme.colorScheme.primary,
                 )
             }
 
-            HistoryPreviewCard(
-                item = item,
-                modifier = Modifier.fillMaxWidth(),
+            HistoryStatRow(
+                distance = item.formattedDistance,
+                duration = item.formattedDuration,
+                speed = item.formattedSpeed,
+            )
+
+            Text(
+                text = item.formattedDateTitle,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
 }
 
 @Composable
-private fun HistoryPreviewCard(
-    item: HistoryDayItem,
+private fun HistoryStatRow(
+    distance: String,
+    duration: String,
+    speed: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        HistoryStatPill(
+            label = stringResource(R.string.compose_history_total_distance),
+            value = distance,
+            modifier = Modifier.weight(1f),
+        )
+        HistoryStatPill(
+            label = stringResource(R.string.compose_history_total_duration),
+            value = duration,
+            modifier = Modifier.weight(1f),
+        )
+        HistoryStatPill(
+            label = stringResource(R.string.compose_dashboard_speed_label),
+            value = speed,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun HistoryStatPill(
+    label: String,
+    value: String,
     modifier: Modifier = Modifier,
 ) {
     Box(
         modifier = modifier
-            .height(240.dp)
-            .clip(MaterialTheme.shapes.large)
-            .background(MaterialTheme.colorScheme.surfaceContainerLow)
+            .clip(RoundedCornerShape(22.dp))
+            .background(MaterialTheme.colorScheme.trackSecondarySurface.copy(alpha = 0.72f))
+            .padding(horizontal = 12.dp, vertical = 12.dp),
     ) {
-        HistoryRoutePreviewCanvas(
-            segments = item.segments,
-            modifier = Modifier.fillMaxSize().padding(12.dp),
-        )
+        Column(
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleSmall.copy(fontFeatureSettings = "tnum"),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -445,22 +467,8 @@ private fun HistoryBottomBar(
     )
 }
 
-@Composable
-private fun qualityChipContainerColor(level: TrackQualityLevel) = when (level) {
-    TrackQualityLevel.EXCELLENT, TrackQualityLevel.GOOD -> MaterialTheme.colorScheme.trackSoftAccent
-    TrackQualityLevel.FAIR -> MaterialTheme.colorScheme.trackSoftSurface
-    TrackQualityLevel.LOW -> MaterialTheme.colorScheme.errorContainer
-}
-
-@Composable
-private fun qualityChipContentColor(level: TrackQualityLevel) = when (level) {
-    TrackQualityLevel.EXCELLENT, TrackQualityLevel.GOOD -> MaterialTheme.colorScheme.primary
-    TrackQualityLevel.FAIR -> MaterialTheme.colorScheme.onSurfaceVariant
-    TrackQualityLevel.LOW -> MaterialTheme.colorScheme.onErrorContainer
-}
-
 private fun buildGroupLabels(
-    items: List<HistoryDayItem>,
+    items: List<HistoryDaySummaryItem>,
     context: Context,
     todayLabel: String,
     yesterdayLabel: String,
@@ -516,12 +524,8 @@ private fun buildGroupLabel(
 }
 
 @Composable
-private fun buildHistoryMetaLine(item: HistoryDayItem): String {
-    return stringResource(
-        R.string.compose_history_card_meta,
-        item.sessionCount,
-        item.formattedLatestTime,
-    )
+private fun buildHistoryMetaLine(item: HistoryDaySummaryItem): String {
+    return item.metaLabel
 }
 
 private fun isSameDay(first: Calendar, second: Calendar): Boolean {
@@ -547,7 +551,7 @@ private fun HistoryComposeScreenPreview() {
         averageSpeedKmh = 10.5,
         sourceIds = listOf(1L),
         segments = listOf(sampleSegment),
-    )
+    ).toSummaryItem()
 
     TrackRecordTheme {
         HistoryComposeScreen(

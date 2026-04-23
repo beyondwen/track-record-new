@@ -19,8 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -289,7 +287,7 @@ fun TrackBottomNavigationBar(
                 label = settingsLabel,
             ) {
                 Icon(
-                    imageVector = Icons.Outlined.Settings,
+                    painter = painterResource(R.drawable.ic_tab_settings),
                     contentDescription = null,
                 )
             }
@@ -326,7 +324,7 @@ private fun RowScope.TrackBottomNavigationItem(
     ) {
         Column(
             modifier = Modifier
-                .heightIn(min = 72.dp)
+                .heightIn(min = 64.dp)
                 .padding(horizontal = 10.dp, vertical = 10.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(4.dp),

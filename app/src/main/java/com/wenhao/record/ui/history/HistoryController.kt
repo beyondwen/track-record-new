@@ -5,12 +5,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.wenhao.record.R
-import com.wenhao.record.data.history.HistoryDayItem
+import com.wenhao.record.data.history.HistoryDaySummaryItem
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.history.RemoteHistoryRepository
+import com.wenhao.record.data.history.toSummaryItem
 import com.wenhao.record.util.AppTaskExecutor
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.runBlocking
 
@@ -18,7 +17,7 @@ class HistoryController(
     private val context: Context,
     private val remoteHistoryRepository: RemoteHistoryRepository = RemoteHistoryRepository(),
 ) {
-    private var historyItems: List<HistoryDayItem> = emptyList()
+    private var historyItems: List<HistoryDaySummaryItem> = emptyList()
     private var cachedTotalDistanceKm = 0.0
     private var cachedTotalDurationSeconds = 0
     private var selectedDayStartMillis: Long? = null
@@ -35,14 +34,14 @@ class HistoryController(
 
     fun reload() {
         val generation = nextReloadGeneration()
-        historyItems = HistoryStorage.peekDaily(context)
+        historyItems = HistoryStorage.peekDaily(context).map { it.toSummaryItem() }
         recalculateTotals()
         updateContent()
 
         val appContext = context.applicationContext
         AppTaskExecutor.runOnIo {
             val mergedDaily = runBlocking {
-                remoteHistoryRepository.loadMergedDaily(appContext)
+                remoteHistoryRepository.loadMergedDailySummaries(appContext)
             }
             AppTaskExecutor.runOnMain {
                 if (generation != reloadGeneration) return@runOnMain
@@ -61,12 +60,12 @@ class HistoryController(
         pushState()
     }
 
-    fun selectItem(item: HistoryDayItem) {
+    fun selectItem(item: HistoryDaySummaryItem) {
         selectedDayStartMillis = item.dayStartMillis
         pushState()
     }
 
-    fun deleteHistory(item: HistoryDayItem) {
+    fun deleteHistory(item: HistoryDaySummaryItem) {
         val updated = historyItems.toMutableList()
         val index = updated.indexOfFirst { it.dayStartMillis == item.dayStartMillis }
         if (index == -1) return

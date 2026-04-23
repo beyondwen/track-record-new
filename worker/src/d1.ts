@@ -2,6 +2,8 @@ import type {
   AnalysisPersistence,
   AnalysisSegment,
   Env,
+  HistoryDaySummary,
+  HistoryDaySummaryPersistence,
   HistoryPersistence,
   HistoryRecord,
   PersistAnalysisResult,
@@ -84,6 +86,24 @@ interface RawPointDaySummaryRow {
   day_start_millis: number;
   point_count: number;
   max_point_id: number;
+}
+
+interface HistoryDaySummaryRow {
+  day_start_millis: number;
+  latest_timestamp: number;
+  session_count: number;
+  total_distance_km: number;
+  total_duration_seconds: number;
+  average_speed_kmh: number;
+  source_ids_json: string;
+}
+
+interface ProcessedHistoryDaySummarySourceRow {
+  history_id: number;
+  timestamp_millis: number;
+  distance_km: number;
+  duration_seconds: number;
+  points_json?: string | null;
 }
 
 export function buildPersistHistoriesResult(
@@ -175,6 +195,227 @@ function parseHistoryPoints(pointsJson: string): HistoryRecord["points"] {
   }));
 }
 
+function parseHistoryPointsOrNull(pointsJson: string | null | undefined): HistoryRecord["points"] | null {
+  if (typeof pointsJson !== "string" || pointsJson.trim().length === 0) {
+    return null;
+  }
+
+  try {
+    return parseHistoryPoints(pointsJson);
+  } catch {
+    return null;
+  }
+}
+
+const EARTH_RADIUS_METERS = 6_371_000;
+const MAX_POOR_ACCURACY_METERS = 90;
+const MAX_JUMP_DISTANCE_METERS = 220;
+const MAX_JUMP_SPEED_METERS_PER_SECOND = 85;
+const MAX_NO_TIMESTAMP_SPLIT_DISTANCE_METERS = 1_200;
+const MIN_SPIKE_EDGE_DISTANCE_METERS = 48;
+const MIN_SPIKE_EXCESS_DISTANCE_METERS = 72;
+const MAX_SPIKE_EDGE_DURATION_MILLIS = 75_000;
+const MAX_SPIKE_WINDOW_MILLIS = 120_000;
+
+function isValidCoordinate(point: HistoryRecord["points"][number]): boolean {
+  if (point.latitude < -90 || point.latitude > 90) return false;
+  if (point.longitude < -180 || point.longitude > 180) return false;
+  if (point.latitude === 0 && point.longitude === 0) return false;
+  if (point.wgs84Latitude !== null && (point.wgs84Latitude < -90 || point.wgs84Latitude > 90)) {
+    return false;
+  }
+  if (point.wgs84Longitude !== null && (point.wgs84Longitude < -180 || point.wgs84Longitude > 180)) {
+    return false;
+  }
+  return true;
+}
+
+function latitudeForDistance(point: HistoryRecord["points"][number]): number {
+  return point.wgs84Latitude ?? point.latitude;
+}
+
+function longitudeForDistance(point: HistoryRecord["points"][number]): number {
+  return point.wgs84Longitude ?? point.longitude;
+}
+
+function distanceMeters(
+  first: HistoryRecord["points"][number],
+  second: HistoryRecord["points"][number]
+): number {
+  const lat1 = (latitudeForDistance(first) * Math.PI) / 180;
+  const lat2 = (latitudeForDistance(second) * Math.PI) / 180;
+  const dLat = lat2 - lat1;
+  const dLon = ((longitudeForDistance(second) - longitudeForDistance(first)) * Math.PI) / 180;
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLon = Math.sin(dLon / 2);
+  const haversine =
+    sinDLat * sinDLat +
+    Math.cos(lat1) * Math.cos(lat2) * sinDLon * sinDLon;
+  return EARTH_RADIUS_METERS * 2 * Math.asin(Math.sqrt(Math.min(1, Math.max(0, haversine))));
+}
+
+function shouldDropSpike(
+  previous: HistoryRecord["points"][number],
+  current: HistoryRecord["points"][number],
+  next: HistoryRecord["points"][number]
+): boolean {
+  const previousToCurrent = distanceMeters(previous, current);
+  const currentToNext = distanceMeters(current, next);
+  const previousToNext = distanceMeters(previous, next);
+  const maxAccuracyMeters = Math.max(
+    previous.accuracyMeters ?? 0,
+    current.accuracyMeters ?? 0,
+    next.accuracyMeters ?? 0
+  );
+  const edgeDistanceThreshold = Math.max(MIN_SPIKE_EDGE_DISTANCE_METERS, maxAccuracyMeters * 1.45);
+  const bridgeDistanceThreshold = Math.max(18, maxAccuracyMeters * 0.7);
+  const detourExcess = previousToCurrent + currentToNext - previousToNext;
+
+  if (previousToCurrent < edgeDistanceThreshold || currentToNext < edgeDistanceThreshold) {
+    return false;
+  }
+  if (previousToNext > Math.max(bridgeDistanceThreshold, Math.min(previousToCurrent, currentToNext) * 0.34)) {
+    return false;
+  }
+  if (detourExcess < Math.max(MIN_SPIKE_EXCESS_DISTANCE_METERS, maxAccuracyMeters * 1.6)) {
+    return false;
+  }
+
+  const hasTimestamps =
+    previous.timestampMillis > 0 &&
+    current.timestampMillis > 0 &&
+    next.timestampMillis > 0;
+  if (!hasTimestamps) return true;
+
+  const firstDeltaMillis = current.timestampMillis - previous.timestampMillis;
+  const secondDeltaMillis = next.timestampMillis - current.timestampMillis;
+  if (firstDeltaMillis <= 0 || secondDeltaMillis <= 0) return false;
+
+  return (
+    firstDeltaMillis <= MAX_SPIKE_EDGE_DURATION_MILLIS &&
+    secondDeltaMillis <= MAX_SPIKE_EDGE_DURATION_MILLIS &&
+    firstDeltaMillis + secondDeltaMillis <= MAX_SPIKE_WINDOW_MILLIS
+  );
+}
+
+function removeSpikeOutliers(points: HistoryRecord["points"]): HistoryRecord["points"] {
+  if (points.length < 3) return points;
+
+  const cleaned: HistoryRecord["points"] = [points[0]!];
+  let index = 1;
+  while (index < points.length - 1) {
+    const previous = cleaned[cleaned.length - 1]!;
+    const current = points[index]!;
+    const next = points[index + 1]!;
+    if (!shouldDropSpike(previous, current, next)) {
+      cleaned.push(current);
+    }
+    index += 1;
+  }
+  cleaned.push(points[points.length - 1]!);
+  return cleaned;
+}
+
+type SanitizerAction = "keep" | "start-new-segment" | "drop";
+
+function classifyPoint(
+  previous: HistoryRecord["points"][number],
+  candidate: HistoryRecord["points"][number]
+): SanitizerAction {
+  const hasWgs84Coords =
+    previous.wgs84Latitude !== null &&
+    previous.wgs84Longitude !== null &&
+    candidate.wgs84Latitude !== null &&
+    candidate.wgs84Longitude !== null;
+  const distance = distanceMeters(previous, candidate);
+  const maxAccuracyMeters = Math.max(previous.accuracyMeters ?? 0, candidate.accuracyMeters ?? 0);
+  const poorAccuracy = (candidate.accuracyMeters ?? 0) >= MAX_POOR_ACCURACY_METERS;
+  const tinyMoveThreshold = Math.max(4, maxAccuracyMeters * 0.22);
+
+  if (distance <= tinyMoveThreshold) return "keep";
+
+  const hasTimestamps = previous.timestampMillis > 0 && candidate.timestampMillis > 0;
+  if (!hasTimestamps) {
+    if (poorAccuracy && distance >= 100) return "drop";
+    if (distance >= MAX_NO_TIMESTAMP_SPLIT_DISTANCE_METERS) return "start-new-segment";
+    return "keep";
+  }
+
+  const timeDeltaMillis = candidate.timestampMillis - previous.timestampMillis;
+  if (timeDeltaMillis <= 0) return "drop";
+
+  const inferredSpeedMetersPerSecond = distance / Math.max(timeDeltaMillis / 1000, 1);
+  const effectiveMaxJumpDistance = hasWgs84Coords
+    ? MAX_JUMP_DISTANCE_METERS
+    : MAX_JUMP_DISTANCE_METERS * 3;
+  const effectiveMaxJumpSpeed = hasWgs84Coords
+    ? MAX_JUMP_SPEED_METERS_PER_SECOND
+    : MAX_JUMP_SPEED_METERS_PER_SECOND * 3;
+
+  if (
+    poorAccuracy &&
+    inferredSpeedMetersPerSecond <= 2.5 &&
+    distance <= Math.max(35, maxAccuracyMeters * 0.9)
+  ) {
+    return "drop";
+  }
+
+  if (
+    distance >= Math.max(effectiveMaxJumpDistance, maxAccuracyMeters * 2.8) &&
+    inferredSpeedMetersPerSecond >= effectiveMaxJumpSpeed
+  ) {
+    return "start-new-segment";
+  }
+
+  if (poorAccuracy && distance >= 200) return "start-new-segment";
+  return "keep";
+}
+
+function calculateSanitizedDistanceKm(points: HistoryRecord["points"]): number {
+  const validPoints = removeSpikeOutliers(
+    points
+      .filter(isValidCoordinate)
+      .sort((left, right) => {
+        const leftTimestamp = left.timestampMillis > 0 ? left.timestampMillis : Number.MAX_SAFE_INTEGER;
+        const rightTimestamp = right.timestampMillis > 0 ? right.timestampMillis : Number.MAX_SAFE_INTEGER;
+        return leftTimestamp - rightTimestamp;
+      })
+  );
+  const segments: HistoryRecord["points"][] = [];
+  for (const point of validPoints) {
+    const currentSegment = segments[segments.length - 1];
+    if (currentSegment === undefined || currentSegment.length === 0) {
+      segments.push([point]);
+      continue;
+    }
+
+    const previous = currentSegment[currentSegment.length - 1]!;
+    const action = classifyPoint(previous, point);
+    if (action === "keep") {
+      currentSegment.push(point);
+    } else if (action === "start-new-segment") {
+      segments.push([point]);
+    }
+  }
+
+  return segments.reduce((totalKm, segment) => {
+    if (segment.length < 2) return totalKm;
+    let segmentMeters = 0;
+    for (let index = 0; index < segment.length - 1; index += 1) {
+      segmentMeters += distanceMeters(segment[index]!, segment[index + 1]!);
+    }
+    return totalKm + segmentMeters / 1000;
+  }, 0);
+}
+
+function summaryDistanceKm(row: ProcessedHistoryDaySummarySourceRow): number {
+  const points = parseHistoryPointsOrNull(row.points_json);
+  if (points === null) {
+    return row.distance_km;
+  }
+  return calculateSanitizedDistanceKm(points);
+}
+
 function mapUploadedHistoryRow(row: UploadedHistoryRow): HistoryRecord {
   return {
     historyId: row.history_id,
@@ -217,6 +458,158 @@ function mapRawPointDaySummaryRow(row: RawPointDaySummaryRow): RawPointDaySummar
     pointCount: row.point_count,
     maxPointId: row.max_point_id
   };
+}
+
+function parseSourceIds(sourceIdsJson: string): number[] {
+  try {
+    const parsed = JSON.parse(sourceIdsJson);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((value) => {
+        if (typeof value === "number" && Number.isSafeInteger(value)) return value;
+        if (typeof value === "string") return Number(value);
+        return NaN;
+      })
+      .filter((value): value is number => Number.isSafeInteger(value));
+  } catch {
+    return [];
+  }
+}
+
+function mapHistoryDaySummaryRow(row: HistoryDaySummaryRow): HistoryDaySummary {
+  return {
+    dayStartMillis: row.day_start_millis,
+    latestTimestamp: row.latest_timestamp,
+    sessionCount: row.session_count,
+    totalDistanceKm: row.total_distance_km,
+    totalDurationSeconds: row.total_duration_seconds,
+    averageSpeedKmh: row.average_speed_kmh,
+    sourceIds: parseSourceIds(row.source_ids_json)
+  };
+}
+
+function startOfDay(timestampMillis: number, utcOffsetMinutes = 0): number {
+  const date = new Date(timestampMillis);
+  const offsetMillis = utcOffsetMinutes * 60_000;
+  return Math.floor((date.getTime() + offsetMillis) / 86_400_000) * 86_400_000 - offsetMillis;
+}
+
+async function refreshHistoryDaySummaries(
+  deviceId: string,
+  affectedDayStarts: number[],
+  env: Env
+): Promise<void> {
+  const uniqueDays = [...new Set(affectedDayStarts)];
+  for (const dayStartMillis of uniqueDays) {
+    const result = await env.DB.prepare(
+      `SELECT
+         history_id,
+         timestamp_millis,
+         distance_km,
+         duration_seconds
+       FROM processed_histories
+       WHERE device_id = ?
+         AND timestamp_millis >= ?
+         AND timestamp_millis < ?
+       ORDER BY timestamp_millis DESC, history_id DESC`
+    )
+      .bind(deviceId, dayStartMillis, dayStartMillis + 86_400_000)
+      .all<{
+        history_id: number;
+        timestamp_millis: number;
+        distance_km: number;
+        duration_seconds: number;
+      }>();
+
+    const rows = result.results ?? [];
+    if (rows.length === 0) {
+      await env.DB.prepare(
+        `DELETE FROM history_day_summary
+         WHERE device_id = ?
+           AND day_start_millis = ?`
+      )
+        .bind(deviceId, dayStartMillis)
+        .all();
+      continue;
+    }
+
+    const latestTimestamp = rows.reduce(
+      (latest, row) => Math.max(latest, row.timestamp_millis),
+      0
+    );
+    const totalDistanceKm = rows.reduce((sum, row) => sum + row.distance_km, 0);
+    const totalDurationSeconds = rows.reduce(
+      (sum, row) => sum + row.duration_seconds,
+      0
+    );
+    const averageSpeedKmh =
+      totalDurationSeconds > 0
+        ? totalDistanceKm / (totalDurationSeconds / 3600)
+        : 0;
+    const sourceIds = rows.map((row) => row.history_id);
+
+    await env.DB.prepare(
+      `INSERT INTO history_day_summary
+         (
+           device_id,
+           day_start_millis,
+           latest_timestamp,
+           session_count,
+           total_distance_km,
+           total_duration_seconds,
+           average_speed_kmh,
+           source_ids_json
+         )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(device_id, day_start_millis) DO UPDATE SET
+         latest_timestamp = excluded.latest_timestamp,
+         session_count = excluded.session_count,
+         total_distance_km = excluded.total_distance_km,
+         total_duration_seconds = excluded.total_duration_seconds,
+         average_speed_kmh = excluded.average_speed_kmh,
+         source_ids_json = excluded.source_ids_json,
+         updated_at = CURRENT_TIMESTAMP`
+    )
+      .bind(
+        deviceId,
+        dayStartMillis,
+        latestTimestamp,
+        rows.length,
+        totalDistanceKm,
+        totalDurationSeconds,
+        averageSpeedKmh,
+        JSON.stringify(sourceIds)
+      )
+      .all();
+  }
+}
+
+async function readExistingProcessedHistoryTimestamps(
+  deviceId: string,
+  historyIds: number[],
+  env: Env
+): Promise<Map<number, number>> {
+  const timestampsByHistoryId = new Map<number, number>();
+  const uniqueHistoryIds = [...new Set(historyIds)];
+  const chunkSize = 64;
+  for (let index = 0; index < uniqueHistoryIds.length; index += chunkSize) {
+    const chunk = uniqueHistoryIds.slice(index, index + chunkSize);
+    if (chunk.length === 0) continue;
+    const placeholders = chunk.map(() => "?").join(", ");
+    const result = await env.DB.prepare(
+      `SELECT history_id, timestamp_millis
+       FROM processed_histories
+       WHERE device_id = ?
+         AND history_id IN (${placeholders})`
+    )
+      .bind(deviceId, ...chunk)
+      .all<{ history_id: number; timestamp_millis: number }>();
+
+    (result.results ?? []).forEach((row) => {
+      timestampsByHistoryId.set(row.history_id, row.timestamp_millis);
+    });
+  }
+  return timestampsByHistoryId;
 }
 
 export function createD1HistoryPersistence(): HistoryPersistence {
@@ -542,6 +935,7 @@ export function createD1ProcessedHistoryPersistence() {
     async persistHistories(
       deviceId: string,
       appVersion: string,
+      utcOffsetMinutes: number,
       histories: HistoryRecord[],
       env: Env
     ): Promise<PersistHistoriesResult> {
@@ -549,6 +943,11 @@ export function createD1ProcessedHistoryPersistence() {
       if (uniqueHistories.length === 0) {
         return buildPersistHistoriesResult(histories, 0);
       }
+      const existingTimestamps = await readExistingProcessedHistoryTimestamps(
+        deviceId,
+        uniqueHistories.map((history) => history.historyId),
+        env
+      );
 
       const statements = uniqueHistories.map((history) =>
         env.DB.prepare(
@@ -600,6 +999,19 @@ export function createD1ProcessedHistoryPersistence() {
       );
 
       const affectedCount = await executeBatch(env, statements);
+      const affectedDayStarts = new Set<number>();
+      uniqueHistories.forEach((history) => {
+        affectedDayStarts.add(startOfDay(history.timestampMillis, utcOffsetMinutes));
+        const previousTimestamp = existingTimestamps.get(history.historyId);
+        if (typeof previousTimestamp === "number") {
+          affectedDayStarts.add(startOfDay(previousTimestamp, utcOffsetMinutes));
+        }
+      });
+      await refreshHistoryDaySummaries(
+        deviceId,
+        [...affectedDayStarts],
+        env
+      );
       return buildPersistHistoriesResult(histories, affectedCount);
     },
 
@@ -655,6 +1067,106 @@ export function createD1ProcessedHistoryPersistence() {
         .all<UploadedHistoryRow>();
 
       return (result.results ?? []).map(mapUploadedHistoryRow);
+    },
+
+    async deleteHistoriesByDay(
+      deviceId: string,
+      dayStartMillis: number,
+      env: Env
+    ): Promise<number> {
+      const processedDeleteResult = await env.DB.prepare(
+        `DELETE FROM processed_histories
+         WHERE device_id = ?
+           AND timestamp_millis >= ?
+           AND timestamp_millis < ?`
+      )
+        .bind(deviceId, dayStartMillis, dayStartMillis + 86_400_000)
+        .all();
+
+      await env.DB.prepare(
+        `DELETE FROM uploaded_histories
+         WHERE device_id = ?
+           AND timestamp_millis >= ?
+           AND timestamp_millis < ?`
+      )
+        .bind(deviceId, dayStartMillis, dayStartMillis + 86_400_000)
+        .all();
+
+      await env.DB.prepare(
+        `DELETE FROM history_day_summary
+         WHERE device_id = ?
+           AND day_start_millis = ?`
+      )
+        .bind(deviceId, dayStartMillis)
+        .all();
+
+      return extractChanges(processedDeleteResult);
+    }
+  };
+}
+
+export function createD1HistoryDaySummaryPersistence(): HistoryDaySummaryPersistence {
+  return {
+    async readDays(
+      deviceId: string,
+      utcOffsetMinutes: number,
+      env: Env
+    ): Promise<HistoryDaySummary[]> {
+      const result = await env.DB.prepare(
+        `SELECT
+           history_id,
+           timestamp_millis,
+           distance_km,
+           duration_seconds,
+           points_json
+         FROM processed_histories
+         WHERE device_id = ?
+         ORDER BY timestamp_millis DESC, history_id DESC`
+      )
+        .bind(deviceId)
+        .all<ProcessedHistoryDaySummarySourceRow>();
+
+      const summariesByDay = new Map<number, HistoryDaySummary>();
+      (result.results ?? []).forEach((row) => {
+        const dayStartMillis = startOfDay(row.timestamp_millis, utcOffsetMinutes);
+        const existing = summariesByDay.get(dayStartMillis);
+        const distanceKm = summaryDistanceKm(row);
+        if (existing === undefined) {
+          summariesByDay.set(dayStartMillis, {
+            dayStartMillis,
+            latestTimestamp: row.timestamp_millis,
+            sessionCount: 1,
+            totalDistanceKm: distanceKm,
+            totalDurationSeconds: row.duration_seconds,
+            averageSpeedKmh:
+              row.duration_seconds > 0
+                ? distanceKm / (row.duration_seconds / 3600)
+                : 0,
+            sourceIds: [row.history_id]
+          });
+          return;
+        }
+
+        const totalDistanceKm = existing.totalDistanceKm + distanceKm;
+        const totalDurationSeconds =
+          existing.totalDurationSeconds + row.duration_seconds;
+        summariesByDay.set(dayStartMillis, {
+          ...existing,
+          latestTimestamp: Math.max(existing.latestTimestamp, row.timestamp_millis),
+          sessionCount: existing.sessionCount + 1,
+          totalDistanceKm,
+          totalDurationSeconds,
+          averageSpeedKmh:
+            totalDurationSeconds > 0
+              ? totalDistanceKm / (totalDurationSeconds / 3600)
+              : 0,
+          sourceIds: [...existing.sourceIds, row.history_id]
+        });
+      });
+
+      return [...summariesByDay.values()].sort(
+        (left, right) => right.dayStartMillis - left.dayStartMillis
+      );
     }
   };
 }

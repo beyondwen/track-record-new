@@ -4,6 +4,7 @@ import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.UploadHttpRequest
 import com.wenhao.record.data.tracking.UploadHttpRequestExecutor
 import java.io.IOException
+import java.util.TimeZone
 
 class ProcessedHistoryUploadService(
     private val requestExecutor: UploadHttpRequestExecutor,
@@ -17,6 +18,7 @@ class ProcessedHistoryUploadService(
         rows: List<HistoryUploadRow>,
     ): HistoryUploadResult {
         return try {
+            val utcOffsetMinutes = TimeZone.getDefault().getOffset(System.currentTimeMillis()).div(60_000)
             val request = UploadHttpRequest(
                 url = "${config.workerBaseUrl.trim().trimEnd('/')}/processed-histories/batch",
                 method = "POST",
@@ -27,6 +29,7 @@ class ProcessedHistoryUploadService(
                 body = HistoryUploadPayloadCodec.encode(
                     deviceId = deviceId,
                     appVersion = appVersion,
+                    utcOffsetMinutes = utcOffsetMinutes,
                     rows = rows,
                 ),
             )

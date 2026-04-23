@@ -7,6 +7,7 @@ import com.wenhao.record.data.tracking.UploadHttpResponse
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.util.TimeZone
 
 sealed interface HistoryUploadResult {
     data class Success(
@@ -32,6 +33,7 @@ class HistoryUploadService(
         rows: List<HistoryUploadRow>,
     ): HistoryUploadResult {
         return try {
+            val utcOffsetMinutes = TimeZone.getDefault().getOffset(System.currentTimeMillis()).div(60_000)
             val request = UploadHttpRequest(
                 url = "${config.workerBaseUrl.trim().trimEnd('/')}/histories/batch",
                 method = "POST",
@@ -42,6 +44,7 @@ class HistoryUploadService(
                 body = HistoryUploadPayloadCodec.encode(
                     deviceId = deviceId,
                     appVersion = appVersion,
+                    utcOffsetMinutes = utcOffsetMinutes,
                     rows = rows,
                 ),
             )

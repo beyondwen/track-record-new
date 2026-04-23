@@ -25,7 +25,6 @@ internal object MainUiRefreshPolicy {
             MainTab.RECORD -> MainUiRefreshDecision(
                 warmUpHistory = true,
                 refreshDashboard = true,
-                refitMap = true,
             )
 
             MainTab.ABOUT -> MainUiRefreshDecision(
@@ -62,7 +61,6 @@ internal object MainUiRefreshPolicy {
 
             MainTab.RECORD -> MainUiRefreshDecision(
                 warmUpHistory = true,
-                refreshDashboard = true,
             )
 
             MainTab.ABOUT -> MainUiRefreshDecision()

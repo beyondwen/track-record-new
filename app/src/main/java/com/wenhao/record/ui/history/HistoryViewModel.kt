@@ -1,6 +1,7 @@
 package com.wenhao.record.ui.history
 
 import android.app.Application
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -8,11 +9,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.createSavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
+import com.wenhao.record.data.history.HistoryDaySummaryItem
 import com.wenhao.record.R
-import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.HistoryProjectionRecovery
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.history.RemoteHistoryRepository
+import com.wenhao.record.data.history.toSummaryItem
 import com.wenhao.record.data.local.TrackDatabase
 import com.wenhao.record.data.tracking.ContinuousPointStorage
 import kotlinx.coroutines.Dispatchers
@@ -24,6 +26,7 @@ import kotlinx.coroutines.withContext
 import java.util.Locale
 
 private const val KEY_SELECTED_DAY = "selected_day_start_millis"
+private const val REMOTE_HISTORY_REFRESH_THROTTLE_MS = 20_000L
 
 class HistoryViewModel(
     application: Application,
@@ -32,10 +35,12 @@ class HistoryViewModel(
     private val historyProjectionRecovery: HistoryProjectionRecovery = HistoryProjectionRecovery(),
 ) : AndroidViewModel(application) {
 
-    private var historyItems: List<HistoryDayItem> = emptyList()
+    private var historyItems: List<HistoryDaySummaryItem> = emptyList()
     private var cachedTotalDistanceKm = 0.0
     private var cachedTotalDurationSeconds = 0
     private var reloadGeneration = 0L
+    private var hasRemoteSummaryCache = false
+    private var lastRemoteSummaryRefreshElapsed = 0L
 
     private val _uiState = MutableStateFlow(
         HistoryScreenUiState(
@@ -52,35 +57,78 @@ class HistoryViewModel(
 
     fun reload() {
         val generation = nextReloadGeneration()
-        historyItems = HistoryStorage.peekDaily(getApplication())
+        val localItems = HistoryStorage.peekDaily(getApplication()).map { it.toSummaryItem() }
+        val hasFreshRemoteCache = hasRemoteSummaryCache &&
+            (SystemClock.elapsedRealtime() - lastRemoteSummaryRefreshElapsed) < REMOTE_HISTORY_REFRESH_THROTTLE_MS
+        historyItems = if (hasRemoteSummaryCache) {
+            mergeLocalWithCached(localItems)
+        } else {
+            localItems
+        }
+        val hasImmediateLocalItems = historyItems.isNotEmpty()
         recalculateTotals()
         updateContent()
 
         viewModelScope.launch(Dispatchers.IO) {
             val application = getApplication<Application>()
-            val recoveredItems = historyProjectionRecovery.rebuildProjectedItems(
-                existingHistories = HistoryStorage.load(application),
-                rawPoints = ContinuousPointStorage(
-                    TrackDatabase.getInstance(application).continuousTrackDao()
-                ).loadCurrentSessionPoints(limit = Int.MAX_VALUE),
-            )
-            if (recoveredItems.isNotEmpty()) {
-                HistoryStorage.upsertProjectedItems(
-                    context = application,
-                    projectedItems = recoveredItems,
-                )
+            if (!hasImmediateLocalItems && !hasRemoteSummaryCache) {
+                val existingHistories = HistoryStorage.load(application)
+                if (existingHistories.isEmpty()) {
+                    val recoveredItems = historyProjectionRecovery.rebuildProjectedItems(
+                        existingHistories = existingHistories,
+                        rawPoints = ContinuousPointStorage(
+                            TrackDatabase.getInstance(application).continuousTrackDao()
+                        ).loadCurrentSessionPoints(limit = Int.MAX_VALUE),
+                    )
+                    if (recoveredItems.isNotEmpty()) {
+                        HistoryStorage.upsertProjectedItems(
+                            context = application,
+                            projectedItems = recoveredItems,
+                        )
+                    }
+                }
+            }
+            if (hasFreshRemoteCache) {
+                return@launch
             }
 
-            val mergedDaily = try {
-                remoteHistoryRepository.loadMergedDaily(application)
+            val loadResult = try {
+                remoteHistoryRepository.loadDailySummaryState(application)
             } catch (_: Exception) {
-                emptyList()
+                RemoteHistoryRepository.DailySummaryLoadResult(
+                    items = localItems,
+                    remoteStatus = RemoteHistoryRepository.RemoteStatus.FAILURE,
+                )
             }
             withContext(Dispatchers.Main) {
                 if (generation != reloadGeneration) return@withContext
-                historyItems = mergedDaily
-                recalculateTotals()
-                updateContent()
+                when (loadResult.remoteStatus) {
+                    RemoteHistoryRepository.RemoteStatus.SUCCESS -> {
+                        historyItems = loadResult.items
+                        hasRemoteSummaryCache = true
+                        lastRemoteSummaryRefreshElapsed = SystemClock.elapsedRealtime()
+                        recalculateTotals()
+                        updateContent()
+                    }
+
+                    RemoteHistoryRepository.RemoteStatus.DISABLED -> {
+                        hasRemoteSummaryCache = false
+                        lastRemoteSummaryRefreshElapsed = 0L
+                        historyItems = loadResult.items
+                        recalculateTotals()
+                        updateContent()
+                    }
+
+                    RemoteHistoryRepository.RemoteStatus.FAILURE -> {
+                        hasRemoteSummaryCache = false
+                        lastRemoteSummaryRefreshElapsed = 0L
+                        if (loadResult.items.isNotEmpty()) {
+                            historyItems = loadResult.items
+                            recalculateTotals()
+                            updateContent()
+                        }
+                    }
+                }
             }
         }
     }
@@ -92,25 +140,33 @@ class HistoryViewModel(
         pushState()
     }
 
-    fun selectItem(item: HistoryDayItem) {
+    fun selectItem(item: HistoryDaySummaryItem) {
         selectedDayStartMillis = item.dayStartMillis
         pushState()
     }
 
-    fun deleteHistory(item: HistoryDayItem) {
+    suspend fun deleteHistory(item: HistoryDaySummaryItem): Boolean {
+        val deleted = withContext(Dispatchers.IO) {
+            remoteHistoryRepository.deleteDay(getApplication(), item)
+        }
+        if (!deleted) {
+            return false
+        }
+
         val updated = historyItems.toMutableList()
         val index = updated.indexOfFirst { it.dayStartMillis == item.dayStartMillis }
-        if (index == -1) return
-        updated.removeAt(index)
+        if (index != -1) {
+            updated.removeAt(index)
+        }
         historyItems = updated
         if (selectedDayStartMillis == item.dayStartMillis) {
             selectedDayStartMillis = historyItems.firstOrNull()?.dayStartMillis
         }
-        viewModelScope.launch(Dispatchers.IO) {
-            HistoryStorage.deleteMany(getApplication(), item.sourceIds)
-        }
+        hasRemoteSummaryCache = false
+        lastRemoteSummaryRefreshElapsed = 0L
         recalculateTotals()
         pushState()
+        return true
     }
 
     private fun pushState() {
@@ -126,6 +182,23 @@ class HistoryViewModel(
     private fun recalculateTotals() {
         cachedTotalDistanceKm = historyItems.sumOf { it.totalDistanceKm }
         cachedTotalDurationSeconds = historyItems.sumOf { it.totalDurationSeconds }
+    }
+
+    private fun mergeLocalWithCached(
+        localItems: List<HistoryDaySummaryItem>,
+    ): List<HistoryDaySummaryItem> {
+        val mergedByDay = historyItems.associateBy { item -> item.dayStartMillis }.toMutableMap()
+        localItems.forEach { localItem ->
+            val cachedItem = mergedByDay[localItem.dayStartMillis]
+            mergedByDay[localItem.dayStartMillis] = if (cachedItem == null) {
+                localItem
+            } else {
+                cachedItem.copy(
+                    sourceIds = if (localItem.sourceIds.isNotEmpty()) localItem.sourceIds else cachedItem.sourceIds,
+                )
+            }
+        }
+        return mergedByDay.values.sortedByDescending { it.dayStartMillis }
     }
 
     @Synchronized

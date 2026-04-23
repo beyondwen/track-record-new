@@ -19,6 +19,7 @@ data class TrackMapSceneState(
     val polylines: List<TrackMapPolyline> = emptyList(),
     val heatPoints: List<TrackMapHeatPoint> = emptyList(),
     val markers: List<TrackMapMarker> = emptyList(),
+    val currentLocation: GeoCoordinate? = null,
     val viewportRequest: TrackMapViewportRequest? = null,
 )
 

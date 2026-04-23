@@ -38,8 +38,19 @@ class UploadDeviceIdProviderTest {
         val first = uploadDeviceId(context)
         val second = uploadDeviceId(context)
 
-        assertFalse(first.isBlank())
+        assertEquals("wenhao151", first)
         assertEquals(first, second)
         assertEquals(first, prefs.getString(KEY_INSTALLATION_ID, null))
+    }
+
+    @Test
+    fun `replaces legacy installation id with fixed default`() {
+        prefs.edit().putString(KEY_INSTALLATION_ID, "legacy-device-id").apply()
+
+        val deviceId = uploadDeviceId(context)
+
+        assertEquals("wenhao151", deviceId)
+        assertEquals("wenhao151", prefs.getString(KEY_INSTALLATION_ID, null))
+        assertFalse(deviceId.isBlank())
     }
 }

@@ -79,6 +79,16 @@ export interface HistoryRecord {
   points: HistoryPoint[];
 }
 
+export interface HistoryDaySummary {
+  dayStartMillis: number;
+  latestTimestamp: number;
+  sessionCount: number;
+  totalDistanceKm: number;
+  totalDurationSeconds: number;
+  averageSpeedKmh: number;
+  sourceIds: number[];
+}
+
 export interface ValidatedRawPointBatchRequest {
   deviceId: string;
   appVersion: string;
@@ -94,6 +104,7 @@ export interface ValidatedAnalysisBatchRequest {
 export interface ValidatedHistoryBatchRequest {
   deviceId: string;
   appVersion: string;
+  utcOffsetMinutes: number;
   histories: HistoryRecord[];
 }
 
@@ -166,6 +177,7 @@ export interface ProcessedHistoryPersistence {
   persistHistories(
     deviceId: string,
     appVersion: string,
+    utcOffsetMinutes: number,
     histories: HistoryRecord[],
     env: Env
   ): Promise<PersistHistoriesResult>;
@@ -177,6 +189,20 @@ export interface ProcessedHistoryPersistence {
     dayStartMillis: number,
     env: Env
   ): Promise<HistoryRecord[]>;
+
+  deleteHistoriesByDay(
+    deviceId: string,
+    dayStartMillis: number,
+    env: Env
+  ): Promise<number>;
+}
+
+export interface HistoryDaySummaryPersistence {
+  readDays(
+    deviceId: string,
+    utcOffsetMinutes: number,
+    env: Env
+  ): Promise<HistoryDaySummary[]>;
 }
 
 export interface RawPointSuccessResponseBody extends PersistRawPointsResult {
@@ -194,6 +220,11 @@ export interface HistorySuccessResponseBody extends PersistHistoriesResult {
 export interface HistoryReadSuccessResponseBody {
   ok: true;
   histories: HistoryRecord[];
+}
+
+export interface HistoryDaySummaryReadSuccessResponseBody {
+  ok: true;
+  days: HistoryDaySummary[];
 }
 
 export interface RawPointReadSuccessResponseBody {

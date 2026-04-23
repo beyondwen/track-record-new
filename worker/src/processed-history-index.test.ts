@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { createApp } from "./index";
-import type { Env, ProcessedHistoryPersistence } from "./types";
+import type {
+  Env,
+  HistoryDaySummaryPersistence,
+  ProcessedHistoryPersistence
+} from "./types";
 
 const baseEnv: Env = {
   UPLOAD_TOKEN: "correct-token",
@@ -28,7 +32,7 @@ function createSemanticMockPersistence(
 ): ProcessedHistoryPersistence {
   const existing = new Set(existingHistoryIds);
   return {
-    async persistHistories(_deviceId, _appVersion, histories) {
+    async persistHistories(_deviceId, _appVersion, _utcOffsetMinutes, histories) {
       const acceptedHistoryIds = [...new Set(histories.map((history) => history.historyId))];
       const insertedHistoryIds = acceptedHistoryIds.filter(
         (historyId) => !existing.has(historyId)
@@ -82,6 +86,31 @@ function createSemanticMockPersistence(
           points: []
         }
       ];
+    },
+    async deleteHistoriesByDay() {
+      return 1;
+    }
+  };
+}
+
+function createMockHistoryDaySummaryPersistence(): HistoryDaySummaryPersistence {
+  return {
+    async readDays(deviceId, utcOffsetMinutes) {
+      if (deviceId !== "device-1") {
+        return [];
+      }
+      expect(utcOffsetMinutes).toBe(480);
+      return [
+        {
+          dayStartMillis: 1699920000000,
+          latestTimestamp: 1699923600000,
+          sessionCount: 2,
+          totalDistanceKm: 4.9,
+          totalDurationSeconds: 1120,
+          averageSpeedKmh: 15.75,
+          sourceIds: [501, 502]
+        }
+      ];
     }
   };
 }
@@ -123,6 +152,7 @@ describe("POST /processed-histories/batch", () => {
         JSON.stringify({
           deviceId: "device-1",
           appVersion: "1.0.22",
+          utcOffsetMinutes: 480,
           histories: [
             {
               historyId: 501,
@@ -222,6 +252,75 @@ describe("GET /processed-histories/day", () => {
           manualStartAt: null,
           manualStopAt: null,
           points: []
+        }
+      ]
+    });
+  });
+});
+
+describe("DELETE /processed-histories/day", () => {
+  it("deletes processed histories for a day through persistence", async () => {
+    let deletedArgs: { deviceId: string; dayStartMillis: number } | null = null;
+    const app = createApp({
+      processedHistoryPersistence: {
+        ...createSemanticMockPersistence(),
+        async deleteHistoriesByDay(deviceId, dayStartMillis) {
+          deletedArgs = { deviceId, dayStartMillis };
+          return 2;
+        }
+      }
+    });
+
+    const response = await invokeApp(
+      app,
+      requestFor(
+        "/processed-histories/day?deviceId=device-1&dayStartMillis=1699920000000",
+        "",
+        {
+          token: "correct-token",
+          method: "DELETE"
+        }
+      )
+    );
+
+    expect(deletedArgs).toEqual({
+      deviceId: "device-1",
+      dayStartMillis: 1699920000000
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      message: "deleted"
+    });
+  });
+});
+
+describe("GET /history-days", () => {
+  it("reads history day summaries from persistence", async () => {
+    const app = createApp({
+      historyDaySummaryPersistence: createMockHistoryDaySummaryPersistence()
+    });
+
+    const response = await invokeApp(
+      app,
+      requestFor("/history-days?deviceId=device-1&utcOffsetMinutes=480", "", {
+        token: "correct-token",
+        method: "GET"
+      })
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      days: [
+        {
+          dayStartMillis: 1699920000000,
+          latestTimestamp: 1699923600000,
+          sessionCount: 2,
+          totalDistanceKm: 4.9,
+          totalDurationSeconds: 1120,
+          averageSpeedKmh: 15.75,
+          sourceIds: [501, 502]
         }
       ]
     });

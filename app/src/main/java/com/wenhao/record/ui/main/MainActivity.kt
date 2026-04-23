@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.wenhao.record.R
@@ -71,11 +72,14 @@ class MainActivity : AppCompatActivity() {
     private var lastDashboardTrackingEnabled = false
     private var previewLocationCache: GeoCoordinate? = null
     private var previewLocationCachedAt = 0L
+    private var bestFreshLocation: Location? = null
+    private var freshLocationRequestStartedAt = 0L
     private var activeSessionPoints: List<TrackPoint> = emptyList()
     private var activeSessionLoadGeneration = 0L
     private var skipNextResumeContentRefresh = true
 
     private val defaultLatLng = GeoCoordinate(39.9042, 116.4074)
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val dataChangeListener = object : TrackDataChangeNotifier.Listener {
         override fun onDashboardDataChanged() {
             refreshDashboardContent()
@@ -92,6 +96,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
     private val freshLocationListener = android.location.LocationListener(::handleLocationUpdate)
+    private val freshLocationTimeoutRunnable = Runnable {
+        bestFreshLocation?.let(::applyFreshLocation) ?: stopLocationUpdates()
+    }
 
     private var mainViewModel: MainViewModel? = null
     private var dashboardViewModel: DashboardViewModel? = null
@@ -164,6 +171,7 @@ class MainActivity : AppCompatActivity() {
         warmUpHistoryCache()
         refreshDashboardContent()
         mainViewModel?.setCurrentTab(MainTab.RECORD)
+        syncRecordTabToCurrentLocation()
         refreshGpsStatus()
         permissionHelper.ensureSmartTrackingEnabled()
     }
@@ -174,9 +182,6 @@ class MainActivity : AppCompatActivity() {
         dashboardViewModel?.setRecordTabSelected(isRecord)
 
         applyRefreshDecision(MainUiRefreshPolicy.forTabSelection(tab))
-        if (tab == MainTab.RECORD) {
-            syncRecordTabToCurrentLocation()
-        }
     }
 
     private fun currentTab(): MainTab {
@@ -189,7 +194,6 @@ class MainActivity : AppCompatActivity() {
 
     private fun refreshHistoryContent() {
         historyViewModel?.reload()
-        historyViewModel?.updateContent()
     }
 
     private fun applyRefreshDecision(decision: MainUiRefreshDecision) {
@@ -445,9 +449,23 @@ class MainActivity : AppCompatActivity() {
             .setMessage(getString(R.string.compose_history_delete_message, item.displayTitle))
             .setNegativeButton(R.string.compose_history_delete_cancel, null)
             .setPositiveButton(R.string.compose_history_delete_confirm) { _, _ ->
-                historyViewModel?.deleteHistory(item)
-                refreshDashboardContent()
-                Toast.makeText(this, R.string.compose_history_delete_success, Toast.LENGTH_SHORT).show()
+                lifecycleScope.launch {
+                    val deleted = historyViewModel?.deleteHistory(item) == true
+                    if (deleted) {
+                        refreshDashboardContent()
+                        Toast.makeText(
+                            this@MainActivity,
+                            R.string.compose_history_delete_success,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity,
+                            R.string.compose_history_delete_failed,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                }
             }
             .show()
     }
@@ -594,8 +612,14 @@ class MainActivity : AppCompatActivity() {
         }
 
         stopLocationUpdates()
+        bestFreshLocation = null
+        freshLocationRequestStartedAt = System.currentTimeMillis()
+        mainHandler.postDelayed(
+            freshLocationTimeoutRunnable,
+            FreshLocationSelectionPolicy.MAX_WAIT_MILLIS,
+        )
         providers.forEach { provider ->
-            manager.requestLocationUpdates(provider, 1000L, 1f, freshLocationListener, Looper.getMainLooper())
+            manager.requestLocationUpdates(provider, 1_500L, 3f, freshLocationListener, Looper.getMainLooper())
         }
     }
 
@@ -618,10 +642,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun stopLocationUpdates() {
+        mainHandler.removeCallbacks(freshLocationTimeoutRunnable)
+        bestFreshLocation = null
+        freshLocationRequestStartedAt = 0L
         locationManager?.removeUpdates(freshLocationListener)
     }
 
     private fun handleLocationUpdate(location: Location) {
+        if (FreshLocationSelectionPolicy.shouldReplaceBest(bestFreshLocation, location)) {
+            bestFreshLocation = location
+        }
+        val bestLocation = bestFreshLocation ?: location
+        if (!FreshLocationSelectionPolicy.shouldFinish(
+                bestLocation = bestLocation,
+                requestStartedAt = freshLocationRequestStartedAt,
+                now = System.currentTimeMillis(),
+            )
+        ) {
+            return
+        }
+        applyFreshLocation(bestLocation)
+    }
+
+    private fun applyFreshLocation(location: Location) {
         val previewLocation = toMapCoordinate(location)
         previewLocationCache = previewLocation
         previewLocationCachedAt = System.currentTimeMillis()

@@ -9,6 +9,7 @@ import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.tracking.TrackingPhase
 import com.wenhao.record.map.GeoCoordinate
+import com.wenhao.record.ui.map.HistoryMapGeometryLimiter
 import com.wenhao.record.ui.map.TrackMapPolyline
 import com.wenhao.record.ui.map.TrackPolylineBuilder
 import com.wenhao.record.ui.map.TrackMapSceneState
@@ -123,10 +124,12 @@ class HomeMapController : HomeMapPort {
 
     private fun renderTrackHeatmap() {
         val renderableSegments = TrackPathSanitizer.renderableSegments(currentTrackSegments)
-        activeTrackPolylines = TrackPolylineBuilder.build(
+        activeTrackPolylines = TrackPolylineBuilder.buildCompact(
             segments = renderableSegments,
             idPrefix = "active",
             width = 6.0,
+            maxPointsPerSegment = 240,
+            altitudeBuckets = 6,
         )
     }
 
@@ -170,10 +173,15 @@ class HomeMapController : HomeMapPort {
             todayTrackPoints.addAll(geoPoints)
             sourceSegments.addAll(renderableSegments)
         }
-        todayTrackPolylines = TrackPolylineBuilder.build(
-            segments = sourceSegments,
+        val limitedSegments = HistoryMapGeometryLimiter.limitSegments(sourceSegments)
+        todayTrackPoints.clear()
+        todayTrackPoints.addAll(limitedSegments.flatten().map(TrackPoint::toGeoCoordinate))
+        todayTrackPolylines = TrackPolylineBuilder.buildCompact(
+            segments = limitedSegments,
             idPrefix = "today",
             width = 4.6,
+            maxPointsPerSegment = 90,
+            altitudeBuckets = 2,
         )
 
         if (todayTrackPoints.isNotEmpty() && shouldRefit) {

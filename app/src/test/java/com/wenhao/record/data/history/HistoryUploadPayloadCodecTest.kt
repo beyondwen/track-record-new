@@ -15,6 +15,7 @@ class HistoryUploadPayloadCodecTest {
             HistoryUploadPayloadCodec.encode(
                 deviceId = "device-1",
                 appVersion = "1.0.22",
+                utcOffsetMinutes = 480,
                 rows = listOf(
                     HistoryUploadRow(
                         historyId = 7L,
@@ -45,6 +46,7 @@ class HistoryUploadPayloadCodecTest {
 
         assertEquals("device-1", payload.getString("deviceId"))
         assertEquals("1.0.22", payload.getString("appVersion"))
+        assertEquals(480, payload.getInt("utcOffsetMinutes"))
         val histories = payload.getJSONArray("histories")
         assertEquals(1, histories.length())
         val row = histories.getJSONObject(0)
@@ -100,6 +102,7 @@ class HistoryUploadPayloadCodecTest {
                 HistoryUploadPayloadCodec.encode(
                     deviceId = "device-1",
                     appVersion = "1.0.22",
+                    utcOffsetMinutes = 480,
                     rows = listOf(row),
                 )
             ).getJSONArray("histories")

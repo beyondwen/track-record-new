@@ -40,10 +40,8 @@ import com.mapbox.maps.extension.compose.MapEffect
 import com.mapbox.maps.extension.compose.rememberMapState
 import com.mapbox.maps.extension.compose.animation.viewport.rememberMapViewportState
 import com.mapbox.maps.extension.compose.annotation.generated.PointAnnotation
-import com.mapbox.maps.extension.compose.annotation.generated.PolylineAnnotation
 import com.mapbox.maps.extension.compose.annotation.IconImage
 import com.mapbox.maps.extension.style.layers.properties.generated.IconAnchor
-import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
 import com.mapbox.maps.plugin.PuckBearing
 import com.mapbox.maps.plugin.gestures.generated.GesturesSettings
 import com.mapbox.maps.plugin.gestures.gestures
@@ -51,6 +49,7 @@ import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
+import com.wenhao.record.map.GeoMath
 import com.wenhao.record.map.MapMarkerIconFactory
 import com.wenhao.record.ui.designsystem.TrackMapCenterIndicator
 import kotlinx.coroutines.flow.first
@@ -69,6 +68,7 @@ fun TrackMapboxCanvas(
     showUserLocationPuck: Boolean = false,
     interactive: Boolean = true,
     onUserGestureMove: (() -> Unit)? = null,
+    onUserLocationPuckClick: (() -> Unit)? = null,
     snapshotCacheKey: String? = null,
     onSnapshotCached: (() -> Unit)? = null,
 ) {
@@ -106,7 +106,8 @@ fun TrackMapboxCanvas(
     }
     var snapshotRequested by remember(snapshotCacheKey) { mutableStateOf(false) }
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
-    val shouldCaptureSnapshot = !interactive && !snapshotCacheKey.isNullOrBlank()
+    val shouldCaptureSnapshot = !snapshotCacheKey.isNullOrBlank() && snapshotBitmap == null
+    val shouldDisplaySnapshot = !interactive && snapshotBitmap != null
     val density = LocalDensity.current
     val indicatorOffset = remember(viewportPadding, density) {
         with(density) {
@@ -116,51 +117,17 @@ fun TrackMapboxCanvas(
             )
         }
     }
-    snapshotBitmap?.let { bitmap ->
-        Box(modifier = modifier.fillMaxSize()) {
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop,
-            )
-            if (showCenterIndicator) {
-                TrackMapCenterIndicator(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .offset { indicatorOffset },
-                )
-            }
-        }
-        return
-    }
-
     val context = LocalContext.current
     val mapViewportState = rememberMapViewportState()
     var gestureHost by remember { mutableStateOf<MoveGestureListenerHost?>(null) }
     val moveGestureBinding = remember { MoveGestureListenerBinding() }
     val mapState = rememberMapState(
         key = buildString {
-            append(if (interactive) "interactive" else "static-preview")
+            append("dashboard-map")
             if (!snapshotCacheKey.isNullOrBlank()) append("-").append(snapshotCacheKey)
         }
     ) {
-        gesturesSettings = GesturesSettings {
-            rotateEnabled = interactive
-            pinchToZoomEnabled = interactive
-            scrollEnabled = interactive
-            simultaneousRotateAndPinchToZoomEnabled = interactive
-            pitchEnabled = interactive
-            doubleTapToZoomInEnabled = interactive
-            doubleTouchToZoomOutEnabled = interactive
-            quickZoomEnabled = interactive
-            pinchToZoomDecelerationEnabled = interactive
-            rotateDecelerationEnabled = interactive
-            scrollDecelerationEnabled = interactive
-            increaseRotateThresholdWhenPinchingToZoom = interactive
-            increasePinchToZoomThresholdWhenRotating = interactive
-            pinchScrollEnabled = interactive
-        }
+        gesturesSettings = GesturesSettings {}
     }
     val resolvedPadding = remember(viewportPadding, density) {
         with(density) {
@@ -190,20 +157,26 @@ fun TrackMapboxCanvas(
             modifier = Modifier.fillMaxSize(),
             mapViewportState = mapViewportState,
             mapState = mapState,
+            onMapClickListener = { clickedPoint ->
+                val currentLocation = state.currentLocation
+                val didHitPuck = currentLocation != null &&
+                    GeoMath.distanceMeters(
+                        clickedPoint.latitude(),
+                        clickedPoint.longitude(),
+                        currentLocation.latitude,
+                        currentLocation.longitude,
+                    ) <= USER_LOCATION_PUCK_HIT_RADIUS_METERS
+                if (didHitPuck) {
+                    onUserLocationPuckClick?.invoke()
+                }
+                didHitPuck
+            },
             compass = {},
             scaleBar = {},
         ) {
-            state.polylines.forEach { polyline ->
-                key(polyline.id) {
-                    val mapboxPoints = remember(polyline.points) {
-                        polyline.points.map { it.toMapboxPoint() }
-                    }
-                    PolylineAnnotation(points = mapboxPoints) {
-                        lineColor = Color(polyline.colorArgb)
-                        lineWidth = polyline.width
-                        lineJoin = LineJoin.ROUND
-                        lineOpacity = 0.96
-                    }
+            MapEffect(state.polylines) { mapView ->
+                mapView.mapboxMap.style?.let { style ->
+                    TrackRouteStyleLayerManager.render(style, state.polylines)
                 }
             }
 
@@ -260,6 +233,25 @@ fun TrackMapboxCanvas(
                 gestureHost = MapboxMoveGestureListenerHost(mapView)
             }
 
+            MapEffect(interactive) { mapView ->
+                mapView.gestures.updateSettings {
+                    rotateEnabled = interactive
+                    pinchToZoomEnabled = interactive
+                    scrollEnabled = interactive
+                    simultaneousRotateAndPinchToZoomEnabled = interactive
+                    pitchEnabled = interactive
+                    doubleTapToZoomInEnabled = interactive
+                    doubleTouchToZoomOutEnabled = interactive
+                    quickZoomEnabled = interactive
+                    pinchToZoomDecelerationEnabled = interactive
+                    rotateDecelerationEnabled = interactive
+                    scrollDecelerationEnabled = interactive
+                    increaseRotateThresholdWhenPinchingToZoom = interactive
+                    increasePinchToZoomThresholdWhenRotating = interactive
+                    pinchScrollEnabled = interactive
+                }
+            }
+
             MapEffect(showUserLocationPuck) { mapView ->
                 mapView.location.updateSettings {
                     enabled = showUserLocationPuck
@@ -269,6 +261,17 @@ fun TrackMapboxCanvas(
                     showAccuracyRing = false
                     pulsingEnabled = false
                 }
+            }
+        }
+
+        if (shouldDisplaySnapshot) {
+            snapshotBitmap?.let { bitmap ->
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop,
+                )
             }
         }
 
@@ -314,7 +317,7 @@ fun TrackMapboxCanvas(
     }
 
     LaunchedEffect(shouldCaptureSnapshot, state.viewportRequest?.sequence) {
-        if (shouldCaptureSnapshot && snapshotBitmap == null && !snapshotRequested) {
+        if (shouldCaptureSnapshot && !snapshotRequested) {
             mapState.mapIdleEvents.first()
             snapshotRequested = true
         }
@@ -331,6 +334,8 @@ fun TrackMapboxCanvas(
         }
     }
 }
+
+private const val USER_LOCATION_PUCK_HIT_RADIUS_METERS = 45f
 
 @Composable
 private fun MapboxUnavailablePlaceholder(modifier: Modifier = Modifier) {

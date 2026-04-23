@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.wenhao.record.R
+import com.wenhao.record.data.history.HistoryDayAggregator
 import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.tracking.AutoTrackUiState
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
@@ -55,8 +56,9 @@ class DashboardUiController(
         state: AutoTrackUiState,
         todayHistoryItems: List<HistoryItem>,
     ) {
-        val displayDistanceKm = todayHistoryItems.sumOf { it.distanceKm }
-        val durationSeconds = todayHistoryItems.sumOf { it.durationSeconds }
+        val todayDays = HistoryDayAggregator.aggregate(todayHistoryItems)
+        val displayDistanceKm = todayDays.sumOf { it.totalDistanceKm }
+        val durationSeconds = todayDays.sumOf { it.totalDurationSeconds }
         val averageSpeed = if (durationSeconds > 0) {
             displayDistanceKm / (durationSeconds / 3600.0)
         } else {

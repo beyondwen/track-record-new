@@ -1,6 +1,7 @@
 import { authenticateRequest } from "./auth";
 import {
   createD1AnalysisPersistence,
+  createD1HistoryDaySummaryPersistence,
   createD1RawPointPersistence,
   createD1HistoryPersistence,
   createD1ProcessedHistoryPersistence
@@ -11,6 +12,8 @@ import type {
   AppConfigSuccessResponseBody,
   Env,
   ErrorResponseBody,
+  HistoryDaySummaryPersistence,
+  HistoryDaySummaryReadSuccessResponseBody,
   HistoryPersistence,
   ProcessedHistoryPersistence,
   HistoryReadSuccessResponseBody,
@@ -36,6 +39,7 @@ export type {
 interface AppDependencies {
   historyPersistence?: HistoryPersistence;
   processedHistoryPersistence?: ProcessedHistoryPersistence;
+  historyDaySummaryPersistence?: HistoryDaySummaryPersistence;
   rawPointPersistence?: RawPointPersistence;
   analysisPersistence?: AnalysisPersistence;
 }
@@ -50,6 +54,7 @@ function jsonResponse(
     | AppConfigSuccessResponseBody
     | HistorySuccessResponseBody
     | HistoryReadSuccessResponseBody
+    | HistoryDaySummaryReadSuccessResponseBody
     | RawPointReadSuccessResponseBody
     | RawPointDayReadSuccessResponseBody
     | RawPointSuccessResponseBody
@@ -111,6 +116,8 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
     deps.historyPersistence ?? createD1HistoryPersistence();
   const processedHistoryPersistence =
     deps.processedHistoryPersistence ?? createD1ProcessedHistoryPersistence();
+  const historyDaySummaryPersistence =
+    deps.historyDaySummaryPersistence ?? createD1HistoryDaySummaryPersistence();
   const rawPointPersistence =
     deps.rawPointPersistence ?? createD1RawPointPersistence();
   const analysisPersistence =
@@ -140,6 +147,7 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
         url.pathname !== "/processed-histories" &&
         url.pathname !== "/processed-histories/day" &&
         url.pathname !== "/processed-histories/batch" &&
+        url.pathname !== "/history-days" &&
         url.pathname !== "/raw-points/days" &&
         url.pathname !== "/raw-points/day" &&
         url.pathname !== "/raw-points/batch" &&
@@ -217,7 +225,10 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           url.pathname === "/processed-histories" ||
           url.pathname === "/processed-histories/day"
         ) {
-          if (request.method !== "GET") {
+          if (
+            request.method !== "GET" &&
+            !(url.pathname === "/processed-histories/day" && request.method === "DELETE")
+          ) {
             return jsonResponse(405, {
               ok: false,
               message: "Method not allowed"
@@ -228,6 +239,21 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
             url.searchParams.get("deviceId"),
             "`deviceId`"
           );
+          if (url.pathname === "/processed-histories/day" && request.method === "DELETE") {
+            await processedHistoryPersistence.deleteHistoriesByDay(
+              deviceId,
+              parseRequiredQueryInteger(
+                url.searchParams.get("dayStartMillis"),
+                "`dayStartMillis`"
+              ),
+              env
+            );
+
+            return jsonResponse(200, {
+              ok: true,
+              message: "deleted"
+            });
+          }
           const histories =
             url.pathname === "/processed-histories/day"
               ? await processedHistoryPersistence.readHistoriesByDay(
@@ -243,6 +269,38 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           return jsonResponse(200, {
             ok: true,
             histories
+          });
+        }
+
+        if (url.pathname === "/history-days") {
+          if (request.method !== "GET") {
+            return jsonResponse(405, {
+              ok: false,
+              message: "Method not allowed"
+            });
+          }
+
+          const deviceId = parseRequiredQueryString(
+            url.searchParams.get("deviceId"),
+            "`deviceId`"
+          );
+          const utcOffsetMinutesParam = url.searchParams.get("utcOffsetMinutes");
+          const utcOffsetMinutes =
+            utcOffsetMinutesParam === null
+              ? 0
+              : parseRequiredQueryInteger(
+                  utcOffsetMinutesParam,
+                  "`utcOffsetMinutes`"
+                );
+          const days = await historyDaySummaryPersistence.readDays(
+            deviceId,
+            utcOffsetMinutes,
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            days
           });
         }
 
@@ -361,6 +419,7 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           const persisted = await processedHistoryPersistence.persistHistories(
             validated.deviceId,
             validated.appVersion,
+            validated.utcOffsetMinutes,
             validated.histories,
             env
           );

@@ -6,12 +6,6 @@ import android.util.LruCache
 internal object TrackMapSnapshotCache {
     private val cache = object : LruCache<String, Bitmap>(maxSizeInKb()) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
-
-        override fun entryRemoved(evicted: Boolean, key: String, oldValue: Bitmap, newValue: Bitmap?) {
-            if (evicted && !oldValue.isRecycled) {
-                oldValue.recycle()
-            }
-        }
     }
 
     fun get(key: String): Bitmap? = cache.get(key)

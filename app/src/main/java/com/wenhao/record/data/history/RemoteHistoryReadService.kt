@@ -9,6 +9,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.URLEncoder
+import java.util.TimeZone
 
 sealed interface RemoteHistoryReadResult {
     data class Success(
@@ -20,9 +21,44 @@ sealed interface RemoteHistoryReadResult {
     ) : RemoteHistoryReadResult
 }
 
+sealed interface RemoteHistoryDaySummaryReadResult {
+    data class Success(
+        val items: List<HistoryDaySummaryItem>,
+    ) : RemoteHistoryDaySummaryReadResult
+
+    data class Failure(
+        val message: String,
+    ) : RemoteHistoryDaySummaryReadResult
+}
+
+sealed interface RemoteHistoryMutationResult {
+    object Success : RemoteHistoryMutationResult
+
+    data class Failure(
+        val message: String,
+    ) : RemoteHistoryMutationResult
+}
+
 class RemoteHistoryReadService(
     private val requestExecutor: UploadHttpRequestExecutor = ::executeWithHttpUrlConnection,
 ) {
+    fun loadDays(
+        config: TrainingSampleUploadConfig,
+        deviceId: String,
+        utcOffsetMinutes: Int = TimeZone.getDefault().getOffset(System.currentTimeMillis()).div(60_000),
+    ): RemoteHistoryDaySummaryReadResult {
+        return executeDaySummaryRead(
+            url = buildString {
+                append(config.workerBaseUrl.trim().trimEnd('/'))
+                append("/history-days?deviceId=")
+                append(deviceId.encodeUrlQuery())
+                append("&utcOffsetMinutes=")
+                append(utcOffsetMinutes)
+            },
+            token = config.uploadToken,
+        )
+    }
+
     fun loadAll(
         config: TrainingSampleUploadConfig,
         deviceId: String,
@@ -39,6 +75,24 @@ class RemoteHistoryReadService(
         dayStartMillis: Long,
     ): RemoteHistoryReadResult {
         return executeRead(
+            url = buildString {
+                append(config.workerBaseUrl.trim().trimEnd('/'))
+                append("/processed-histories/day?deviceId=")
+                append(deviceId.encodeUrlQuery())
+                append("&dayStartMillis=")
+                append(dayStartMillis)
+            },
+            token = config.uploadToken,
+        )
+    }
+
+    fun deleteByDay(
+        config: TrainingSampleUploadConfig,
+        deviceId: String,
+        dayStartMillis: Long,
+    ): RemoteHistoryMutationResult {
+        return executeMutation(
+            method = "DELETE",
             url = buildString {
                 append(config.workerBaseUrl.trim().trimEnd('/'))
                 append("/processed-histories/day?deviceId=")
@@ -71,6 +125,49 @@ class RemoteHistoryReadService(
         }
     }
 
+    private fun executeDaySummaryRead(
+        url: String,
+        token: String,
+    ): RemoteHistoryDaySummaryReadResult {
+        return try {
+            val request = UploadHttpRequest(
+                url = url,
+                method = "GET",
+                headers = mapOf(
+                    "Authorization" to "Bearer $token",
+                    "Accept" to "application/json",
+                ),
+            )
+            parseDaySummaryResponse(requestExecutor.invoke(request))
+        } catch (_: IOException) {
+            RemoteHistoryDaySummaryReadResult.Failure(REMOTE_HISTORY_NETWORK_FAILURE_MESSAGE)
+        } catch (_: Exception) {
+            RemoteHistoryDaySummaryReadResult.Failure(REMOTE_HISTORY_GENERIC_FAILURE_MESSAGE)
+        }
+    }
+
+    private fun executeMutation(
+        method: String,
+        url: String,
+        token: String,
+    ): RemoteHistoryMutationResult {
+        return try {
+            val request = UploadHttpRequest(
+                url = url,
+                method = method,
+                headers = mapOf(
+                    "Authorization" to "Bearer $token",
+                    "Accept" to "application/json",
+                ),
+            )
+            parseMutationResponse(requestExecutor.invoke(request))
+        } catch (_: IOException) {
+            RemoteHistoryMutationResult.Failure(REMOTE_HISTORY_NETWORK_FAILURE_MESSAGE)
+        } catch (_: Exception) {
+            RemoteHistoryMutationResult.Failure(REMOTE_HISTORY_GENERIC_FAILURE_MESSAGE)
+        }
+    }
+
     private fun parseResponse(response: UploadHttpResponse): RemoteHistoryReadResult {
         if (response.statusCode == 401 || response.statusCode == 403) {
             return RemoteHistoryReadResult.Failure(REMOTE_HISTORY_AUTH_FAILURE_MESSAGE)
@@ -93,6 +190,52 @@ class RemoteHistoryReadService(
         return RemoteHistoryReadResult.Success(
             histories = parseHistories(json.optJSONArray("histories"))
         )
+    }
+
+    private fun parseDaySummaryResponse(response: UploadHttpResponse): RemoteHistoryDaySummaryReadResult {
+        if (response.statusCode == 401 || response.statusCode == 403) {
+            return RemoteHistoryDaySummaryReadResult.Failure(REMOTE_HISTORY_AUTH_FAILURE_MESSAGE)
+        }
+
+        if (response.statusCode !in 200..299) {
+            return RemoteHistoryDaySummaryReadResult.Failure(
+                parseMessage(response.body) ?: REMOTE_HISTORY_GENERIC_FAILURE_MESSAGE
+            )
+        }
+
+        val json = parseJson(response.body)
+            ?: return RemoteHistoryDaySummaryReadResult.Failure(REMOTE_HISTORY_GENERIC_FAILURE_MESSAGE)
+        if (!json.optBoolean("ok", false)) {
+            return RemoteHistoryDaySummaryReadResult.Failure(
+                parseMessage(json) ?: REMOTE_HISTORY_GENERIC_FAILURE_MESSAGE
+            )
+        }
+
+        return RemoteHistoryDaySummaryReadResult.Success(
+            items = parseDaySummaries(json.optJSONArray("days"))
+        )
+    }
+
+    private fun parseMutationResponse(response: UploadHttpResponse): RemoteHistoryMutationResult {
+        if (response.statusCode == 401 || response.statusCode == 403) {
+            return RemoteHistoryMutationResult.Failure(REMOTE_HISTORY_AUTH_FAILURE_MESSAGE)
+        }
+
+        if (response.statusCode !in 200..299) {
+            return RemoteHistoryMutationResult.Failure(
+                parseMessage(response.body) ?: REMOTE_HISTORY_GENERIC_FAILURE_MESSAGE
+            )
+        }
+
+        val json = parseJson(response.body)
+            ?: return RemoteHistoryMutationResult.Failure(REMOTE_HISTORY_GENERIC_FAILURE_MESSAGE)
+        if (!json.optBoolean("ok", false)) {
+            return RemoteHistoryMutationResult.Failure(
+                parseMessage(json) ?: REMOTE_HISTORY_GENERIC_FAILURE_MESSAGE
+            )
+        }
+
+        return RemoteHistoryMutationResult.Success
     }
 
     private fun parseHistories(items: JSONArray?): List<HistoryItem> {
@@ -141,6 +284,29 @@ class RemoteHistoryReadService(
                 )
             }
         }
+    }
+
+    private fun parseDaySummaries(items: JSONArray?): List<HistoryDaySummaryItem> {
+        if (items == null) return emptyList()
+        return buildList {
+            for (index in 0 until items.length()) {
+                val item = items.optJSONObject(index) ?: continue
+                val dayStartMillis = item.optLongOrNull("dayStartMillis") ?: continue
+                val latestTimestamp = item.optLongOrNull("latestTimestamp") ?: continue
+                val sessionCount = item.optLongOrNull("sessionCount")?.toInt() ?: continue
+                add(
+                    HistoryDaySummaryItem(
+                        dayStartMillis = dayStartMillis,
+                        latestTimestamp = latestTimestamp,
+                        sessionCount = sessionCount,
+                        totalDistanceKm = item.optFiniteDouble("totalDistanceKm") ?: 0.0,
+                        totalDurationSeconds = item.optLongOrNull("totalDurationSeconds")?.toInt() ?: 0,
+                        averageSpeedKmh = item.optFiniteDouble("averageSpeedKmh") ?: 0.0,
+                        sourceIds = item.optLongList("sourceIds"),
+                    )
+                )
+            }
+        }.sortedByDescending { it.dayStartMillis }
     }
 
     private fun parseMessage(body: String): String? {
@@ -198,6 +364,18 @@ class RemoteHistoryReadService(
             }
         } else {
             null
+        }
+    }
+
+    private fun JSONObject.optLongList(key: String): List<Long> {
+        val array = optJSONArray(key) ?: return emptyList()
+        return buildList {
+            for (index in 0 until array.length()) {
+                when (val value = array.opt(index)) {
+                    is Number -> add(value.toLong())
+                    is String -> value.toLongOrNull()?.let(::add)
+                }
+            }
         }
     }
 }

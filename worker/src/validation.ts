@@ -76,6 +76,13 @@ function parseOptionalInteger(value: unknown, label: string): number | null {
   return value as number;
 }
 
+function parseRequiredInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value)) {
+    throw new ValidationError(`${label} must be an integer`);
+  }
+  return value as number;
+}
+
 function parseOptionalFiniteNumber(value: unknown, label: string): number | null {
   if (value === undefined || value === null) {
     return null;
@@ -541,6 +548,10 @@ export function validateHistoryBatchRequest(
       payload.appVersion,
       "`appVersion`",
       MAX_APP_VERSION_LENGTH
+    ),
+    utcOffsetMinutes: parseRequiredInteger(
+      payload.utcOffsetMinutes,
+      "`utcOffsetMinutes`"
     ),
     histories: payload.histories.map((history, index) => parseHistory(history, index))
   };

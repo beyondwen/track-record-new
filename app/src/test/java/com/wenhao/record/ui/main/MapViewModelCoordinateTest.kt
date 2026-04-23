@@ -1,15 +1,18 @@
 package com.wenhao.record.ui.main
 
 import android.app.Application
+import android.os.Looper
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.ui.map.TrackMapViewportRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
@@ -63,12 +66,70 @@ class MapViewModelCoordinateTest {
         assertEquals(historyPointA.wgs84Longitude ?: Double.NaN, viewportRequest.coordinates.first().longitude, 1e-6)
     }
 
+    @Test
+    fun `render limits today route overlays to keep map tab responsive`() {
+        val viewModel = MapViewModel(application, SavedStateHandle())
+        val now = System.currentTimeMillis()
+        val historyItems = List(80) { index ->
+            HistoryItem(
+                id = index.toLong(),
+                timestamp = now - index * 1_000L,
+                distanceKm = 0.1,
+                durationSeconds = 60,
+                averageSpeedKmh = 6.0,
+                points = listOf(
+                    TrackPoint(
+                        latitude = 30.0 + index * 0.0001,
+                        longitude = 104.0,
+                        timestampMillis = now + index * 10_000L,
+                    ),
+                    TrackPoint(
+                        latitude = 30.0005 + index * 0.0001,
+                        longitude = 104.0005,
+                        timestampMillis = now + index * 10_000L + 5_000L,
+                    ),
+                ),
+            )
+        }
+
+        viewModel.render(
+            runtimeSnapshot = null,
+            previewLocation = null,
+            todayHistoryItems = historyItems,
+            activeSessionPoints = emptyList(),
+        )
+
+        waitUntil(timeoutMs = 2_000L) {
+            viewModel.renderState.value.polylines.isNotEmpty()
+        }
+
+        assertTrue(viewModel.renderState.value.polylines.size <= 36)
+    }
+
+    @Test
+    fun `tiny non centered location movement is ignored to avoid puck jitter`() {
+        val viewModel = MapViewModel(application, SavedStateHandle())
+        val first = GeoCoordinate(latitude = 30.0, longitude = 104.0)
+
+        viewModel.updateCurrentLocation(first, shouldCenter = false)
+        val initialState = viewModel.renderState.value
+
+        viewModel.updateCurrentLocation(
+            GeoCoordinate(latitude = 30.000005, longitude = 104.000005),
+            shouldCenter = false,
+        )
+
+        assertEquals(initialState, viewModel.renderState.value)
+    }
+
     private fun waitUntil(timeoutMs: Long, condition: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (System.currentTimeMillis() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle()
             if (condition()) return
             Thread.sleep(20)
         }
+        shadowOf(Looper.getMainLooper()).idle()
         check(condition()) { "Condition was not met within ${timeoutMs}ms" }
     }
 }

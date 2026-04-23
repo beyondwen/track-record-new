@@ -9,6 +9,47 @@ import org.junit.Test
 class RemoteHistoryReadServiceTest {
 
     @Test
+    fun `loadDays requests summary endpoint with timezone offset and parses days`() {
+        val service = RemoteHistoryReadService(
+            requestExecutor = { request ->
+                assertEquals("GET", request.method)
+                assertEquals(
+                    "https://worker.example.com/history-days?deviceId=device-1&utcOffsetMinutes=480",
+                    request.url,
+                )
+                assertEquals("Bearer token-123", request.headers["Authorization"])
+                UploadHttpResponse(
+                    statusCode = 200,
+                    body = """
+                        {"ok":true,"days":[
+                          {
+                            "dayStartMillis":1713974400000,
+                            "latestTimestamp":1714020000000,
+                            "sessionCount":2,
+                            "totalDistanceKm":12.3,
+                            "totalDurationSeconds":3600,
+                            "averageSpeedKmh":12.3,
+                            "sourceIds":[8,7]
+                          }
+                        ]}
+                    """.trimIndent(),
+                )
+            },
+        )
+
+        val result = service.loadDays(
+            config = validConfig(),
+            deviceId = "device-1",
+            utcOffsetMinutes = 480,
+        )
+
+        assertTrue(result is RemoteHistoryDaySummaryReadResult.Success)
+        val success = result as RemoteHistoryDaySummaryReadResult.Success
+        assertEquals(listOf(1713974400000L), success.items.map { it.dayStartMillis })
+        assertEquals(12.3, success.items.first().totalDistanceKm, 0.0001)
+    }
+
+    @Test
     fun `loadAll requests histories endpoint and parses items`() {
         val service = RemoteHistoryReadService(
             requestExecutor = { request ->
@@ -87,6 +128,32 @@ class RemoteHistoryReadServiceTest {
 
         assertTrue(result is RemoteHistoryReadResult.Success)
         assertEquals(listOf(9L), (result as RemoteHistoryReadResult.Success).histories.map { it.id })
+    }
+
+    @Test
+    fun `deleteByDay requests delete endpoint and returns success`() {
+        val service = RemoteHistoryReadService(
+            requestExecutor = { request ->
+                assertEquals("DELETE", request.method)
+                assertEquals(
+                    "https://worker.example.com/processed-histories/day?deviceId=device-1&dayStartMillis=1713398400000",
+                    request.url,
+                )
+                assertEquals("Bearer token-123", request.headers["Authorization"])
+                UploadHttpResponse(
+                    statusCode = 200,
+                    body = """{"ok":true,"message":"deleted"}""",
+                )
+            },
+        )
+
+        val result = service.deleteByDay(
+            config = validConfig(),
+            deviceId = "device-1",
+            dayStartMillis = 1713398400000,
+        )
+
+        assertTrue(result is RemoteHistoryMutationResult.Success)
     }
 
     @Test

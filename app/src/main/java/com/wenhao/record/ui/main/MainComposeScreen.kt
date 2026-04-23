@@ -1,6 +1,5 @@
 package com.wenhao.record.ui.main
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +18,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
@@ -27,6 +25,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import com.wenhao.record.R
 import com.wenhao.record.ui.dashboard.DashboardOverlayUiState
@@ -43,7 +42,6 @@ import com.wenhao.record.ui.history.HistoryScreenUiState
 import com.wenhao.record.ui.map.TrackMapSceneState
 import com.wenhao.record.ui.map.TrackMapViewportPadding
 import com.wenhao.record.ui.map.TrackMapboxCanvas
-import kotlinx.coroutines.delay
 
 @Composable
 fun MainComposeScreen(
@@ -72,47 +70,62 @@ fun MainComposeScreen(
     onHistoryDelete: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val isRecordTab = currentTab == MainTab.RECORD
     Box(modifier = modifier.fillMaxSize()) {
-        TrackAtmosphericBackground()
+        DashboardRoot(
+            dashboardState = dashboardState,
+            overlayState = dashboardOverlayState,
+            mapState = dashboardMapState,
+            mapboxAccessToken = mapboxAccessToken,
+            onHistoryTabClick = onHistoryTabClick,
+            onAboutTabClick = onAboutTabClick,
+            onLocateClick = onLocateClick,
+            isRecordVisible = isRecordTab,
+        )
+
         when (currentTab) {
+            MainTab.RECORD -> Unit
+
             MainTab.HISTORY -> {
-                HistoryComposeScreen(
-                    state = historyState,
-                    onRecordClick = onRecordTabClick,
-                    onSettingsClick = onAboutTabClick,
-                    onHistoryClick = { onHistoryOpen(it.dayStartMillis) },
-                    onHistoryLongClick = { onHistoryDelete(it.dayStartMillis) },
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(4f),
+                ) {
+                    TrackAtmosphericBackground()
+                    HistoryComposeScreen(
+                        state = historyState,
+                        onRecordClick = onRecordTabClick,
+                        onSettingsClick = onAboutTabClick,
+                        onHistoryClick = { onHistoryOpen(it.dayStartMillis) },
+                        onHistoryLongClick = { onHistoryDelete(it.dayStartMillis) },
+                    )
+                }
             }
 
             MainTab.ABOUT -> {
-                AboutComposeScreen(
-                    state = aboutState,
-                    onRecordClick = onRecordTabClick,
-                    onHistoryClick = onHistoryTabClick,
-                    onSettingsClick = {},
-                    onCheckUpdateClick = onCheckUpdateClick,
-                    onMapboxTokenChange = onMapboxTokenChange,
-                    onMapboxTokenSaveClick = onMapboxTokenSaveClick,
-                    onMapboxTokenClearClick = onMapboxTokenClearClick,
-                    onWorkerBaseUrlChange = onWorkerBaseUrlChange,
-                    onUploadTokenChange = onUploadTokenChange,
-                    onSampleUploadConfigSaveClick = onSampleUploadConfigSaveClick,
-                    onSampleUploadConfigClearClick = onSampleUploadConfigClearClick,
-                    onWorkerConnectivityTestClick = onWorkerConnectivityTestClick,
-                )
-            }
-
-            MainTab.RECORD -> {
-                DashboardRoot(
-                    dashboardState = dashboardState,
-                    overlayState = dashboardOverlayState,
-                    mapState = dashboardMapState,
-                    mapboxAccessToken = mapboxAccessToken,
-                    onHistoryTabClick = onHistoryTabClick,
-                    onAboutTabClick = onAboutTabClick,
-                    onLocateClick = onLocateClick,
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .zIndex(4f),
+                ) {
+                    TrackAtmosphericBackground()
+                    AboutComposeScreen(
+                        state = aboutState,
+                        onRecordClick = onRecordTabClick,
+                        onHistoryClick = onHistoryTabClick,
+                        onSettingsClick = {},
+                        onCheckUpdateClick = onCheckUpdateClick,
+                        onMapboxTokenChange = onMapboxTokenChange,
+                        onMapboxTokenSaveClick = onMapboxTokenSaveClick,
+                        onMapboxTokenClearClick = onMapboxTokenClearClick,
+                        onWorkerBaseUrlChange = onWorkerBaseUrlChange,
+                        onUploadTokenChange = onUploadTokenChange,
+                        onSampleUploadConfigSaveClick = onSampleUploadConfigSaveClick,
+                        onSampleUploadConfigClearClick = onSampleUploadConfigClearClick,
+                        onWorkerConnectivityTestClick = onWorkerConnectivityTestClick,
+                    )
+                }
             }
         }
     }
@@ -127,51 +140,51 @@ private fun DashboardRoot(
     onHistoryTabClick: () -> Unit,
     onAboutTabClick: () -> Unit,
     onLocateClick: () -> Unit,
+    isRecordVisible: Boolean,
 ) {
     var showRecenterCue by rememberSaveable { mutableStateOf(false) }
-    var hasAttachedMap by rememberSaveable { mutableStateOf(false) }
+    var showLocationInfoDialog by rememberSaveable { mutableStateOf(false) }
 
-    val metricsStripHeightEstimate = 66.dp
     val navigationBarHeight = 84.dp
     val floatingGap = 12.dp
+    val visibleMapState = if (isRecordVisible) {
+        mapState
+    } else {
+        mapState.copy(
+            polylines = emptyList(),
+            markers = emptyList(),
+            viewportRequest = null,
+        )
+    }
 
-    LaunchedEffect(Unit) {
-        if (hasAttachedMap) return@LaunchedEffect
-        withFrameNanos { }
-        delay(120L)
-        hasAttachedMap = true
+    LaunchedEffect(isRecordVisible) {
+        if (!isRecordVisible) {
+            showLocationInfoDialog = false
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        if (hasAttachedMap) {
-            TrackMapboxCanvas(
-                state = mapState,
-                accessToken = mapboxAccessToken,
-                modifier = Modifier.fillMaxSize(),
-                viewportPadding = TrackMapViewportPadding(
-                    top = 116.dp,
-                    start = 20.dp,
-                    end = 20.dp,
-                    bottom = metricsStripHeightEstimate + navigationBarHeight + floatingGap + 24.dp,
-                ),
-                showUserLocationPuck = true,
-                onUserGestureMove = { showRecenterCue = true },
-            )
-        } else {
-            DashboardMapLoadingPlaceholder(modifier = Modifier.fillMaxSize())
-        }
-
-        DashboardStatusHeader(
-            dashboardState = dashboardState,
-            overlayState = overlayState,
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .zIndex(2f)
-                .statusBarsPadding()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+        TrackMapboxCanvas(
+            state = visibleMapState,
+            accessToken = mapboxAccessToken,
+            modifier = Modifier.fillMaxSize(),
+            viewportPadding = TrackMapViewportPadding(
+                top = 24.dp,
+                start = 20.dp,
+                end = 20.dp,
+                bottom = navigationBarHeight + floatingGap + 34.dp,
+            ),
+            showUserLocationPuck = true,
+            interactive = isRecordVisible,
+            onUserGestureMove = { showRecenterCue = true },
+            onUserLocationPuckClick = {
+                if (isRecordVisible) {
+                    showLocationInfoDialog = true
+                }
+            },
         )
 
-        if (overlayState.locateVisible) {
+        if (isRecordVisible && overlayState.locateVisible) {
             TrackFloatingMapButton(
                 icon = painterResource(R.drawable.ic_locate_dashboard),
                 contentDescription = stringResource(R.string.dashboard_locate),
@@ -186,57 +199,74 @@ private fun DashboardRoot(
                     .navigationBarsPadding()
                     .padding(
                         end = 18.dp,
-                        bottom = metricsStripHeightEstimate + navigationBarHeight + floatingGap + 14.dp,
+                        bottom = navigationBarHeight + floatingGap + 18.dp,
                     ),
             )
         }
 
-        DashboardMetricsStrip(
-            dashboardState = dashboardState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .zIndex(2f)
-                .padding(bottom = navigationBarHeight + floatingGap)
-                .padding(horizontal = 16.dp),
-        )
+        if (isRecordVisible) {
+            TrackBottomNavigationBar(
+                selectedTab = TrackBottomTab.RECORD,
+                onRecordClick = {},
+                onHistoryClick = onHistoryTabClick,
+                onSettingsClick = onAboutTabClick,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .zIndex(3f)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                recordLabel = stringResource(R.string.compose_dashboard_record),
+                historyLabel = stringResource(R.string.compose_dashboard_history),
+                settingsLabel = stringResource(R.string.compose_dashboard_about),
+                recordEnabled = false,
+            )
+        }
 
-        TrackBottomNavigationBar(
-            selectedTab = TrackBottomTab.RECORD,
-            onRecordClick = {},
-            onHistoryClick = onHistoryTabClick,
-            onSettingsClick = onAboutTabClick,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .zIndex(3f)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            recordLabel = stringResource(R.string.compose_dashboard_record),
-            historyLabel = stringResource(R.string.compose_dashboard_history),
-            settingsLabel = stringResource(R.string.compose_dashboard_about),
-            recordEnabled = false,
-        )
+        if (isRecordVisible && showLocationInfoDialog) {
+            DashboardLocationInfoDialog(
+                dashboardState = dashboardState,
+                overlayState = overlayState,
+                onDismissRequest = { showLocationInfoDialog = false },
+            )
+        }
     } // Box
-}
-
-@Composable
-private fun DashboardMapLoadingPlaceholder(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.12f)),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = "正在准备地图",
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
 }
 
 enum class MainTab {
     RECORD,
     HISTORY,
     ABOUT,
+}
+
+@Composable
+private fun DashboardLocationInfoDialog(
+    dashboardState: DashboardScreenUiState,
+    overlayState: DashboardOverlayUiState,
+    onDismissRequest: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismissRequest) {
+        TrackLiquidPanel(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 420.dp),
+            shape = MaterialTheme.shapes.extraLarge,
+            tone = TrackLiquidTone.STRONG,
+            shadowElevation = 22.dp,
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = 18.dp,
+                vertical = 18.dp,
+            ),
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                DashboardStatusContent(
+                    dashboardState = dashboardState,
+                    overlayState = overlayState,
+                )
+                DashboardMetricsContent(dashboardState = dashboardState)
+            }
+        }
+    }
 }
 
 @Composable
@@ -255,34 +285,45 @@ private fun DashboardStatusHeader(
             vertical = 12.dp,
         ),
     ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            TrackStatChip(
-                text = overlayState.gpsLabel.ifBlank { dashboardState.statusLabel },
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-            Text(
-                text = dashboardState.autoTrackTitle.ifBlank {
-                    stringResource(R.string.compose_dashboard_title_idle)
-                },
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = dashboardState.autoTrackMeta.ifBlank {
-                    stringResource(R.string.compose_dashboard_meta_idle)
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
+        DashboardStatusContent(
+            dashboardState = dashboardState,
+            overlayState = overlayState,
+        )
+    }
+}
+
+@Composable
+private fun DashboardStatusContent(
+    dashboardState: DashboardScreenUiState,
+    overlayState: DashboardOverlayUiState,
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        TrackStatChip(
+            text = overlayState.gpsLabel.ifBlank { dashboardState.statusLabel },
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+        Text(
+            text = dashboardState.autoTrackTitle.ifBlank {
+                stringResource(R.string.compose_dashboard_title_idle)
+            },
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = dashboardState.autoTrackMeta.ifBlank {
+                stringResource(R.string.compose_dashboard_meta_idle)
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -291,7 +332,6 @@ private fun DashboardMetricsStrip(
     dashboardState: DashboardScreenUiState,
     modifier: Modifier = Modifier,
 ) {
-    val speedValue = dashboardState.speedText.substringBefore(" ").ifBlank { dashboardState.speedText }
     TrackLiquidPanel(
         modifier = modifier
             .fillMaxWidth()
@@ -304,26 +344,34 @@ private fun DashboardMetricsStrip(
             vertical = 8.dp,
         ),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            DashboardMetricPill(
-                label = stringResource(R.string.compose_dashboard_primary_metric_label),
-                value = dashboardState.distanceText,
-                modifier = Modifier.weight(1f),
-            )
-            DashboardMetricPill(
-                label = stringResource(R.string.compose_dashboard_time_label),
-                value = dashboardState.durationText,
-                modifier = Modifier.weight(1f),
-            )
-            DashboardMetricPill(
-                label = stringResource(R.string.compose_dashboard_speed_label),
-                value = speedValue,
-                modifier = Modifier.weight(1f),
-            )
-        }
+        DashboardMetricsContent(dashboardState = dashboardState)
+    }
+}
+
+@Composable
+private fun DashboardMetricsContent(
+    dashboardState: DashboardScreenUiState,
+) {
+    val speedValue = dashboardState.speedText.substringBefore(" ").ifBlank { dashboardState.speedText }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        DashboardMetricPill(
+            label = stringResource(R.string.compose_dashboard_primary_metric_label),
+            value = dashboardState.distanceText,
+            modifier = Modifier.weight(1f),
+        )
+        DashboardMetricPill(
+            label = stringResource(R.string.compose_dashboard_time_label),
+            value = dashboardState.durationText,
+            modifier = Modifier.weight(1f),
+        )
+        DashboardMetricPill(
+            label = stringResource(R.string.compose_dashboard_speed_label),
+            value = speedValue,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 

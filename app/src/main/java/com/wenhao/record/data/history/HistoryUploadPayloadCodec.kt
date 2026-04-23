@@ -5,10 +5,16 @@ import org.json.JSONObject
 
 object HistoryUploadPayloadCodec {
 
-    fun encode(deviceId: String, appVersion: String, rows: List<HistoryUploadRow>): String {
+    fun encode(
+        deviceId: String,
+        appVersion: String,
+        utcOffsetMinutes: Int,
+        rows: List<HistoryUploadRow>,
+    ): String {
         return JSONObject().apply {
             put("deviceId", deviceId)
             put("appVersion", appVersion)
+            put("utcOffsetMinutes", utcOffsetMinutes)
             put("histories", JSONArray().apply {
                 rows.forEach { row ->
                     put(encodeRow(row))
