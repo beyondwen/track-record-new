@@ -6,6 +6,12 @@
 
 **架构：** 采用「纯状态聚合 + Activity 动作分发 + Compose 独立卡片组件」方案。`MainActivity` 负责读取权限、快照与诊断信息，`RecordingHealthUiState` 负责将底层状态归并为可渲染的页面模型，`RecordingHealthCard` 负责展示状态项、主动作与诊断弹层。
 
+**实现约束修正：**
+
+- `trackingServiceRunning` 不能直接等同于 `TrackingRuntimeSnapshot.isEnabled`。当前运行时快照只可靠表达「是否启用记录」与「当前阶段」，而不是 Binder 级别的服务存活性；状态卡应将其解释为「当前处于记录态 / 有最近运行迹象」，具体由 `runtimeSnapshot.isEnabled`、`runtimeSnapshot.phase` 与 `diagnostics.serviceStatus` 共同归并。
+- 诊断文本变化会单独通过 `TrackDataChangeNotifier.Listener.onDiagnosticsChanged()` 进入页面刷新链路，因此记录健康状态也必须在该回调中同步刷新，不能只挂在 `refreshDashboardContent()`。
+- `PermissionHelper` 现有的 launcher 带有「授权成功后直接启动后台记录」等副作用。状态卡点击需要新增无副作用的 repair API，避免“只是想补权限”却顺带启动服务或触发定位居中。
+
 **技术栈：** Kotlin, Jetpack Compose, Android Activity Result API, Robolectric, Material 3.
 
 ---
@@ -175,7 +181,7 @@ data class RecordingHealthInputs(
     val hasNotificationPermission: Boolean,
     val ignoresBatteryOptimizations: Boolean,
     val trackingEnabled: Boolean,
-    val trackingServiceRunning: Boolean,
+    val trackingActive: Boolean,
     val diagnosticsStatus: String,
     val diagnosticsEvent: String,
     val latestPointTimestampMillis: Long?,
@@ -239,17 +245,17 @@ fun buildRecordingHealthUiState(inputs: RecordingHealthInputs): RecordingHealthU
                 key = RecordingHealthItemKey.TRACKING_SERVICE,
                 title = "后台记录服务",
                 statusText = when {
-                    inputs.trackingServiceRunning -> "运行中"
+                    inputs.trackingActive -> "记录中"
                     baseReady -> "未启动"
                     else -> "条件不足"
                 },
                 severity = when {
-                    inputs.trackingServiceRunning -> RecordingHealthItemSeverity.NORMAL
+                    inputs.trackingActive -> RecordingHealthItemSeverity.NORMAL
                     baseReady -> RecordingHealthItemSeverity.WARNING
                     else -> RecordingHealthItemSeverity.ERROR
                 },
                 action = when {
-                    inputs.trackingServiceRunning -> RecordingHealthAction.SHOW_DIAGNOSTICS
+                    inputs.trackingActive -> RecordingHealthAction.SHOW_DIAGNOSTICS
                     baseReady -> RecordingHealthAction.START_BACKGROUND_TRACKING
                     else -> RecordingHealthAction.NO_OP
                 },
@@ -266,7 +272,7 @@ fun buildRecordingHealthUiState(inputs: RecordingHealthInputs): RecordingHealthU
     }
     val primaryAction = when {
         blocked -> firstRepairAction(items)
-        inputs.trackingServiceRunning -> RecordingHealthAction.SHOW_DIAGNOSTICS
+        inputs.trackingActive -> RecordingHealthAction.SHOW_DIAGNOSTICS
         degraded -> RecordingHealthAction.START_BACKGROUND_TRACKING
         else -> RecordingHealthAction.START_BACKGROUND_TRACKING
     }
@@ -324,7 +330,7 @@ fun `battery optimization risk yields degraded status`() {
             hasNotificationPermission = true,
             ignoresBatteryOptimizations = false,
             trackingEnabled = false,
-            trackingServiceRunning = false,
+            trackingActive = false,
             diagnosticsStatus = "后台待命中",
             diagnosticsEvent = "后台采点已停止",
             latestPointTimestampMillis = null,
@@ -345,7 +351,7 @@ fun `tracking service running yields diagnostics primary action`() {
             hasNotificationPermission = true,
             ignoresBatteryOptimizations = true,
             trackingEnabled = true,
-            trackingServiceRunning = true,
+            trackingActive = true,
             diagnosticsStatus = "记录中",
             diagnosticsEvent = "后台采点服务已保持运行",
             latestPointTimestampMillis = 1713897600000,
@@ -384,7 +390,7 @@ git commit -m "feat(record): add recording health state reducer"
 
 ```kotlin
 fun requestLocationPermissionForRepair() {
-    pendingPermissionAction = PendingPermissionAction.LOCATE
+    pendingPermissionAction = null
     locationPermissionLauncher.launch(
         arrayOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -395,7 +401,7 @@ fun requestLocationPermissionForRepair() {
 
 fun requestActivityRecognitionPermissionForRepair() {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-    smartTrackingPermissionLauncher.launch(arrayOf(Manifest.permission.ACTIVITY_RECOGNITION))
+    activityRecognitionPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
 }
 
 fun requestNotificationPermissionForRepair() {
@@ -403,7 +409,7 @@ fun requestNotificationPermissionForRepair() {
         openAppSettings()
         return
     }
-    smartTrackingPermissionLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+    notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
 }
 
 fun openAppSettings() {
@@ -461,7 +467,8 @@ private fun refreshRecordingHealthState(runtimeSnapshot: TrackingRuntimeSnapshot
             hasNotificationPermission = !permissionHelper.needsNotificationPermission(),
             ignoresBatteryOptimizations = !permissionHelper.shouldRequestIgnoreBatteryOptimizations(),
             trackingEnabled = runtimeSnapshot.isEnabled,
-            trackingServiceRunning = runtimeSnapshot.isEnabled,
+            trackingActive = runtimeSnapshot.isEnabled &&
+                runtimeSnapshot.phase != TrackingPhase.IDLE,
             diagnosticsStatus = diagnostics.serviceStatus,
             diagnosticsEvent = diagnostics.lastEvent,
             latestPointTimestampMillis = runtimeSnapshot.latestPoint?.timestampMillis,
@@ -470,13 +477,20 @@ private fun refreshRecordingHealthState(runtimeSnapshot: TrackingRuntimeSnapshot
 }
 ```
 
-在 `refreshDashboardContent()`、`onResume()`、权限返回回调后的刷新入口里统一调用：
+在 `refreshDashboardContent()`、`onResume()`、权限返回回调后的刷新入口里统一调用；并在诊断变化监听中单独补一条刷新：
 
 ```kotlin
 private fun refreshDashboardContent() {
     val runtimeSnapshot = TrackingRuntimeSnapshotStorage.peek(this)
     // 既有逻辑...
     refreshRecordingHealthState(runtimeSnapshot)
+}
+
+private val dataChangeListener = object : TrackDataChangeNotifier.Listener {
+    override fun onDiagnosticsChanged() {
+        renderDashboardDiagnosticsRefined()
+        refreshRecordingHealthState(TrackingRuntimeSnapshotStorage.peek(this@MainActivity))
+    }
 }
 ```
 
@@ -736,7 +750,7 @@ fun `repair action prefers background location before notification and battery`(
             hasNotificationPermission = false,
             ignoresBatteryOptimizations = false,
             trackingEnabled = false,
-            trackingServiceRunning = false,
+            trackingActive = false,
             diagnosticsStatus = "后台待命中",
             diagnosticsEvent = "后台采点已停止",
             latestPointTimestampMillis = null,

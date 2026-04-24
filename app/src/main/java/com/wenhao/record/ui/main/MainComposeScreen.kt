@@ -52,6 +52,8 @@ fun MainComposeScreen(
     aboutState: AboutUiState,
     mapboxAccessToken: String,
     dashboardMapState: TrackMapSceneState,
+    recordingHealthState: RecordingHealthUiState,
+    showRecordingHealthDiagnostics: Boolean,
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
     onAboutTabClick: () -> Unit,
@@ -66,6 +68,9 @@ fun MainComposeScreen(
     onSampleUploadConfigClearClick: () -> Unit,
     onWorkerConnectivityTestClick: () -> Unit,
     onLocateClick: () -> Unit,
+    onRecordingHealthPrimaryAction: () -> Unit,
+    onRecordingHealthItemAction: (RecordingHealthAction) -> Unit,
+    onRecordingHealthDiagnosticsDismiss: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
     onHistoryDelete: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -77,9 +82,14 @@ fun MainComposeScreen(
             overlayState = dashboardOverlayState,
             mapState = dashboardMapState,
             mapboxAccessToken = mapboxAccessToken,
+            recordingHealthState = recordingHealthState,
+            showRecordingHealthDiagnostics = showRecordingHealthDiagnostics,
             onHistoryTabClick = onHistoryTabClick,
             onAboutTabClick = onAboutTabClick,
             onLocateClick = onLocateClick,
+            onRecordingHealthPrimaryAction = onRecordingHealthPrimaryAction,
+            onRecordingHealthItemAction = onRecordingHealthItemAction,
+            onRecordingHealthDiagnosticsDismiss = onRecordingHealthDiagnosticsDismiss,
             isRecordVisible = isRecordTab,
         )
 
@@ -137,9 +147,14 @@ private fun DashboardRoot(
     overlayState: DashboardOverlayUiState,
     mapState: TrackMapSceneState,
     mapboxAccessToken: String,
+    recordingHealthState: RecordingHealthUiState,
+    showRecordingHealthDiagnostics: Boolean,
     onHistoryTabClick: () -> Unit,
     onAboutTabClick: () -> Unit,
     onLocateClick: () -> Unit,
+    onRecordingHealthPrimaryAction: () -> Unit,
+    onRecordingHealthItemAction: (RecordingHealthAction) -> Unit,
+    onRecordingHealthDiagnosticsDismiss: () -> Unit,
     isRecordVisible: Boolean,
 ) {
     var showRecenterCue by rememberSaveable { mutableStateOf(false) }
@@ -147,6 +162,7 @@ private fun DashboardRoot(
 
     val navigationBarHeight = 84.dp
     val floatingGap = 12.dp
+    val recordOverlayBottomPadding = 236.dp
     val visibleMapState = if (isRecordVisible) {
         mapState
     } else {
@@ -172,7 +188,11 @@ private fun DashboardRoot(
                 top = 24.dp,
                 start = 20.dp,
                 end = 20.dp,
-                bottom = navigationBarHeight + floatingGap + 34.dp,
+                bottom = if (isRecordVisible) {
+                    recordOverlayBottomPadding
+                } else {
+                    navigationBarHeight + floatingGap + 34.dp
+                },
             ),
             showUserLocationPuck = true,
             interactive = isRecordVisible,
@@ -195,13 +215,36 @@ private fun DashboardRoot(
                 accented = showRecenterCue,
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .zIndex(2f)
+                    .zIndex(4f)
                     .navigationBarsPadding()
                     .padding(
                         end = 18.dp,
-                        bottom = navigationBarHeight + floatingGap + 18.dp,
+                        bottom = if (isRecordVisible) {
+                            206.dp
+                        } else {
+                            navigationBarHeight + floatingGap + 18.dp
+                        },
                     ),
             )
+        }
+
+        if (isRecordVisible) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .zIndex(2f)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 90.dp)
+                    .widthIn(max = 420.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                DashboardMetricsStrip(dashboardState = dashboardState)
+                RecordingHealthCard(
+                    state = recordingHealthState,
+                    onPrimaryActionClick = onRecordingHealthPrimaryAction,
+                    onItemClick = onRecordingHealthItemAction,
+                )
+            }
         }
 
         if (isRecordVisible) {
@@ -226,6 +269,13 @@ private fun DashboardRoot(
                 dashboardState = dashboardState,
                 overlayState = overlayState,
                 onDismissRequest = { showLocationInfoDialog = false },
+            )
+        }
+
+        if (isRecordVisible && showRecordingHealthDiagnostics) {
+            RecordingHealthDiagnosticsDialog(
+                state = recordingHealthState,
+                onDismissRequest = onRecordingHealthDiagnosticsDismiss,
             )
         }
     } // Box

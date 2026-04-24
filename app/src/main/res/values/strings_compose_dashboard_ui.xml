@@ -2,4 +2,9 @@
 <resources>
     <string name="compose_dashboard_status_entry_hint">点按查看状态与诊断</string>
     <string name="compose_dashboard_panel_caption">移动记录</string>
+    <string name="compose_dashboard_health_ready">可稳定记录</string>
+    <string name="compose_dashboard_health_degraded">可记录但有风险</string>
+    <string name="compose_dashboard_health_blocked">当前不可稳定记录</string>
+    <string name="compose_dashboard_health_advanced_note">高级配置，仅在需要时调整</string>
+    <string name="compose_dashboard_health_item_action_hint">点按处理</string>
 </resources>

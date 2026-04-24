@@ -23,7 +23,13 @@ class PermissionHelper(
         LOCATE,
     }
 
+    private enum class PendingAppSettingsAction {
+        SMART_TRACKING_ENABLE,
+        REPAIR_ONLY,
+    }
+
     private var pendingPermissionAction: PendingPermissionAction? = null
+    private var pendingAppSettingsAction: PendingAppSettingsAction? = null
     private var hasShownBatteryOptimizationPrompt = false
 
     private val locationPermissionLauncher = activity.registerForActivityResult(
@@ -37,11 +43,13 @@ class PermissionHelper(
 
         if (!granted) {
             onRefreshGpsStatus()
+            onRefreshDashboard()
             Toast.makeText(activity, R.string.location_permission_denied, Toast.LENGTH_SHORT).show()
             return@registerForActivityResult
         }
 
         onRefreshGpsStatus()
+        onRefreshDashboard()
         when (action) {
             PendingPermissionAction.LOCATE -> onLocateGranted()
             null -> Unit
@@ -64,19 +72,43 @@ class PermissionHelper(
         }
 
         if (needsBackgroundLocationPermission()) {
-            showBackgroundLocationSettingsPrompt()
+            showBackgroundLocationSettingsPrompt(PendingAppSettingsAction.SMART_TRACKING_ENABLE)
             return@registerForActivityResult
         }
 
         startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
     }
 
+    private val activityRecognitionPermissionLauncher = activity.registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        onRefreshDashboard()
+        if (!granted) {
+            Toast.makeText(
+                activity,
+                R.string.activity_recognition_permission_required,
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    private val notificationPermissionLauncher = activity.registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        onRefreshDashboard()
+        if (!granted) {
+            Toast.makeText(activity, R.string.notification_permission_limited, Toast.LENGTH_LONG).show()
+        }
+    }
+
     private val appSettingsLauncher = activity.registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
+        val action = pendingAppSettingsAction
+        pendingAppSettingsAction = null
         if (needsBackgroundLocationPermission()) {
             Toast.makeText(activity, R.string.background_location_permission_required, Toast.LENGTH_LONG).show()
-        } else {
+        } else if (action == PendingAppSettingsAction.SMART_TRACKING_ENABLE) {
             startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
         }
         onRefreshDashboard()
@@ -99,7 +131,9 @@ class PermissionHelper(
         when {
             canRunBackgroundTracking() -> startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
             !hasSmartTrackingBasePermissions() -> smartTrackingPermissionLauncher.launch(buildSmartTrackingPermissionList())
-            needsBackgroundLocationPermission() -> showBackgroundLocationSettingsPrompt()
+            needsBackgroundLocationPermission() -> showBackgroundLocationSettingsPrompt(
+                PendingAppSettingsAction.SMART_TRACKING_ENABLE
+            )
             else -> onRefreshDashboard()
         }
     }
@@ -128,6 +162,58 @@ class PermissionHelper(
                 Manifest.permission.ACCESS_COARSE_LOCATION
             )
         )
+    }
+
+    fun requestLocationPermissionForRepair() {
+        if (hasLocationPermission()) {
+            onRefreshDashboard()
+            return
+        }
+        pendingPermissionAction = null
+        locationPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
+        )
+    }
+
+    fun requestActivityRecognitionPermissionForRepair() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || hasActivityRecognitionPermission()) {
+            onRefreshDashboard()
+            return
+        }
+        activityRecognitionPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+    }
+
+    fun requestNotificationPermissionForRepair() {
+        if (!needsNotificationPermission()) {
+            onRefreshDashboard()
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            openAppSettings()
+            return
+        }
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    fun openAppSettings() {
+        pendingAppSettingsAction = PendingAppSettingsAction.REPAIR_ONLY
+        val intent = Intent(
+            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.fromParts("package", activity.packageName, null)
+        )
+        appSettingsLauncher.launch(intent)
+    }
+
+    fun openBatteryOptimizationSettings() {
+        val intent = TrackingPermissionGate.buildIgnoreBatteryOptimizationsIntent(activity)
+        if (intent == null) {
+            onRefreshDashboard()
+            return
+        }
+        batteryOptimizationLauncher.launch(intent)
     }
 
     fun hasSmartTrackingBasePermissions(): Boolean {
@@ -172,12 +258,13 @@ class PermissionHelper(
         return permissions.toTypedArray()
     }
 
-    private fun showBackgroundLocationSettingsPrompt() {
+    private fun showBackgroundLocationSettingsPrompt(action: PendingAppSettingsAction) {
         MaterialAlertDialogBuilder(activity)
             .setTitle(R.string.background_location_settings_title)
             .setMessage(R.string.background_location_settings_message)
             .setNegativeButton(R.string.action_cancel, null)
             .setPositiveButton(R.string.action_go_to_settings) { _, _ ->
+                pendingAppSettingsAction = action
                 val intent = Intent(
                     Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
                     Uri.fromParts("package", activity.packageName, null)

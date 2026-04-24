@@ -15,6 +15,8 @@ import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
@@ -93,6 +95,7 @@ class MainActivity : AppCompatActivity() {
 
         override fun onDiagnosticsChanged() {
             renderDashboardDiagnosticsRefined()
+            refreshRecordingHealthState(TrackingRuntimeSnapshotStorage.peek(this@MainActivity))
         }
     }
     private val freshLocationListener = android.location.LocationListener(::handleLocationUpdate)
@@ -104,6 +107,8 @@ class MainActivity : AppCompatActivity() {
     private var dashboardViewModel: DashboardViewModel? = null
     private var historyViewModel: HistoryViewModel? = null
     private var mapViewModel: MapViewModel? = null
+    private var recordingHealthState by mutableStateOf(RecordingHealthUiState.EMPTY)
+    private var showRecordingHealthDiagnostics by mutableStateOf(false)
 
     private fun getMainViewModel(): MainViewModel? = mainViewModel
     private fun getDashboardViewModel(): DashboardViewModel? = dashboardViewModel
@@ -143,6 +148,8 @@ class MainActivity : AppCompatActivity() {
                     aboutState = aboutState,
                     mapboxAccessToken = mapboxAccessToken,
                     dashboardMapState = dashboardMapState,
+                    recordingHealthState = recordingHealthState,
+                    showRecordingHealthDiagnostics = showRecordingHealthDiagnostics,
                     onRecordTabClick = { showTab(MainTab.RECORD) },
                     onHistoryTabClick = { showTab(MainTab.HISTORY) },
                     onAboutTabClick = { showTab(MainTab.ABOUT) },
@@ -159,6 +166,9 @@ class MainActivity : AppCompatActivity() {
                     onSampleUploadConfigClearClick = mainVm::clearSampleUploadConfig,
                     onWorkerConnectivityTestClick = mainVm::testWorkerConnectivity,
                     onLocateClick = ::handleLocateAction,
+                    onRecordingHealthPrimaryAction = ::handleRecordingHealthPrimaryAction,
+                    onRecordingHealthItemAction = ::handleRecordingHealthAction,
+                    onRecordingHealthDiagnosticsDismiss = { showRecordingHealthDiagnostics = false },
                     onHistoryOpen = { dayStartMillis ->
                         startActivity(MapActivity.createHistoryIntent(this, dayStartMillis))
                     },
@@ -269,6 +279,7 @@ class MainActivity : AppCompatActivity() {
             todayHistoryItems = todayHistoryItems,
             activeSessionPoints = activeSessionPoints,
         )
+        refreshRecordingHealthState(runtimeSnapshot)
         renderDashboardDiagnosticsRefined()
         refreshActiveSessionTrack(
             runtimeSnapshot = runtimeSnapshot,
@@ -298,6 +309,34 @@ class MainActivity : AppCompatActivity() {
             TrackingPhase.SUSPECT_STOPPING -> AutoTrackUiState.PAUSED_STILL
             TrackingPhase.IDLE -> AutoTrackUiState.IDLE
         }
+    }
+
+    private fun refreshRecordingHealthState(runtimeSnapshot: TrackingRuntimeSnapshot) {
+        val diagnostics = AutoTrackDiagnosticsStorage.load(this)
+        recordingHealthState = buildRecordingHealthUiState(
+            RecordingHealthInputs(
+                hasLocationPermission = permissionHelper.hasLocationPermission(),
+                hasActivityRecognitionPermission = permissionHelper.hasActivityRecognitionPermission(),
+                hasBackgroundLocationPermission = !permissionHelper.needsBackgroundLocationPermission(),
+                hasNotificationPermission = !permissionHelper.needsNotificationPermission(),
+                ignoresBatteryOptimizations = !permissionHelper.shouldRequestIgnoreBatteryOptimizations(),
+                trackingEnabled = runtimeSnapshot.isEnabled,
+                trackingActive = isTrackingActive(runtimeSnapshot, diagnostics.serviceStatus),
+                diagnosticsStatus = diagnostics.serviceStatus,
+                diagnosticsEvent = diagnostics.lastEvent,
+                latestPointTimestampMillis = runtimeSnapshot.latestPoint?.timestampMillis,
+            )
+        )
+    }
+
+    private fun isTrackingActive(
+        runtimeSnapshot: TrackingRuntimeSnapshot,
+        diagnosticsStatus: String,
+    ): Boolean {
+        if (!runtimeSnapshot.isEnabled) {
+            return false
+        }
+        return runtimeSnapshot.phase != TrackingPhase.IDLE || diagnosticsStatus != "后台待命中"
     }
 
     private fun refreshActiveSessionTrack(
@@ -390,6 +429,37 @@ class MainActivity : AppCompatActivity() {
             body = body,
             compactBody = compactBody,
         )
+    }
+
+    private fun handleRecordingHealthPrimaryAction() {
+        handleRecordingHealthAction(recordingHealthState.primaryAction)
+    }
+
+    private fun handleRecordingHealthAction(action: RecordingHealthAction) {
+        when (action) {
+            RecordingHealthAction.REQUEST_LOCATION_PERMISSION ->
+                permissionHelper.requestLocationPermissionForRepair()
+
+            RecordingHealthAction.REQUEST_ACTIVITY_RECOGNITION_PERMISSION ->
+                permissionHelper.requestActivityRecognitionPermissionForRepair()
+
+            RecordingHealthAction.OPEN_APP_SETTINGS_FOR_BACKGROUND_LOCATION ->
+                permissionHelper.openAppSettings()
+
+            RecordingHealthAction.REQUEST_NOTIFICATION_PERMISSION ->
+                permissionHelper.requestNotificationPermissionForRepair()
+
+            RecordingHealthAction.OPEN_BATTERY_OPTIMIZATION_SETTINGS ->
+                permissionHelper.openBatteryOptimizationSettings()
+
+            RecordingHealthAction.START_BACKGROUND_TRACKING ->
+                permissionHelper.ensureSmartTrackingEnabled()
+
+            RecordingHealthAction.SHOW_DIAGNOSTICS ->
+                showRecordingHealthDiagnostics = true
+
+            RecordingHealthAction.NO_OP -> Unit
+        }
     }
 
     private fun buildPermissionSummarySafe(): String = when {

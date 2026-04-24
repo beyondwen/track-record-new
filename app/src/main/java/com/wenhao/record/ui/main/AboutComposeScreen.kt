@@ -23,12 +23,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.wenhao.record.R
 import com.wenhao.record.ui.designsystem.TrackBottomNavigationBar
 import com.wenhao.record.ui.designsystem.TrackBottomTab
 import com.wenhao.record.ui.designsystem.TrackInsetPanel
@@ -250,6 +252,11 @@ private fun SettingsHeroSection(
             Text(
                 text = "让记录页、历史页和云端同步使用同一套配置，减少重复切换时的阻塞感。",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(R.string.compose_dashboard_health_advanced_note),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             FlowRow(

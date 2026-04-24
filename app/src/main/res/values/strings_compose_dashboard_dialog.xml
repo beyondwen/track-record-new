@@ -7,5 +7,10 @@
     <string name="compose_dashboard_dialog_summary_body">应用会持续采集点位，并自动把轨迹切成移动段和静止段。你不需要手动开始或结束，历史页展示的是整理后的结果。</string>
     <string name="compose_dashboard_dialog_gps_label">定位状态</string>
     <string name="compose_dashboard_dialog_diagnostics_label">采点诊断</string>
+    <string name="compose_dashboard_health_diagnostics_title">记录诊断</string>
+    <string name="compose_dashboard_health_diagnostics_phase">当前阶段</string>
+    <string name="compose_dashboard_health_diagnostics_latest_point">最近定位</string>
+    <string name="compose_dashboard_health_diagnostics_latest_event">最近事件</string>
+    <string name="compose_dashboard_health_diagnostics_service">服务状态</string>
     <string name="compose_dashboard_dialog_confirm">我知道了</string>
 </resources>
