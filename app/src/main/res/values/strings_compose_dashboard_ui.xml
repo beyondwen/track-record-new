@@ -7,4 +7,7 @@
     <string name="compose_dashboard_health_blocked">当前不可稳定记录</string>
     <string name="compose_dashboard_health_advanced_note">高级配置，仅在需要时调整</string>
     <string name="compose_dashboard_health_item_action_hint">点按处理</string>
+    <string name="compose_dashboard_health_item_action_short">去处理</string>
+    <string name="compose_dashboard_health_view_details">查看详情</string>
+    <string name="compose_dashboard_health_all_clear">权限、后台链路与系统限制当前都已就绪。</string>
 </resources>

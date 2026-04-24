@@ -2,12 +2,12 @@ package com.wenhao.record.ui.main
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,24 +24,25 @@ import com.wenhao.record.ui.designsystem.TrackInsetPanel
 import com.wenhao.record.ui.designsystem.TrackLiquidPanel
 import com.wenhao.record.ui.designsystem.TrackLiquidTone
 import com.wenhao.record.ui.designsystem.TrackPrimaryButton
+import com.wenhao.record.ui.designsystem.TrackSecondaryButton
 import com.wenhao.record.ui.designsystem.TrackStatChip
 
 @Composable
-@OptIn(ExperimentalLayoutApi::class)
 fun RecordingHealthCard(
     state: RecordingHealthUiState,
     onPrimaryActionClick: () -> Unit,
-    onItemClick: (RecordingHealthAction) -> Unit,
+    onDetailsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val highlights = compactRecordingHealthHighlights(state)
     TrackLiquidPanel(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
         tone = TrackLiquidTone.STRONG,
-        shadowElevation = 18.dp,
-        contentPadding = PaddingValues(16.dp),
+        shadowElevation = 14.dp,
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -62,23 +63,35 @@ fun RecordingHealthCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+            TrackInsetPanel(
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                accented = state.overallStatus != RecordingHealthOverallStatus.READY,
             ) {
-                state.items.forEach { item ->
-                    RecordingHealthItemChip(
-                        item = item,
-                        onClick = { onItemClick(item.action) },
+                if (highlights.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.compose_dashboard_health_all_clear),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                } else {
+                    highlights.forEach { item ->
+                        CompactHighlightRow(item = item)
+                    }
                 }
             }
 
-            TrackPrimaryButton(
-                text = state.primaryActionText,
-                onClick = onPrimaryActionClick,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TrackPrimaryButton(
+                    text = state.primaryActionText,
+                    onClick = onPrimaryActionClick,
+                    modifier = Modifier.weight(1f),
+                )
+                TrackSecondaryButton(
+                    text = stringResource(R.string.compose_dashboard_health_view_details),
+                    onClick = onDetailsClick,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
@@ -86,6 +99,7 @@ fun RecordingHealthCard(
 @Composable
 fun RecordingHealthDiagnosticsDialog(
     state: RecordingHealthUiState,
+    onItemActionClick: (RecordingHealthAction) -> Unit,
     onDismissRequest: () -> Unit,
 ) {
     Dialog(onDismissRequest = onDismissRequest) {
@@ -98,13 +112,27 @@ fun RecordingHealthDiagnosticsDialog(
             shadowElevation = 22.dp,
             contentPadding = PaddingValues(18.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
                 Text(
                     text = stringResource(R.string.compose_dashboard_health_diagnostics_title),
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
                 )
+                TrackInsetPanel(
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+                    accented = state.overallStatus != RecordingHealthOverallStatus.READY,
+                ) {
+                    state.items.forEach { item ->
+                        RecordingHealthItemRow(
+                            item = item,
+                            onClick = { onItemActionClick(item.action) },
+                        )
+                    }
+                }
                 TrackInsetPanel {
                     DiagnosticLine(
                         label = stringResource(R.string.compose_dashboard_health_diagnostics_phase),
@@ -134,26 +162,38 @@ fun RecordingHealthDiagnosticsDialog(
 }
 
 @Composable
-private fun DiagnosticLine(
-    label: String,
-    value: String,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+private fun CompactHighlightRow(item: RecordingHealthItemUiState) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = item.title,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = item.riskText ?: item.statusText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TrackStatChip(
+            text = item.statusText,
+            containerColor = compactHighlightContainerColor(item.severity),
+            contentColor = compactHighlightContentColor(item.severity),
         )
     }
 }
 
 @Composable
-private fun RecordingHealthItemChip(
+private fun RecordingHealthItemRow(
     item: RecordingHealthItemUiState,
     onClick: () -> Unit,
 ) {
@@ -174,36 +214,61 @@ private fun RecordingHealthItemChip(
         color = containerColor,
         contentColor = contentColor,
     ) {
-        Column(
+        Row(
             modifier = Modifier
-                .widthIn(min = 132.dp, max = 180.dp)
+                .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                text = item.title,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = item.statusText,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            item.riskText?.let { riskText ->
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
                 Text(
-                    text = riskText,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.8f),
+                    text = item.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
                 )
+                Text(
+                    text = item.statusText,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                item.riskText?.let { riskText ->
+                    Text(
+                        text = riskText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = contentColor.copy(alpha = 0.8f),
+                    )
+                }
             }
             if (item.action != RecordingHealthAction.NO_OP) {
-                Text(
-                    text = stringResource(R.string.compose_dashboard_health_item_action_hint),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = contentColor.copy(alpha = 0.75f),
+                TrackSecondaryButton(
+                    text = stringResource(R.string.compose_dashboard_health_item_action_short),
+                    onClick = onClick,
+                    modifier = Modifier.widthIn(min = 88.dp),
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun DiagnosticLine(
+    label: String,
+    value: String,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -219,4 +284,18 @@ private fun overallStatusLabel(status: RecordingHealthOverallStatus): String {
         RecordingHealthOverallStatus.BLOCKED ->
             stringResource(R.string.compose_dashboard_health_blocked)
     }
+}
+
+@Composable
+private fun compactHighlightContainerColor(severity: RecordingHealthItemSeverity) = when (severity) {
+    RecordingHealthItemSeverity.NORMAL -> MaterialTheme.colorScheme.secondaryContainer
+    RecordingHealthItemSeverity.WARNING -> MaterialTheme.colorScheme.tertiaryContainer
+    RecordingHealthItemSeverity.ERROR -> MaterialTheme.colorScheme.errorContainer
+}
+
+@Composable
+private fun compactHighlightContentColor(severity: RecordingHealthItemSeverity) = when (severity) {
+    RecordingHealthItemSeverity.NORMAL -> MaterialTheme.colorScheme.onSecondaryContainer
+    RecordingHealthItemSeverity.WARNING -> MaterialTheme.colorScheme.onTertiaryContainer
+    RecordingHealthItemSeverity.ERROR -> MaterialTheme.colorScheme.onErrorContainer
 }

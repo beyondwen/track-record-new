@@ -1,7 +1,9 @@
 package com.wenhao.record.ui.main
 
+import com.wenhao.record.tracking.TrackingPhase
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class RecordingHealthUiStateTest {
 
@@ -93,6 +95,42 @@ class RecordingHealthUiStateTest {
         assertEquals(
             RecordingHealthAction.OPEN_APP_SETTINGS_FOR_BACKGROUND_LOCATION,
             state.primaryAction,
+        )
+    }
+
+    @Test
+    fun `enabled idle phase is not treated as active tracking`() {
+        assertFalse(
+            deriveTrackingActive(
+                isEnabled = true,
+                phase = TrackingPhase.IDLE,
+            )
+        )
+    }
+
+    @Test
+    fun `compact highlights prioritize blocking items before secondary warnings`() {
+        val state = buildRecordingHealthUiState(
+            RecordingHealthInputs(
+                hasLocationPermission = true,
+                hasActivityRecognitionPermission = true,
+                hasBackgroundLocationPermission = false,
+                hasNotificationPermission = false,
+                ignoresBatteryOptimizations = false,
+                trackingEnabled = false,
+                trackingActive = false,
+                diagnosticsStatus = "后台待命中",
+                diagnosticsEvent = "后台采点已停止",
+                latestPointTimestampMillis = null,
+            )
+        )
+
+        assertEquals(
+            listOf(
+                RecordingHealthItemKey.BACKGROUND_LOCATION,
+                RecordingHealthItemKey.NOTIFICATION,
+            ),
+            compactRecordingHealthHighlights(state).map { it.key },
         )
     }
 }

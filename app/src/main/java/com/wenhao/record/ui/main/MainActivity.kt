@@ -321,7 +321,7 @@ class MainActivity : AppCompatActivity() {
                 hasNotificationPermission = !permissionHelper.needsNotificationPermission(),
                 ignoresBatteryOptimizations = !permissionHelper.shouldRequestIgnoreBatteryOptimizations(),
                 trackingEnabled = runtimeSnapshot.isEnabled,
-                trackingActive = isTrackingActive(runtimeSnapshot, diagnostics.serviceStatus),
+                trackingActive = isTrackingActive(runtimeSnapshot),
                 diagnosticsStatus = diagnostics.serviceStatus,
                 diagnosticsEvent = diagnostics.lastEvent,
                 latestPointTimestampMillis = runtimeSnapshot.latestPoint?.timestampMillis,
@@ -329,14 +329,11 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    private fun isTrackingActive(
-        runtimeSnapshot: TrackingRuntimeSnapshot,
-        diagnosticsStatus: String,
-    ): Boolean {
-        if (!runtimeSnapshot.isEnabled) {
-            return false
-        }
-        return runtimeSnapshot.phase != TrackingPhase.IDLE || diagnosticsStatus != "后台待命中"
+    private fun isTrackingActive(runtimeSnapshot: TrackingRuntimeSnapshot): Boolean {
+        return deriveTrackingActive(
+            isEnabled = runtimeSnapshot.isEnabled,
+            phase = runtimeSnapshot.phase,
+        )
     }
 
     private fun refreshActiveSessionTrack(

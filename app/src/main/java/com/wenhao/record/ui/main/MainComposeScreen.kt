@@ -16,15 +16,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import com.wenhao.record.R
@@ -159,10 +162,13 @@ private fun DashboardRoot(
 ) {
     var showRecenterCue by rememberSaveable { mutableStateOf(false) }
     var showLocationInfoDialog by rememberSaveable { mutableStateOf(false) }
+    var overlayHeightPx by remember { mutableStateOf(0) }
 
     val navigationBarHeight = 84.dp
     val floatingGap = 12.dp
-    val recordOverlayBottomPadding = 236.dp
+    val density = LocalDensity.current
+    val overlayHeightDp = with(density) { overlayHeightPx.toDp() }
+    val overlayBottomOffset = navigationBarHeight + 20.dp
     val visibleMapState = if (isRecordVisible) {
         mapState
     } else {
@@ -189,7 +195,7 @@ private fun DashboardRoot(
                 start = 20.dp,
                 end = 20.dp,
                 bottom = if (isRecordVisible) {
-                    recordOverlayBottomPadding
+                    overlayBottomOffset + overlayHeightDp + 16.dp
                 } else {
                     navigationBarHeight + floatingGap + 34.dp
                 },
@@ -220,7 +226,7 @@ private fun DashboardRoot(
                     .padding(
                         end = 18.dp,
                         bottom = if (isRecordVisible) {
-                            206.dp
+                            overlayBottomOffset + overlayHeightDp + 12.dp
                         } else {
                             navigationBarHeight + floatingGap + 18.dp
                         },
@@ -234,15 +240,16 @@ private fun DashboardRoot(
                     .align(Alignment.BottomCenter)
                     .zIndex(2f)
                     .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 90.dp)
+                    .padding(start = 16.dp, end = 16.dp, bottom = overlayBottomOffset)
+                    .onSizeChanged { overlayHeightPx = it.height }
                     .widthIn(max = 420.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 DashboardMetricsStrip(dashboardState = dashboardState)
                 RecordingHealthCard(
                     state = recordingHealthState,
                     onPrimaryActionClick = onRecordingHealthPrimaryAction,
-                    onItemClick = onRecordingHealthItemAction,
+                    onDetailsClick = { onRecordingHealthItemAction(RecordingHealthAction.SHOW_DIAGNOSTICS) },
                 )
             }
         }
@@ -275,6 +282,7 @@ private fun DashboardRoot(
         if (isRecordVisible && showRecordingHealthDiagnostics) {
             RecordingHealthDiagnosticsDialog(
                 state = recordingHealthState,
+                onItemActionClick = onRecordingHealthItemAction,
                 onDismissRequest = onRecordingHealthDiagnosticsDismiss,
             )
         }

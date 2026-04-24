@@ -1,5 +1,6 @@
 package com.wenhao.record.ui.main
 
+import com.wenhao.record.tracking.TrackingPhase
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -261,6 +262,38 @@ fun buildRecordingHealthUiState(inputs: RecordingHealthInputs): RecordingHealthU
     )
 }
 
+fun deriveTrackingActive(
+    isEnabled: Boolean,
+    phase: TrackingPhase,
+): Boolean {
+    return isEnabled && phase != TrackingPhase.IDLE
+}
+
+fun compactRecordingHealthHighlights(
+    state: RecordingHealthUiState,
+    maxItems: Int = 2,
+): List<RecordingHealthItemUiState> {
+    val actionableItems = state.items.filter { it.severity != RecordingHealthItemSeverity.NORMAL }
+    val filteredItems = if (
+        actionableItems.any { it.key != RecordingHealthItemKey.TRACKING_SERVICE }
+    ) {
+        actionableItems.filter { it.key != RecordingHealthItemKey.TRACKING_SERVICE }
+    } else {
+        actionableItems
+    }
+
+    return filteredItems
+        .asSequence()
+        .sortedWith(
+            compareBy<RecordingHealthItemUiState>(
+                { severityPriority(it.severity) },
+                { itemPriority(it.key) },
+            )
+        )
+        .take(maxItems)
+        .toList()
+}
+
 private fun firstRepairAction(items: List<RecordingHealthItemUiState>): RecordingHealthAction {
     val priority = listOf(
         RecordingHealthItemKey.LOCATION,
@@ -281,4 +314,23 @@ private fun formatLatestPointText(timestampMillis: Long?): String {
     }
     val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
     return "${formatter.format(Date(timestampMillis))} 已收到定位点"
+}
+
+private fun severityPriority(severity: RecordingHealthItemSeverity): Int {
+    return when (severity) {
+        RecordingHealthItemSeverity.ERROR -> 0
+        RecordingHealthItemSeverity.WARNING -> 1
+        RecordingHealthItemSeverity.NORMAL -> 2
+    }
+}
+
+private fun itemPriority(key: RecordingHealthItemKey): Int {
+    return when (key) {
+        RecordingHealthItemKey.LOCATION -> 0
+        RecordingHealthItemKey.ACTIVITY_RECOGNITION -> 1
+        RecordingHealthItemKey.BACKGROUND_LOCATION -> 2
+        RecordingHealthItemKey.TRACKING_SERVICE -> 3
+        RecordingHealthItemKey.NOTIFICATION -> 4
+        RecordingHealthItemKey.BATTERY_OPTIMIZATION -> 5
+    }
 }
