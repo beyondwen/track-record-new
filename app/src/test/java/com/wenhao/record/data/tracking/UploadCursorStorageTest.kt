@@ -46,8 +46,20 @@ class UploadCursorStorageTest {
             return emptyList()
         }
 
+        override suspend fun loadRawPointsBetween(startMillis: Long, endMillis: Long, limit: Int): List<RawLocationPointEntity> {
+            return emptyList()
+        }
+
+        override suspend fun countRawPoints(): Int {
+            return 0
+        }
+
         override suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
             return emptyList()
+        }
+
+        override suspend fun countAnalysisSegments(): Int {
+            return 0
         }
 
         override suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {

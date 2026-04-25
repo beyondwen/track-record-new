@@ -1,10 +1,13 @@
 import type {
   AnalysisSegment,
   AnalysisStayCluster,
+  DiagnosticLog,
   HistoryPoint,
   HistoryRecord,
   RawLocationPoint,
   ValidatedAnalysisBatchRequest,
+  ValidatedDiagnosticLogBatchRequest,
+  ValidatedDiagnosticLogResolveRequest,
   ValidatedRawPointBatchRequest,
   ValidatedHistoryBatchRequest
 } from "./types";
@@ -18,6 +21,13 @@ const MAX_SOURCE_TYPE_LENGTH = 64;
 const MAX_ACTIVITY_TYPE_LENGTH = 64;
 const MAX_SAMPLING_TIER_LENGTH = 32;
 const MAX_SEGMENT_TYPE_LENGTH = 32;
+const MAX_DIAGNOSTIC_LOG_ID_LENGTH = 128;
+const MAX_DIAGNOSTIC_TYPE_LENGTH = 32;
+const MAX_DIAGNOSTIC_SEVERITY_LENGTH = 16;
+const MAX_DIAGNOSTIC_SOURCE_LENGTH = 128;
+const MAX_DIAGNOSTIC_MESSAGE_LENGTH = 1024;
+const MAX_DIAGNOSTIC_FINGERPRINT_LENGTH = 160;
+const MAX_DIAGNOSTIC_LOGS_PER_BATCH = 50;
 
 export class ValidationError extends Error {
   constructor(message: string) {
@@ -549,10 +559,155 @@ export function validateHistoryBatchRequest(
       "`appVersion`",
       MAX_APP_VERSION_LENGTH
     ),
-    utcOffsetMinutes: parseRequiredInteger(
+    utcOffsetMinutes: parseOptionalInteger(
       payload.utcOffsetMinutes,
       "`utcOffsetMinutes`"
-    ),
+    ) ?? 0,
     histories: payload.histories.map((history, index) => parseHistory(history, index))
+  };
+}
+
+
+function parseDiagnosticPayload(value: unknown, label: string): unknown | null {
+  if (value === undefined || value === null) {
+    return null;
+  }
+  try {
+    JSON.stringify(value);
+  } catch {
+    throw new ValidationError(`${label} must be JSON serializable`);
+  }
+  return value;
+}
+
+function parseDiagnosticLog(
+  log: unknown,
+  index: number,
+  deviceId: string,
+  appVersion: string
+): DiagnosticLog {
+  if (!isObject(log)) {
+    throw new ValidationError(`logs[${index}] must be an object`);
+  }
+
+  const {
+    logId,
+    occurredAt,
+    type,
+    severity,
+    source,
+    message,
+    fingerprint,
+    payload
+  } = log;
+
+  const normalizedType = parseRequiredString(
+    type,
+    `logs[${index}].type`,
+    MAX_DIAGNOSTIC_TYPE_LENGTH
+  );
+  if (normalizedType !== "ERROR" && normalizedType !== "PERF_WARN") {
+    throw new ValidationError(`logs[${index}].type must be ERROR or PERF_WARN`);
+  }
+
+  const normalizedSeverity = parseRequiredString(
+    severity,
+    `logs[${index}].severity`,
+    MAX_DIAGNOSTIC_SEVERITY_LENGTH
+  );
+  if (normalizedSeverity !== "ERROR" && normalizedSeverity !== "WARN") {
+    throw new ValidationError(`logs[${index}].severity must be ERROR or WARN`);
+  }
+
+  return {
+    logId: parseRequiredString(
+      logId,
+      `logs[${index}].logId`,
+      MAX_DIAGNOSTIC_LOG_ID_LENGTH
+    ),
+    deviceId,
+    appVersion,
+    occurredAt: parseRequiredInteger(occurredAt, `logs[${index}].occurredAt`),
+    type: normalizedType,
+    severity: normalizedSeverity,
+    source: parseRequiredString(
+      source,
+      `logs[${index}].source`,
+      MAX_DIAGNOSTIC_SOURCE_LENGTH
+    ),
+    message: parseRequiredString(
+      message,
+      `logs[${index}].message`,
+      MAX_DIAGNOSTIC_MESSAGE_LENGTH
+    ),
+    fingerprint: parseRequiredString(
+      fingerprint,
+      `logs[${index}].fingerprint`,
+      MAX_DIAGNOSTIC_FINGERPRINT_LENGTH
+    ),
+    payload: parseDiagnosticPayload(payload, `logs[${index}].payload`),
+    status: "open",
+    occurrenceCount: 1,
+    firstSeenAt: parseRequiredInteger(occurredAt, `logs[${index}].occurredAt`),
+    lastSeenAt: parseRequiredInteger(occurredAt, `logs[${index}].occurredAt`)
+  };
+}
+
+export function validateDiagnosticLogBatchRequest(
+  payload: unknown
+): ValidatedDiagnosticLogBatchRequest {
+  if (!isObject(payload)) {
+    throw new ValidationError("Request body must be a JSON object");
+  }
+  if (!Array.isArray(payload.logs)) {
+    throw new ValidationError("`logs` must be an array");
+  }
+  if (payload.logs.length > MAX_DIAGNOSTIC_LOGS_PER_BATCH) {
+    throw new ValidationError(`logs length must be <= ${MAX_DIAGNOSTIC_LOGS_PER_BATCH}`);
+  }
+
+  const deviceId = parseRequiredString(
+    payload.deviceId,
+    "`deviceId`",
+    MAX_DEVICE_ID_LENGTH
+  );
+  const appVersion = parseRequiredString(
+    payload.appVersion,
+    "`appVersion`",
+    MAX_APP_VERSION_LENGTH
+  );
+
+  return {
+    deviceId,
+    appVersion,
+    logs: payload.logs.map((log, index) =>
+      parseDiagnosticLog(log, index, deviceId, appVersion)
+    )
+  };
+}
+
+export function validateDiagnosticLogResolveRequest(
+  payload: unknown
+): ValidatedDiagnosticLogResolveRequest {
+  if (!isObject(payload)) {
+    throw new ValidationError("Request body must be a JSON object");
+  }
+  if (!Array.isArray(payload.fingerprints)) {
+    throw new ValidationError("`fingerprints` must be an array");
+  }
+
+  return {
+    deviceId: parseRequiredString(
+      payload.deviceId,
+      "`deviceId`",
+      MAX_DEVICE_ID_LENGTH
+    ),
+    fingerprints: payload.fingerprints.map((fingerprint, index) =>
+      parseRequiredString(
+        fingerprint,
+        `fingerprints[${index}]`,
+        MAX_DIAGNOSTIC_FINGERPRINT_LENGTH
+      )
+    )
   };
 }

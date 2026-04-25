@@ -1,5 +1,6 @@
 package com.wenhao.record.ui.designsystem
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,9 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -41,22 +40,37 @@ fun TrackFloatingMapButton(
     modifier: Modifier = Modifier,
     accented: Boolean = false,
 ) {
-    FilledTonalIconButton(
+    val containerColor = if (accented) {
+        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.76f)
+    } else {
+        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f)
+    }
+    val contentColor = if (accented) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+
+    Surface(
         onClick = onClick,
-        modifier = modifier.size(52.dp),
-        colors = if (accented) {
-            IconButtonDefaults.filledTonalIconButtonColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            )
-        } else {
-            IconButtonDefaults.filledTonalIconButtonColors()
-        },
+        modifier = modifier.size(44.dp),
+        shape = CircleShape,
+        color = containerColor,
+        contentColor = contentColor,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f),
+        ),
+        tonalElevation = 1.dp,
+        shadowElevation = if (accented) 5.dp else 2.dp,
     ) {
-        Icon(
-            painter = icon,
-            contentDescription = contentDescription,
-        )
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                painter = icon,
+                contentDescription = contentDescription,
+                modifier = Modifier.size(20.dp),
+            )
+        }
     }
 }
 

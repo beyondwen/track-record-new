@@ -144,9 +144,16 @@ class HomeMapController : HomeMapPort {
             return
         }
 
+        val sanitizedTrack = TrackPathSanitizer.sanitize(activeSessionPoints, sortByTimestamp = true)
+        val renderableSegments = TrackPathSanitizer.renderableSegments(sanitizedTrack.segments)
+        if (renderableSegments.isEmpty()) {
+            clearActiveTrack()
+            return
+        }
+
         currentTrackPoints.clear()
-        currentTrackPoints.addAll(activeSessionPoints.sortedBy { it.timestampMillis })
-        currentTrackSegments = listOf(currentTrackPoints.toList())
+        currentTrackPoints.addAll(renderableSegments.flatten())
+        currentTrackSegments = renderableSegments
         renderTrackHeatmap()
     }
 

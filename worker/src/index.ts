@@ -1,6 +1,7 @@
 import { authenticateRequest } from "./auth";
 import {
   createD1AnalysisPersistence,
+  createD1DiagnosticLogPersistence,
   createD1HistoryDaySummaryPersistence,
   createD1RawPointPersistence,
   createD1HistoryPersistence,
@@ -10,6 +11,11 @@ import type {
   AnalysisPersistence,
   AnalysisSuccessResponseBody,
   AppConfigSuccessResponseBody,
+  DiagnosticLogCleanupSuccessResponseBody,
+  DiagnosticLogPersistence,
+  DiagnosticLogReadSuccessResponseBody,
+  DiagnosticLogResolveSuccessResponseBody,
+  DiagnosticLogSuccessResponseBody,
   Env,
   ErrorResponseBody,
   HistoryDaySummaryPersistence,
@@ -25,6 +31,8 @@ import type {
 } from "./types";
 import {
   validateAnalysisBatchRequest,
+  validateDiagnosticLogBatchRequest,
+  validateDiagnosticLogResolveRequest,
   ValidationError,
   validateRawPointBatchRequest,
   validateHistoryBatchRequest
@@ -42,6 +50,7 @@ interface AppDependencies {
   historyDaySummaryPersistence?: HistoryDaySummaryPersistence;
   rawPointPersistence?: RawPointPersistence;
   analysisPersistence?: AnalysisPersistence;
+  diagnosticLogPersistence?: DiagnosticLogPersistence;
 }
 
 function jsonResponse(
@@ -59,6 +68,10 @@ function jsonResponse(
     | RawPointDayReadSuccessResponseBody
     | RawPointSuccessResponseBody
     | AnalysisSuccessResponseBody
+    | DiagnosticLogSuccessResponseBody
+    | DiagnosticLogReadSuccessResponseBody
+    | DiagnosticLogResolveSuccessResponseBody
+    | DiagnosticLogCleanupSuccessResponseBody
     | ErrorResponseBody
 ): Response {
   return new Response(JSON.stringify(body), {
@@ -122,6 +135,8 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
     deps.rawPointPersistence ?? createD1RawPointPersistence();
   const analysisPersistence =
     deps.analysisPersistence ?? createD1AnalysisPersistence();
+  const diagnosticLogPersistence =
+    deps.diagnosticLogPersistence ?? createD1DiagnosticLogPersistence();
 
   return {
     async fetch(request, env): Promise<Response> {
@@ -152,6 +167,9 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
         url.pathname !== "/raw-points/day" &&
         url.pathname !== "/raw-points/batch" &&
         url.pathname !== "/analysis/batch" &&
+        url.pathname !== "/diagnostics/logs" &&
+        url.pathname !== "/diagnostics/logs/batch" &&
+        url.pathname !== "/diagnostics/logs/resolve" &&
         url.pathname !== "/app-config"
       ) {
         return jsonResponse(404, {
@@ -304,6 +322,45 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           });
         }
 
+
+
+        if (url.pathname === "/diagnostics/logs") {
+          if (request.method !== "GET" && request.method !== "DELETE") {
+            return jsonResponse(405, {
+              ok: false,
+              message: "Method not allowed"
+            });
+          }
+
+          if (request.method === "DELETE") {
+            const deletedCount = await diagnosticLogPersistence.deleteResolvedBefore(
+              parseRequiredQueryInteger(url.searchParams.get("beforeMillis"), "`beforeMillis`"),
+              env
+            );
+            return jsonResponse(200, {
+              ok: true,
+              deletedCount
+            });
+          }
+
+          const deviceId = parseRequiredQueryString(
+            url.searchParams.get("deviceId"),
+            "`deviceId`"
+          );
+          const status = url.searchParams.get("status")?.trim() || "open";
+          const type = url.searchParams.get("type")?.trim() || undefined;
+          const logs = await diagnosticLogPersistence.readLogs(
+            deviceId,
+            { status, type },
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            logs
+          });
+        }
+
         if (url.pathname === "/raw-points/days") {
           if (request.method !== "GET") {
             return jsonResponse(405, {
@@ -377,6 +434,38 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           return jsonResponse(400, {
             ok: false,
             message: "Request body must be valid JSON"
+          });
+        }
+
+
+
+        if (url.pathname === "/diagnostics/logs/batch") {
+          const validated = validateDiagnosticLogBatchRequest(payload);
+          const persisted = await diagnosticLogPersistence.persistLogs(
+            validated.deviceId,
+            validated.appVersion,
+            validated.logs,
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            insertedCount: persisted.insertedCount,
+            dedupedCount: persisted.dedupedCount
+          });
+        }
+
+        if (url.pathname === "/diagnostics/logs/resolve") {
+          const validated = validateDiagnosticLogResolveRequest(payload);
+          const resolvedCount = await diagnosticLogPersistence.resolveLogs(
+            validated.deviceId,
+            validated.fingerprints,
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            resolvedCount
           });
         }
 
@@ -460,6 +549,8 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
         console.error(
           url.pathname === "/histories/batch" || url.pathname === "/processed-histories/batch"
             ? "Failed to persist histories"
+            : url.pathname.startsWith("/diagnostics/logs")
+              ? "Failed to process diagnostic logs"
             : url.pathname === "/raw-points/day"
               ? "Failed to read raw points"
             : url.pathname === "/raw-points/batch"

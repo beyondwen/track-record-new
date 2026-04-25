@@ -10,4 +10,5 @@ data class AboutUiState(
     val uploadTokenInput: String = "",
     val hasConfiguredSampleUpload: Boolean = false,
     val isTestingWorkerConnectivity: Boolean = false,
+    val syncDiagnostics: SyncDiagnosticsUiState = SyncDiagnosticsUiState(),
 )

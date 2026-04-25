@@ -167,8 +167,20 @@ class AnalysisUploadWorkerTest {
             return emptyList()
         }
 
+        override suspend fun loadRawPointsBetween(startMillis: Long, endMillis: Long, limit: Int): List<RawLocationPointEntity> {
+            return emptyList()
+        }
+
+        override suspend fun countRawPoints(): Int {
+            return 0
+        }
+
         override suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
             return segments.filter { it.segmentId > afterSegmentId }.sortedBy { it.segmentId }.take(limit)
+        }
+
+        override suspend fun countAnalysisSegments(): Int {
+            return segments.size
         }
 
         override suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {

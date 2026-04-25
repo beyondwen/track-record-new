@@ -18,6 +18,7 @@ import com.wenhao.record.map.GeoMath
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.ui.map.HistoryMapGeometryLimiter
 import com.wenhao.record.tracking.TrackingPhase
+import com.wenhao.record.ui.map.TrackMapHeatPoint
 import com.wenhao.record.ui.map.TrackMapPolyline
 import com.wenhao.record.ui.map.TrackMapSceneState
 import com.wenhao.record.ui.map.TrackMapViewportRequest
@@ -80,16 +81,15 @@ class MapViewModel(
             currentLocation = liveCoordinate ?: previewLocation
             when {
                 trackingEnabled && liveCoordinate != null -> {
+                    syncScene(heatPoints = emptyList())
                     if (shouldRefit) {
                         focusActiveTrackOnLatestPoint(forceZoom = false)
-                    } else {
-                        syncScene()
                     }
                 }
 
                 else -> {
                     clearActiveTrack()
-                    syncScene()
+                    syncScene(heatPoints = emptyList())
                 }
             }
         }
@@ -151,7 +151,7 @@ class MapViewModel(
         clearTodayTrackOverlays()
         lastTodayHistoryToken = Long.MIN_VALUE
         lastActiveTrackToken = Long.MIN_VALUE
-        syncScene(viewportRequest = null)
+        syncScene(viewportRequest = null, heatPoints = emptyList())
     }
 
     private fun renderTrackHeatmap() {
@@ -181,9 +181,16 @@ class MapViewModel(
             return
         }
 
+        val sanitizedTrack = TrackPathSanitizer.sanitize(activeSessionPoints, sortByTimestamp = true)
+        val renderableSegments = TrackPathSanitizer.renderableSegments(sanitizedTrack.segments)
+        if (renderableSegments.isEmpty()) {
+            clearActiveTrack()
+            return
+        }
+
         currentTrackPoints.clear()
-        currentTrackPoints.addAll(activeSessionPoints.sortedBy { it.timestampMillis })
-        currentTrackSegments = listOf(currentTrackPoints.toList())
+        currentTrackPoints.addAll(renderableSegments.flatten())
+        currentTrackSegments = renderableSegments
         renderTrackHeatmap()
     }
 
@@ -237,10 +244,13 @@ class MapViewModel(
         }
     }
 
-    private fun syncScene(viewportRequest: TrackMapViewportRequest? = _renderState.value.viewportRequest) {
+    private fun syncScene(
+        viewportRequest: TrackMapViewportRequest? = _renderState.value.viewportRequest,
+        heatPoints: List<TrackMapHeatPoint> = _renderState.value.heatPoints,
+    ) {
         val nextState = TrackMapSceneState(
             polylines = activeTrackPolylines + todayTrackPolylines,
-            heatPoints = emptyList(),
+            heatPoints = heatPoints,
             markers = emptyList(),
             currentLocation = currentLocation,
             viewportRequest = viewportRequest,

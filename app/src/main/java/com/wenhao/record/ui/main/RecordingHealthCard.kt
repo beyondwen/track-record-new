@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.wenhao.record.R
@@ -34,15 +35,16 @@ fun RecordingHealthCard(
     onDetailsClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val highlights = compactRecordingHealthHighlights(state)
+    val chromeModel = buildHomeRecordChromeModel(state)
     TrackLiquidPanel(
         modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.extraLarge,
-        tone = TrackLiquidTone.STRONG,
-        shadowElevation = 14.dp,
+        tone = TrackLiquidTone.SUBTLE,
+        shadowElevation = 7.dp,
+        borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -54,42 +56,56 @@ fun RecordingHealthCard(
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.SemiBold,
                 )
-                TrackStatChip(text = overallStatusLabel(state.overallStatus))
+                TrackStatChip(
+                    text = overallStatusLabel(state.overallStatus),
+                    containerColor = overallStatusContainerColor(state.overallStatus),
+                    contentColor = overallStatusContentColor(state.overallStatus),
+                )
             }
 
             Text(
                 text = state.summaryText,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
 
             TrackInsetPanel(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
                 accented = state.overallStatus != RecordingHealthOverallStatus.READY,
             ) {
-                if (highlights.isEmpty()) {
+                Text(
+                    text = if (chromeModel.spotlightItem == null) "当前状态" else "当前关注",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                if (chromeModel.spotlightItem == null) {
                     Text(
                         text = stringResource(R.string.compose_dashboard_health_all_clear),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    highlights.forEach { item ->
-                        CompactHighlightRow(item = item)
-                    }
+                    CompactHighlightRow(item = chromeModel.spotlightItem)
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 TrackPrimaryButton(
                     text = state.primaryActionText,
                     onClick = onPrimaryActionClick,
                     modifier = Modifier.weight(1f),
+                    minHeight = 44.dp,
                 )
                 TrackSecondaryButton(
-                    text = stringResource(R.string.compose_dashboard_health_view_details),
+                    text = chromeModel.secondaryActionText,
                     onClick = onDetailsClick,
                     modifier = Modifier.weight(1f),
+                    minHeight = 44.dp,
                 )
             }
         }
@@ -166,11 +182,11 @@ private fun CompactHighlightRow(item: RecordingHealthItemUiState) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
     ) {
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
         ) {
             Text(
                 text = item.title,
@@ -298,4 +314,18 @@ private fun compactHighlightContentColor(severity: RecordingHealthItemSeverity) 
     RecordingHealthItemSeverity.NORMAL -> MaterialTheme.colorScheme.onSecondaryContainer
     RecordingHealthItemSeverity.WARNING -> MaterialTheme.colorScheme.onTertiaryContainer
     RecordingHealthItemSeverity.ERROR -> MaterialTheme.colorScheme.onErrorContainer
+}
+
+@Composable
+private fun overallStatusContainerColor(status: RecordingHealthOverallStatus) = when (status) {
+    RecordingHealthOverallStatus.READY -> MaterialTheme.colorScheme.secondaryContainer
+    RecordingHealthOverallStatus.DEGRADED -> MaterialTheme.colorScheme.tertiaryContainer
+    RecordingHealthOverallStatus.BLOCKED -> MaterialTheme.colorScheme.errorContainer
+}
+
+@Composable
+private fun overallStatusContentColor(status: RecordingHealthOverallStatus) = when (status) {
+    RecordingHealthOverallStatus.READY -> MaterialTheme.colorScheme.onSecondaryContainer
+    RecordingHealthOverallStatus.DEGRADED -> MaterialTheme.colorScheme.onTertiaryContainer
+    RecordingHealthOverallStatus.BLOCKED -> MaterialTheme.colorScheme.onErrorContainer
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.wenhao.record.BuildConfig
+import com.wenhao.record.data.diagnostics.DiagnosticLogger
 import com.wenhao.record.data.tracking.AnalysisHistoryProjector
 import com.wenhao.record.data.tracking.ProcessedHistorySyncStateStorage
 import com.wenhao.record.data.tracking.RawTrackPoint
@@ -13,6 +14,7 @@ import com.wenhao.record.data.tracking.RemoteRawPointReadService
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
 import com.wenhao.record.data.tracking.uploadDeviceId
+import org.json.JSONObject
 import com.wenhao.record.tracking.analysis.AnalysisContext
 import com.wenhao.record.tracking.analysis.AnalyzedPoint
 import com.wenhao.record.tracking.analysis.TrackAnalysisResult
@@ -57,7 +59,14 @@ class ProcessedHistorySyncWorker(
         val utcOffsetMinutes = timeZoneProvider().getOffset(nowProvider()).div(60_000)
         val days = when (val result = daySummaryLoader(config, deviceId, utcOffsetMinutes)) {
             is RemoteRawPointDaySummaryReadResult.Success -> result.days.sortedBy { it.dayStartMillis }
-            is RemoteRawPointDaySummaryReadResult.Failure -> return retryOrFail(result.message)
+            is RemoteRawPointDaySummaryReadResult.Failure -> {
+                logError(
+                    message = result.message,
+                    fingerprint = "processed-history-day-summary-load-failed",
+                    payload = JSONObject().apply { put("utcOffsetMinutes", utcOffsetMinutes) },
+                )
+                return retryOrFail(result.message)
+            }
         }
 
         for (day in days) {
@@ -67,7 +76,17 @@ class ProcessedHistorySyncWorker(
 
             val points = when (val result = pointLoader(config, deviceId, day.dayStartMillis)) {
                 is RemoteRawPointReadResult.Success -> result.points.sortedBy { it.timestampMillis }
-                is RemoteRawPointReadResult.Failure -> return retryOrFail(result.message)
+                is RemoteRawPointReadResult.Failure -> {
+                    logError(
+                        message = result.message,
+                        fingerprint = "processed-history-point-load-failed",
+                        payload = JSONObject().apply {
+                            put("dayStartMillis", day.dayStartMillis)
+                            put("maxPointId", day.maxPointId)
+                        },
+                    )
+                    return retryOrFail(result.message)
+                }
             }
 
             if (points.size < 3) {
@@ -75,9 +94,15 @@ class ProcessedHistorySyncWorker(
                 continue
             }
 
+            val analysisStartedAt = nowProvider()
             val analysisResult = analysisRunner(
                 points.map { point -> point.toAnalyzedPoint() },
                 null,
+            )
+            reportSlowAnalysisIfNeeded(
+                durationMs = nowProvider() - analysisStartedAt,
+                pointCount = points.size,
+                dayStartMillis = day.dayStartMillis,
             )
             val histories = historyProjector.project(
                 segments = analysisResult.segments,
@@ -97,6 +122,15 @@ class ProcessedHistorySyncWorker(
                     is HistoryBatchUploadResult.Success -> {
                     }
                     is HistoryBatchUploadResult.Failure -> {
+                        logError(
+                            message = uploadResult.message,
+                            fingerprint = "processed-history-upload-failed",
+                            payload = JSONObject().apply {
+                                put("dayStartMillis", day.dayStartMillis)
+                                put("historyCount", histories.size)
+                                put("acceptedCount", uploadResult.acceptedHistoryIds.size)
+                            },
+                        )
                         return retryOrFail(uploadResult.message)
                     }
                 }
@@ -106,6 +140,31 @@ class ProcessedHistorySyncWorker(
         }
 
         return Result.success()
+    }
+
+    private fun logError(message: String, fingerprint: String, payload: JSONObject) {
+        DiagnosticLogger.error(
+            context = applicationContext,
+            source = "ProcessedHistorySyncWorker",
+            message = message,
+            fingerprint = fingerprint,
+            payloadJson = payload.toString(),
+        )
+    }
+
+    private fun reportSlowAnalysisIfNeeded(durationMs: Long, pointCount: Int, dayStartMillis: Long) {
+        if (durationMs < PERF_WARN_ANALYSIS_MS) return
+        DiagnosticLogger.perfWarn(
+            context = applicationContext,
+            source = "ProcessedHistorySyncWorker",
+            message = "processed history analysis took ${durationMs}ms",
+            fingerprint = "processed-history-analysis-slow",
+            payloadJson = JSONObject().apply {
+                put("durationMs", durationMs)
+                put("pointCount", pointCount)
+                put("dayStartMillis", dayStartMillis)
+            }.toString(),
+        )
     }
 
     private fun RawTrackPoint.toAnalyzedPoint(): AnalyzedPoint {
@@ -131,5 +190,9 @@ class ProcessedHistorySyncWorker(
 
     private fun TrainingSampleUploadConfig.isConfigured(): Boolean {
         return workerBaseUrl.isNotBlank() && uploadToken.isNotBlank()
+    }
+
+    companion object {
+        private const val PERF_WARN_ANALYSIS_MS = 5_000L
     }
 }

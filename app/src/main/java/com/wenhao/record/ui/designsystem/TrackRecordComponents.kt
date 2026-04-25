@@ -71,6 +71,7 @@ fun TrackLiquidPanel(
     tone: TrackLiquidTone = TrackLiquidTone.STANDARD,
     shadowElevation: Dp = 0.dp,
     borderColor: Color = Color.Transparent,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
     contentPadding: PaddingValues = PaddingValues(0.dp),
     content: @Composable BoxScope.() -> Unit,
 ) {
@@ -89,7 +90,7 @@ fun TrackLiquidPanel(
     Surface(
         modifier = modifier,
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        color = containerColor,
         tonalElevation = tonalElevation,
         shadowElevation = shadowElevation,
         border = border,
@@ -246,17 +247,17 @@ fun TrackBottomNavigationBar(
         modifier = modifier
             .navigationBarsPadding()
             .widthIn(max = 420.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        color = MaterialTheme.colorScheme.surface,
         contentColor = MaterialTheme.colorScheme.onSurface,
-        shape = RoundedCornerShape(32.dp),
-        tonalElevation = 2.dp,
-        shadowElevation = 18.dp,
+        shape = RoundedCornerShape(22.dp),
+        tonalElevation = 1.dp,
+        shadowElevation = 3.dp,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 5.dp, vertical = 3.dp),
+            horizontalArrangement = Arrangement.spacedBy(0.dp),
         ) {
             TrackBottomNavigationItem(
                 selected = selectedTab == TrackBottomTab.RECORD,
@@ -304,7 +305,7 @@ private fun RowScope.TrackBottomNavigationItem(
     icon: @Composable () -> Unit,
 ) {
     val containerColor = if (selected) {
-        MaterialTheme.colorScheme.secondaryContainer
+        MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.26f)
     } else {
         Color.Transparent
     }
@@ -316,7 +317,7 @@ private fun RowScope.TrackBottomNavigationItem(
 
     Surface(
         modifier = Modifier.weight(1f),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(17.dp),
         color = containerColor,
         contentColor = contentColor,
         onClick = onClick,
@@ -324,20 +325,20 @@ private fun RowScope.TrackBottomNavigationItem(
     ) {
         Column(
             modifier = Modifier
-                .heightIn(min = 64.dp)
-                .padding(horizontal = 10.dp, vertical = 10.dp),
+                .heightIn(min = 42.dp)
+                .padding(horizontal = 8.dp, vertical = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
             Box(
-                modifier = Modifier.size(24.dp),
+                modifier = Modifier.size(18.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 icon()
             }
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelMedium,
+                style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
             )
@@ -351,10 +352,11 @@ fun TrackPrimaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    minHeight: Dp = 48.dp,
 ) {
     Button(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 52.dp),
+        modifier = modifier.heightIn(min = minHeight),
         enabled = enabled,
         shape = MaterialTheme.shapes.large,
     ) {
@@ -371,10 +373,11 @@ fun TrackSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    minHeight: Dp = 48.dp,
 ) {
     OutlinedButton(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 52.dp),
+        modifier = modifier.heightIn(min = minHeight),
         enabled = enabled,
         shape = MaterialTheme.shapes.large,
     ) {
@@ -391,10 +394,11 @@ fun TrackTertiaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    minHeight: Dp = 48.dp,
 ) {
     FilledTonalButton(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 52.dp),
+        modifier = modifier.heightIn(min = minHeight),
         enabled = enabled,
         shape = MaterialTheme.shapes.large,
     ) {

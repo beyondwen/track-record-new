@@ -31,7 +31,34 @@ class AnalysisUploadPayloadCodecTest {
         assertTrue(stay.getDouble("centerLat") > 0.0)
     }
 
-    private fun analysisRow(segmentId: Long): AnalysisUploadRow {
+    @Test
+    fun `encode maps oversized stay id to worker safe integer`() {
+        val payload = AnalysisUploadPayloadCodec.encode(
+            deviceId = "device-1",
+            appVersion = "1.0.23",
+            rows = listOf(
+                analysisRow(
+                    segmentId = 8_800_387_993_599L,
+                    stayId = 8_800_414_393_092_970_029L,
+                )
+            ),
+        )
+
+        val stay = JSONObject(payload)
+            .getJSONArray("segments")
+            .getJSONObject(0)
+            .getJSONArray("stayClusters")
+            .getJSONObject(0)
+
+        val encodedStayId = stay.getLong("stayId")
+        assertTrue(encodedStayId > 0L)
+        assertTrue(encodedStayId <= 9_007_199_254_740_991L)
+    }
+
+    private fun analysisRow(
+        segmentId: Long,
+        stayId: Long = 201L,
+    ): AnalysisUploadRow {
         return AnalysisUploadRow(
             segmentId = segmentId,
             startPointId = 11L,
@@ -47,7 +74,7 @@ class AnalysisUploadPayloadCodecTest {
             analysisVersion = 1,
             stayClusters = listOf(
                 AnalysisStayClusterUploadRow(
-                    stayId = 201L,
+                    stayId = stayId,
                     centerLat = 30.1,
                     centerLng = 120.1,
                     radiusMeters = 25.0,

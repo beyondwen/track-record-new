@@ -194,8 +194,23 @@ class RawPointUploadWorkerTest {
             return items.filter { it.pointId > afterPointId }.sortedBy { it.pointId }.take(limit)
         }
 
+        override suspend fun loadRawPointsBetween(startMillis: Long, endMillis: Long, limit: Int): List<RawLocationPointEntity> {
+            return items
+                .filter { it.timestampMillis in startMillis..endMillis }
+                .sortedBy { it.timestampMillis }
+                .take(limit)
+        }
+
+        override suspend fun countRawPoints(): Int {
+            return items.size
+        }
+
         override suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
             return emptyList()
+        }
+
+        override suspend fun countAnalysisSegments(): Int {
+            return 0
         }
 
         override suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {

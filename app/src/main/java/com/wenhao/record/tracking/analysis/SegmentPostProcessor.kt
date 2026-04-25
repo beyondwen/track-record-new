@@ -5,6 +5,7 @@ class SegmentPostProcessor(
     private val minDynamicPointCount: Int = 3,
     private val maxStaticGapInsideDynamicMillis: Long = 60_000L,
     private val maxStaticGapInsideDynamicPoints: Int = 2,
+    private val maxSameKindMergeGapMillis: Long = 30 * 60_000L,
 ) {
     fun refine(candidates: List<SegmentCandidate>): List<SegmentCandidate> {
         if (candidates.isEmpty()) return emptyList()
@@ -24,7 +25,8 @@ class SegmentPostProcessor(
 
     private fun shouldRecoverDynamicNoise(candidate: SegmentCandidate): Boolean {
         return candidate.kind == SegmentKind.DYNAMIC &&
-            (candidate.durationMillis < minDynamicDurationMillis || candidate.pointCount < minDynamicPointCount)
+            candidate.durationMillis < minDynamicDurationMillis &&
+            candidate.pointCount < minDynamicPointCount
     }
 
     private fun shouldBridgeDynamicGap(
@@ -63,7 +65,7 @@ class SegmentPostProcessor(
         val merged = mutableListOf(candidates.first())
         for (candidate in candidates.drop(1)) {
             val last = merged.last()
-            if (last.kind == candidate.kind) {
+            if (last.kind == candidate.kind && candidate.startTimestamp - last.endTimestamp <= maxSameKindMergeGapMillis) {
                 merged[merged.lastIndex] = last.copy(
                     endTimestamp = maxOf(last.endTimestamp, candidate.endTimestamp),
                     pointCount = last.pointCount + candidate.pointCount,

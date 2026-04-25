@@ -64,4 +64,43 @@ class PointSignalClassifierTest {
 
         assertTrue(dynamicScore > staticScore, "expected dynamicScore > staticScore but got $dynamicScore <= $staticScore")
     }
+    @Test
+    fun `classifier uses inferred speed when location speed is missing`() {
+        val classifier = PointSignalClassifier()
+
+        val score = classifier.classify(
+            listOf(
+                analyzedPoint(
+                    timestampMillis = 0L,
+                    latitude = 30.0,
+                    longitude = 120.0,
+                    speedMetersPerSecond = null,
+                    activityType = "WALKING",
+                    activityConfidence = 0.9f,
+                    wifiFingerprintDigest = "street-a",
+                ),
+                analyzedPoint(
+                    timestampMillis = 60_000L,
+                    latitude = 30.0009,
+                    longitude = 120.0009,
+                    speedMetersPerSecond = null,
+                    activityType = "WALKING",
+                    activityConfidence = 0.9f,
+                    wifiFingerprintDigest = "street-b",
+                ),
+                analyzedPoint(
+                    timestampMillis = 120_000L,
+                    latitude = 30.0018,
+                    longitude = 120.0018,
+                    speedMetersPerSecond = null,
+                    activityType = "WALKING",
+                    activityConfidence = 0.9f,
+                    wifiFingerprintDigest = "street-c",
+                ),
+            )
+        )
+
+        assertTrue(score.dynamicScore > score.staticScore, "expected inferred speed to drive dynamic score: $score")
+    }
+
 }

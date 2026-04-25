@@ -35,6 +35,42 @@ class TrackDatabaseMigrationTest {
         assertTrue(classExists("com.wenhao.record.data.local.stream.UploadCursorEntity"))
     }
 
+    @Test
+    fun `track database declares migration 11 to 12 and exposes today display cache entities`() {
+        val companionClass = Class.forName("com.wenhao.record.data.local.TrackDatabase\$Companion")
+
+        assertTrue(
+            companionClass.declaredFields.any { it.name == "MIGRATION_11_12" } ||
+                companionClass.declaredMethods.any { it.name == "getMIGRATION_11_12" }
+        )
+
+        assertTrue(classExists("com.wenhao.record.data.local.stream.TodayDisplayPointEntity"))
+        assertTrue(classExists("com.wenhao.record.data.local.stream.TodayTrackDisplayDao"))
+    }
+
+    @Test
+    fun `track database declares migration 12 to 13 for tracking query indexes`() {
+        val companionClass = Class.forName("com.wenhao.record.data.local.TrackDatabase\$Companion")
+
+        assertTrue(
+            companionClass.declaredFields.any { it.name == "MIGRATION_12_13" } ||
+                companionClass.declaredMethods.any { it.name == "getMIGRATION_12_13" }
+        )
+    }
+
+    @Test
+    fun `track database declares migration 13 to 14 and exposes sync outbox entities`() {
+        val companionClass = Class.forName("com.wenhao.record.data.local.TrackDatabase\$Companion")
+
+        assertTrue(
+            companionClass.declaredFields.any { it.name == "MIGRATION_13_14" } ||
+                companionClass.declaredMethods.any { it.name == "getMIGRATION_13_14" }
+        )
+
+        assertTrue(classExists("com.wenhao.record.data.local.stream.SyncOutboxEntity"))
+        assertTrue(classExists("com.wenhao.record.data.local.stream.SyncOutboxDao"))
+    }
+
     private fun classExists(name: String): Boolean {
         return runCatching { Class.forName(name) }.isSuccess
     }

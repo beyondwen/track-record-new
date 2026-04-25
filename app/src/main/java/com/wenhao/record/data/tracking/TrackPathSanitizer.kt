@@ -20,6 +20,7 @@ object TrackPathSanitizer {
     private const val MIN_SPIKE_EXCESS_DISTANCE_METERS = 72f
     private const val MAX_SPIKE_EDGE_DURATION_MILLIS = 75_000L
     private const val MAX_SPIKE_WINDOW_MILLIS = 120_000L
+    private const val MAX_PROVIDER_FLIP_EDGE_DURATION_MILLIS = 2_000L
     private const val MIN_RENDERABLE_SEGMENT_DISTANCE_METERS = 15f
     private const val MIN_SIGNIFICANT_SEGMENT_DISTANCE_METERS = 20f
     private const val DOUGLAS_PEUCKER_TOLERANCE_METERS = 15f
@@ -147,6 +148,26 @@ object TrackPathSanitizer {
         val edgeDistanceThreshold = max(MIN_SPIKE_EDGE_DISTANCE_METERS, maxAccuracyMeters * 1.45f)
         val bridgeDistanceThreshold = max(18f, maxAccuracyMeters * 0.7f)
         val detourExcess = previousToCurrent + currentToNext - previousToNext
+        val hasTimestamps = previous.timestampMillis > 0L &&
+            current.timestampMillis > 0L &&
+            next.timestampMillis > 0L
+        val firstDeltaMillis = current.timestampMillis - previous.timestampMillis
+        val secondDeltaMillis = next.timestampMillis - current.timestampMillis
+
+        if (hasTimestamps &&
+            firstDeltaMillis in 1..MAX_PROVIDER_FLIP_EDGE_DURATION_MILLIS &&
+            secondDeltaMillis in 1..MAX_PROVIDER_FLIP_EDGE_DURATION_MILLIS &&
+            currentLooksLikeRapidProviderFlip(
+                previous = previous,
+                current = current,
+                next = next,
+                previousToCurrent = previousToCurrent,
+                currentToNext = currentToNext,
+                previousToNext = previousToNext,
+            )
+        ) {
+            return true
+        }
 
         if (previousToCurrent < edgeDistanceThreshold || currentToNext < edgeDistanceThreshold) {
             return false
@@ -158,15 +179,10 @@ object TrackPathSanitizer {
             return false
         }
 
-        val hasTimestamps = previous.timestampMillis > 0L &&
-            current.timestampMillis > 0L &&
-            next.timestampMillis > 0L
         if (!hasTimestamps) {
             return true
         }
 
-        val firstDeltaMillis = current.timestampMillis - previous.timestampMillis
-        val secondDeltaMillis = next.timestampMillis - current.timestampMillis
         if (firstDeltaMillis <= 0L || secondDeltaMillis <= 0L) {
             return false
         }
@@ -174,6 +190,27 @@ object TrackPathSanitizer {
         return firstDeltaMillis <= MAX_SPIKE_EDGE_DURATION_MILLIS &&
             secondDeltaMillis <= MAX_SPIKE_EDGE_DURATION_MILLIS &&
             firstDeltaMillis + secondDeltaMillis <= MAX_SPIKE_WINDOW_MILLIS
+    }
+
+    private fun currentLooksLikeRapidProviderFlip(
+        previous: TrackPoint,
+        current: TrackPoint,
+        next: TrackPoint,
+        previousToCurrent: Float,
+        currentToNext: Float,
+        previousToNext: Float,
+    ): Boolean {
+        val currentAccuracy = current.accuracyMeters ?: return false
+        val neighborhoodAccuracy = maxOf(
+            previous.accuracyMeters ?: 0f,
+            next.accuracyMeters ?: 0f,
+        )
+        val minEdgeDistance = minOf(previousToCurrent, currentToNext)
+        val bridgeThreshold = maxOf(12f, neighborhoodAccuracy * 1.6f, minEdgeDistance * 0.25f)
+        val currentIsWorseThanNeighbors = currentAccuracy >= maxOf(20f, neighborhoodAccuracy * 2.2f)
+        return currentIsWorseThanNeighbors &&
+            minEdgeDistance >= maxOf(18f, currentAccuracy * 0.55f) &&
+            previousToNext <= bridgeThreshold
     }
 
     private fun classifyPoint(previous: TrackPoint, candidate: TrackPoint): SanitizerAction {

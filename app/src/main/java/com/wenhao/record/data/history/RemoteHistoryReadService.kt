@@ -303,6 +303,7 @@ class RemoteHistoryReadService(
                         totalDurationSeconds = item.optLongOrNull("totalDurationSeconds")?.toInt() ?: 0,
                         averageSpeedKmh = item.optFiniteDouble("averageSpeedKmh") ?: 0.0,
                         sourceIds = item.optLongList("sourceIds"),
+                        routeTitle = item.optNullableString("routeTitle") ?: item.optNullableString("title"),
                     )
                 )
             }

@@ -21,6 +21,20 @@ interface ContinuousTrackDao {
     )
     suspend fun loadRawPoints(afterPointId: Long, limit: Int): List<RawLocationPointEntity>
 
+
+    @Query(
+        """
+        SELECT * FROM raw_location_point
+        WHERE timestampMillis BETWEEN :startMillis AND :endMillis
+        ORDER BY timestampMillis DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun loadRawPointsBetween(startMillis: Long, endMillis: Long, limit: Int): List<RawLocationPointEntity>
+
+    @Query("SELECT COUNT(*) FROM raw_location_point")
+    suspend fun countRawPoints(): Int
+
     @Query(
         """
         SELECT * FROM analysis_segment
@@ -30,6 +44,9 @@ interface ContinuousTrackDao {
         """
     )
     suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity>
+
+    @Query("SELECT COUNT(*) FROM analysis_segment")
+    suspend fun countAnalysisSegments(): Int
 
     @Query(
         """

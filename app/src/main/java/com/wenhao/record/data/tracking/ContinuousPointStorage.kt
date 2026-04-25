@@ -45,6 +45,15 @@ class ContinuousPointStorage(
         return loadPendingWindow(afterPointId = 0L, limit = limit)
     }
 
+    suspend fun loadRawPointsBetween(startMillis: Long, endMillis: Long, limit: Int): List<RawTrackPoint> {
+        return dao.loadRawPointsBetween(
+            startMillis = startMillis,
+            endMillis = endMillis,
+            limit = limit,
+        ).map { it.toModel() }
+            .sortedBy { it.timestampMillis }
+    }
+
     suspend fun loadPendingRawUploadRows(afterPointId: Long, limit: Int): List<RawPointUploadRow> {
         return loadPendingWindow(afterPointId = afterPointId, limit = limit).map(RawPointUploadRow::from)
     }

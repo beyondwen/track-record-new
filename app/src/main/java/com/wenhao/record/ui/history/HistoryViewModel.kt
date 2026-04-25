@@ -194,7 +194,9 @@ class HistoryViewModel(
                 localItem
             } else {
                 cachedItem.copy(
+                    sessionCount = maxOf(cachedItem.sessionCount, localItem.sessionCount),
                     sourceIds = if (localItem.sourceIds.isNotEmpty()) localItem.sourceIds else cachedItem.sourceIds,
+                    routeTitle = cachedItem.routeTitle ?: localItem.routeTitle,
                 )
             }
         }

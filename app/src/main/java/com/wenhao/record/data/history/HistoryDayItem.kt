@@ -28,6 +28,7 @@ data class HistoryDayItem(
     val formattedDistance: String,
     val formattedSpeed: String,
     val formattedDateDetail: String,
+    val routeTitle: String?,
     val sessionCountLabel: String,
     val summary: String,
     val pointCountLabel: String,
@@ -68,6 +69,9 @@ object HistoryDayAggregator {
                     averageSpeedKmh = averageSpeedKmh,
                     sourceIds = sortedItems.map { it.id },
                     segments = segments,
+                    routeTitle = sortedItems
+                        .asReversed()
+                        .firstNotNullOfOrNull { item -> item.title?.trim()?.takeIf { it.isNotEmpty() } },
                 )
             }
             .sortedByDescending { it.dayStartMillis }
@@ -93,6 +97,7 @@ internal fun buildHistoryDayItem(
     averageSpeedKmh: Double,
     sourceIds: List<Long>,
     segments: List<List<TrackPoint>>,
+    routeTitle: String? = null,
 ): HistoryDayItem {
     val pointCount = segments.sumOf { segment -> segment.size }
     val quality = buildHistoryQuality(
@@ -107,11 +112,12 @@ internal fun buildHistoryDayItem(
     val formattedDurationDetail = formatHistoryDurationDetail(totalDurationSeconds)
     val formattedDistance = formatHistoryDistance(totalDistanceKm)
     val formattedSpeed = formatHistorySpeed(averageSpeedKmh)
+    val visibleSegmentCount = segments.size.coerceAtLeast(sessionCount)
 
     return HistoryDayItem(
         dayStartMillis = dayStartMillis,
         latestTimestamp = latestTimestamp,
-        sessionCount = sessionCount,
+        sessionCount = visibleSegmentCount,
         totalDistanceKm = totalDistanceKm,
         totalDurationSeconds = totalDurationSeconds,
         averageSpeedKmh = averageSpeedKmh,
@@ -128,10 +134,11 @@ internal fun buildHistoryDayItem(
         formattedSpeed = formattedSpeed,
         formattedDateDetail = buildHistoryDateDetail(
             displayTitle = displayTitle,
-            sessionCount = sessionCount,
+            sessionCount = visibleSegmentCount,
         ),
+        routeTitle = routeTitle,
         sessionCountLabel = buildHistorySessionCountLabel(
-            sessionCount = sessionCount,
+            sessionCount = visibleSegmentCount,
             formattedLatestTime = formattedLatestTime,
         ),
         summary = buildHistorySummary(
@@ -140,7 +147,7 @@ internal fun buildHistoryDayItem(
             formattedSpeed = formattedSpeed,
         ),
         pointCountLabel = buildHistoryPointCountLabel(
-            sessionCount = sessionCount,
+            sessionCount = visibleSegmentCount,
             pointCount = pointCount,
         ),
     )

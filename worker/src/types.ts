@@ -89,6 +89,27 @@ export interface HistoryDaySummary {
   sourceIds: number[];
 }
 
+export type DiagnosticLogType = "ERROR" | "PERF_WARN";
+export type DiagnosticLogSeverity = "ERROR" | "WARN";
+export type DiagnosticLogStatus = "open" | "resolved";
+
+export interface DiagnosticLog {
+  logId: string;
+  deviceId: string;
+  appVersion: string;
+  occurredAt: number;
+  type: DiagnosticLogType;
+  severity: DiagnosticLogSeverity;
+  source: string;
+  message: string;
+  fingerprint: string;
+  payload: unknown | null;
+  status: DiagnosticLogStatus;
+  occurrenceCount: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+}
+
 export interface ValidatedRawPointBatchRequest {
   deviceId: string;
   appVersion: string;
@@ -108,6 +129,17 @@ export interface ValidatedHistoryBatchRequest {
   histories: HistoryRecord[];
 }
 
+export interface ValidatedDiagnosticLogBatchRequest {
+  deviceId: string;
+  appVersion: string;
+  logs: DiagnosticLog[];
+}
+
+export interface ValidatedDiagnosticLogResolveRequest {
+  deviceId: string;
+  fingerprints: string[];
+}
+
 export interface PersistRawPointsResult {
   insertedCount: number;
   dedupedCount: number;
@@ -124,6 +156,11 @@ export interface PersistHistoriesResult {
   insertedCount: number;
   dedupedCount: number;
   acceptedHistoryIds: number[];
+}
+
+export interface PersistDiagnosticLogsResult {
+  insertedCount: number;
+  dedupedCount: number;
 }
 
 export interface RawPointPersistence {
@@ -205,6 +242,29 @@ export interface HistoryDaySummaryPersistence {
   ): Promise<HistoryDaySummary[]>;
 }
 
+export interface DiagnosticLogPersistence {
+  persistLogs(
+    deviceId: string,
+    appVersion: string,
+    logs: DiagnosticLog[],
+    env: Env
+  ): Promise<PersistDiagnosticLogsResult>;
+
+  readLogs(
+    deviceId: string,
+    filters: { status?: string; type?: string },
+    env: Env
+  ): Promise<DiagnosticLog[]>;
+
+  resolveLogs(
+    deviceId: string,
+    fingerprints: string[],
+    env: Env
+  ): Promise<number>;
+
+  deleteResolvedBefore(beforeMillis: number, env: Env): Promise<number>;
+}
+
 export interface RawPointSuccessResponseBody extends PersistRawPointsResult {
   ok: true;
 }
@@ -215,6 +275,25 @@ export interface AnalysisSuccessResponseBody extends PersistAnalysisResult {
 
 export interface HistorySuccessResponseBody extends PersistHistoriesResult {
   ok: true;
+}
+
+export interface DiagnosticLogSuccessResponseBody extends PersistDiagnosticLogsResult {
+  ok: true;
+}
+
+export interface DiagnosticLogReadSuccessResponseBody {
+  ok: true;
+  logs: DiagnosticLog[];
+}
+
+export interface DiagnosticLogResolveSuccessResponseBody {
+  ok: true;
+  resolvedCount: number;
+}
+
+export interface DiagnosticLogCleanupSuccessResponseBody {
+  ok: true;
+  deletedCount: number;
 }
 
 export interface HistoryReadSuccessResponseBody {

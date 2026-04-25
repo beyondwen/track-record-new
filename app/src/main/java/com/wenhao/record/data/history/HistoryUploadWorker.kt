@@ -4,6 +4,11 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.wenhao.record.BuildConfig
+import com.wenhao.record.data.diagnostics.DiagnosticLogger
+import com.wenhao.record.data.local.TrackDatabase
+import org.json.JSONObject
+import com.wenhao.record.data.tracking.SyncOutboxStorage
+import com.wenhao.record.data.tracking.SyncOutboxType
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
 import com.wenhao.record.data.tracking.uploadDeviceId
@@ -20,6 +25,9 @@ class HistoryUploadWorker(
         HistoryRetentionPolicy.pruneUploadedHistories(context, uploadedIds, nowMillis)
     },
     private val uploadService: HistoryUploadService = HistoryUploadService(),
+    private val syncOutboxStorage: SyncOutboxStorage = SyncOutboxStorage(
+        TrackDatabase.getInstance(appContext).syncOutboxDao(),
+    ),
     private val configLoader: (Context) -> TrainingSampleUploadConfig = TrainingSampleUploadConfigStorage::load,
     private val deviceIdProvider: (Context) -> String = ::uploadDeviceId,
     private val nowProvider: () -> Long = System::currentTimeMillis,
@@ -38,6 +46,9 @@ class HistoryUploadWorker(
             HistoryRetentionPolicy.pruneUploadedHistories(context, uploadedIds, nowMillis)
         },
         uploadService = HistoryUploadService(),
+        syncOutboxStorage = SyncOutboxStorage(
+            TrackDatabase.getInstance(appContext).syncOutboxDao(),
+        ),
         configLoader = TrainingSampleUploadConfigStorage::load,
         deviceIdProvider = ::uploadDeviceId,
         nowProvider = System::currentTimeMillis,
@@ -59,6 +70,11 @@ class HistoryUploadWorker(
             return Result.success()
         }
 
+        val outboxKeys = pendingRows.map { it.historyId.toString() }
+        val startedAt = nowProvider()
+        syncOutboxStorage.enqueueMany(SyncOutboxType.HISTORY_UPLOAD, outboxKeys, startedAt)
+        syncOutboxStorage.markInProgress(SyncOutboxType.HISTORY_UPLOAD, outboxKeys, startedAt)
+
         val uploader = HistoryBatchUploader { batch ->
             uploadService.upload(
                 config = config,
@@ -68,19 +84,69 @@ class HistoryUploadWorker(
             )
         }
 
+        val uploadStartedAt = nowProvider()
         return when (val result = uploader.upload(rows = pendingRows)) {
             is HistoryBatchUploadResult.Success -> {
+                val uploadedAt = nowProvider()
+                reportSlowUploadIfNeeded(
+                    durationMs = uploadedAt - uploadStartedAt,
+                    batchSize = pendingRows.size,
+                    acceptedCount = result.acceptedHistoryIds.size,
+                )
                 markUploaded(applicationContext, result.acceptedHistoryIds)
+                syncOutboxStorage.markSucceeded(
+                    type = SyncOutboxType.HISTORY_UPLOAD,
+                    keys = result.acceptedHistoryIds.map { it.toString() },
+                    nowMillis = uploadedAt,
+                )
                 pruneAcceptedHistory(result.acceptedHistoryIds, uploadedHistoryIds)
                 Result.success()
             }
 
             is HistoryBatchUploadResult.Failure -> {
+                val finishedAt = nowProvider()
+                DiagnosticLogger.error(
+                    context = applicationContext,
+                    source = "HistoryUploadWorker",
+                    message = result.message,
+                    fingerprint = "history-upload-failed",
+                    payloadJson = JSONObject().apply {
+                        put("batchSize", pendingRows.size)
+                        put("acceptedCount", result.acceptedHistoryIds.size)
+                        put("durationMs", finishedAt - uploadStartedAt)
+                    }.toString(),
+                )
                 markUploaded(applicationContext, result.acceptedHistoryIds)
+                syncOutboxStorage.markSucceeded(
+                    type = SyncOutboxType.HISTORY_UPLOAD,
+                    keys = result.acceptedHistoryIds.map { it.toString() },
+                    nowMillis = finishedAt,
+                )
+                syncOutboxStorage.markFailed(
+                    type = SyncOutboxType.HISTORY_UPLOAD,
+                    keys = outboxKeys - result.acceptedHistoryIds.map { it.toString() }.toSet(),
+                    error = result.message,
+                    nowMillis = finishedAt,
+                )
                 pruneAcceptedHistory(result.acceptedHistoryIds, uploadedHistoryIds)
                 retryOrFail(result.message)
             }
         }
+    }
+
+    private fun reportSlowUploadIfNeeded(durationMs: Long, batchSize: Int, acceptedCount: Int) {
+        if (durationMs < PERF_WARN_UPLOAD_MS) return
+        DiagnosticLogger.perfWarn(
+            context = applicationContext,
+            source = "HistoryUploadWorker",
+            message = "history upload took ${durationMs}ms",
+            fingerprint = "history-upload-slow",
+            payloadJson = JSONObject().apply {
+                put("durationMs", durationMs)
+                put("batchSize", batchSize)
+                put("acceptedCount", acceptedCount)
+            }.toString(),
+        )
     }
 
     private suspend fun pruneAcceptedHistory(
@@ -105,5 +171,9 @@ class HistoryUploadWorker(
 
     private fun TrainingSampleUploadConfig.isConfigured(): Boolean {
         return workerBaseUrl.isNotBlank() && uploadToken.isNotBlank()
+    }
+
+    companion object {
+        private const val PERF_WARN_UPLOAD_MS = 5_000L
     }
 }

@@ -11,6 +11,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
+import com.wenhao.record.data.diagnostics.DiagnosticLogger
+import com.wenhao.record.data.local.TrackDatabase
+import com.wenhao.record.data.tracking.SyncDiagnosticsRepository
+import com.wenhao.record.data.tracking.SyncDiagnosticsSnapshot
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
 import com.wenhao.record.data.tracking.WorkerAppConfigResult
@@ -28,6 +32,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 
 private const val KEY_CURRENT_TAB = "current_tab"
 private const val TAG = "TrackRecordMain"
@@ -45,6 +50,9 @@ class MainViewModel(
     }
     private val workerConnectivityService by lazy { WorkerConnectivityService() }
     private val workerAppConfigService by lazy { WorkerAppConfigService() }
+    private val syncDiagnosticsRepository by lazy {
+        SyncDiagnosticsRepository(TrackDatabase.getInstance(getApplication()))
+    }
 
     private val _currentTab = MutableStateFlow(
         savedStateHandle.get<String>(KEY_CURRENT_TAB)?.let {
@@ -75,6 +83,7 @@ class MainViewModel(
 
     init {
         restoreAboutState()
+        refreshSyncDiagnostics(showStatusMessage = false)
         syncMapboxTokenFromWorkerIfNeeded()
     }
 
@@ -205,10 +214,62 @@ class MainViewModel(
                 }
             } catch (error: Exception) {
                 Log.e(TAG, "Mapbox token sync crashed", error)
+                DiagnosticLogger.error(
+                    context = getApplication(),
+                    source = "MainViewModel",
+                    message = error.message?.takeIf { it.isNotBlank() } ?: "Mapbox token sync crashed",
+                    fingerprint = "mapbox-token-sync-crashed",
+                    payloadJson = JSONObject().apply { put("workerConfigured", true) }.toString(),
+                )
                 val message = error.message?.takeIf { it.isNotBlank() } ?: "同步 Mapbox Token 失败"
                 _aboutState.value = _aboutState.value.copy(statusMessage = message)
             }
         }
+    }
+
+    fun refreshSyncDiagnostics(showStatusMessage: Boolean = true) {
+        if (_aboutState.value.syncDiagnostics.isRefreshing) return
+        _aboutState.value = _aboutState.value.copy(
+            syncDiagnostics = _aboutState.value.syncDiagnostics.copy(isRefreshing = true),
+            statusMessage = if (showStatusMessage) "正在刷新同步诊断…" else _aboutState.value.statusMessage,
+        )
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val snapshot = syncDiagnosticsRepository.load()
+                _aboutState.value = _aboutState.value.copy(
+                    syncDiagnostics = snapshot.toUiState(isRefreshing = false),
+                    statusMessage = if (showStatusMessage) "同步诊断已刷新" else _aboutState.value.statusMessage,
+                )
+            } catch (error: Exception) {
+                Log.e(TAG, "Sync diagnostics refresh failed", error)
+                DiagnosticLogger.error(
+                    context = getApplication(),
+                    source = "MainViewModel",
+                    message = error.message?.takeIf { it.isNotBlank() } ?: "sync diagnostics refresh failed",
+                    fingerprint = "sync-diagnostics-refresh-failed",
+                    payloadJson = JSONObject().apply { put("showStatusMessage", showStatusMessage) }.toString(),
+                )
+                val message = error.message?.takeIf { it.isNotBlank() } ?: "同步诊断刷新失败"
+                _aboutState.value = _aboutState.value.copy(
+                    syncDiagnostics = _aboutState.value.syncDiagnostics.copy(isRefreshing = false),
+                    statusMessage = message,
+                )
+            }
+        }
+    }
+
+    private fun SyncDiagnosticsSnapshot.toUiState(isRefreshing: Boolean): SyncDiagnosticsUiState {
+        return SyncDiagnosticsUiState(
+            rawPointCount = rawPointCount,
+            todayDisplayPointCount = todayDisplayPointCount,
+            analysisSegmentCount = analysisSegmentCount,
+            outboxPendingCount = outboxPendingCount,
+            outboxInProgressCount = outboxInProgressCount,
+            outboxFailedCount = outboxFailedCount,
+            lastError = lastError,
+            isRefreshing = isRefreshing,
+        )
     }
 
     fun testWorkerConnectivity() {
@@ -245,6 +306,13 @@ class MainViewModel(
                 }
             } catch (error: Exception) {
                 Log.e(TAG, "Worker connectivity check crashed", error)
+                DiagnosticLogger.error(
+                    context = getApplication(),
+                    source = "MainViewModel",
+                    message = error.message?.takeIf { it.isNotBlank() } ?: "worker connectivity check crashed",
+                    fingerprint = "worker-connectivity-check-crashed",
+                    payloadJson = JSONObject().apply { put("workerBaseUrlConfigured", workerBaseUrl.isNotBlank()) }.toString(),
+                )
                 val message = error.message?.takeIf { it.isNotBlank() } ?: "Worker 检查失败"
                 _aboutState.value = _aboutState.value.copy(statusMessage = message)
             } finally {

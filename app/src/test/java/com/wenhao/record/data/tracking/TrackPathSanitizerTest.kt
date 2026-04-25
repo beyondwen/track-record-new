@@ -82,4 +82,18 @@ class TrackPathSanitizerTest {
         assertEquals(1, renderable.size)
         assertEquals(primarySegment, renderable.single())
     }
+    @Test
+    fun `removes rapid provider flip point inside accuracy radius`() {
+        val points = listOf(
+            TrackPoint(30.68020, 103.98495, timestampMillis = 1_000L, accuracyMeters = 8f),
+            TrackPoint(30.68047, 103.98497, timestampMillis = 1_400L, accuracyMeters = 30f),
+            TrackPoint(30.68021, 103.98496, timestampMillis = 1_900L, accuracyMeters = 8f),
+        )
+
+        val sanitized = TrackPathSanitizer.sanitize(points, sortByTimestamp = true)
+
+        assertEquals(listOf(1_000L, 1_900L), sanitized.points.map { it.timestampMillis })
+        assertEquals(1, sanitized.removedPointCount)
+    }
+
 }

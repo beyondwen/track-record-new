@@ -20,18 +20,19 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryStorage
-import com.wenhao.record.data.local.TrackDatabase
 import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.AutoTrackUiState
-import com.wenhao.record.data.tracking.ContinuousPointStorage
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.data.tracking.TodayTrackDisplayCache
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
 import com.wenhao.record.map.GeoCoordinate
@@ -46,6 +47,7 @@ import com.wenhao.record.ui.map.MapActivity
 import com.wenhao.record.update.ApkDownloadInstaller
 import com.wenhao.record.update.AppUpdateInfo
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.util.Calendar
 
@@ -55,9 +57,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private val apkDownloadInstaller by lazy { ApkDownloadInstaller(this) }
-    private val continuousPointStorage by lazy {
-        ContinuousPointStorage(TrackDatabase.getInstance(this).continuousTrackDao())
-    }
 
     private val permissionHelper by lazy {
         PermissionHelper(
@@ -165,6 +164,7 @@ class MainActivity : AppCompatActivity() {
                     onSampleUploadConfigSaveClick = mainVm::saveSampleUploadConfig,
                     onSampleUploadConfigClearClick = mainVm::clearSampleUploadConfig,
                     onWorkerConnectivityTestClick = mainVm::testWorkerConnectivity,
+                    onSyncDiagnosticsRefreshClick = { mainVm.refreshSyncDiagnostics() },
                     onLocateClick = ::handleLocateAction,
                     onRecordingHealthPrimaryAction = ::handleRecordingHealthPrimaryAction,
                     onRecordingHealthItemAction = ::handleRecordingHealthAction,
@@ -177,6 +177,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        observeTodayDisplayTrack()
         initGnssStatusCallback()
         warmUpHistoryCache()
         refreshDashboardContent()
@@ -336,6 +337,35 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+
+    private fun observeTodayDisplayTrack() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                TodayTrackDisplayCache.observeToday(this@MainActivity)
+                    .collectLatest { points ->
+                        applyTodayDisplayTrack(points)
+                    }
+            }
+        }
+    }
+
+    private fun applyTodayDisplayTrack(points: List<TrackPoint>) {
+        val runtimeSnapshot = TrackingRuntimeSnapshotStorage.peek(this)
+        val shouldRenderActiveTrack = runtimeSnapshot.isEnabled && runtimeSnapshot.phase != TrackingPhase.IDLE
+        val nextPoints = if (shouldRenderActiveTrack) points else emptyList()
+        if (nextPoints == activeSessionPoints) {
+            return
+        }
+
+        activeSessionPoints = nextPoints
+        mapViewModel?.render(
+            runtimeSnapshot = runtimeSnapshot,
+            previewLocation = loadPreviewLocation(),
+            todayHistoryItems = HistoryStorage.peek(this),
+            activeSessionPoints = nextPoints,
+        )
+    }
+
     private fun refreshActiveSessionTrack(
         runtimeSnapshot: TrackingRuntimeSnapshot,
         previewLocation: GeoCoordinate?,
@@ -357,17 +387,7 @@ class MainActivity : AppCompatActivity() {
         activeSessionLoadGeneration += 1
         val generation = activeSessionLoadGeneration
         kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-            val loadedPoints = continuousPointStorage
-                .loadCurrentSessionPoints(limit = 2_048)
-                .map { rawPoint ->
-                    TrackPoint(
-                        latitude = rawPoint.latitude,
-                        longitude = rawPoint.longitude,
-                        timestampMillis = rawPoint.timestampMillis,
-                        accuracyMeters = rawPoint.accuracyMeters,
-                        altitudeMeters = rawPoint.altitudeMeters,
-                    )
-                }
+            val loadedPoints = TodayTrackDisplayCache.loadToday(this@MainActivity)
             kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                 if (isFinishing || isDestroyed || generation != activeSessionLoadGeneration) {
                     return@withContext

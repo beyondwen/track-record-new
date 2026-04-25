@@ -41,7 +41,7 @@ object AnalysisUploadPayloadCodec {
 
     private fun encodeStayCluster(row: AnalysisStayClusterUploadRow): JSONObject {
         return JSONObject().apply {
-            put("stayId", row.stayId)
+            put("stayId", WorkerSafeIntegerIds.toPositiveSafeInteger(row.stayId))
             put("centerLat", safeJsonDouble(row.centerLat))
             put("centerLng", safeJsonDouble(row.centerLng))
             put("radiusMeters", safeJsonDouble(row.radiusMeters))

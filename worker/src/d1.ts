@@ -1,12 +1,15 @@
 import type {
   AnalysisPersistence,
   AnalysisSegment,
+  DiagnosticLog,
+  DiagnosticLogPersistence,
   Env,
   HistoryDaySummary,
   HistoryDaySummaryPersistence,
   HistoryPersistence,
   HistoryRecord,
   PersistAnalysisResult,
+  PersistDiagnosticLogsResult,
   PersistHistoriesResult,
   PersistRawPointsResult,
   RawLocationPoint,
@@ -104,6 +107,23 @@ interface ProcessedHistoryDaySummarySourceRow {
   distance_km: number;
   duration_seconds: number;
   points_json?: string | null;
+}
+
+interface DiagnosticLogRow {
+  log_id: string;
+  device_id: string;
+  app_version: string;
+  occurred_at: number;
+  type: string;
+  severity: string;
+  source: string;
+  message: string;
+  fingerprint: string;
+  payload_json: string | null;
+  status: string;
+  occurrence_count: number;
+  first_seen_at: number;
+  last_seen_at: number;
 }
 
 export function buildPersistHistoriesResult(
@@ -1167,6 +1187,154 @@ export function createD1HistoryDaySummaryPersistence(): HistoryDaySummaryPersist
       return [...summariesByDay.values()].sort(
         (left, right) => right.dayStartMillis - left.dayStartMillis
       );
+    }
+  };
+}
+
+
+function parseDiagnosticPayload(payloadJson: string | null): unknown | null {
+  if (payloadJson === null || payloadJson.trim().length === 0) {
+    return null;
+  }
+  try {
+    return JSON.parse(payloadJson);
+  } catch {
+    return null;
+  }
+}
+
+function mapDiagnosticLogRow(row: DiagnosticLogRow): DiagnosticLog {
+  return {
+    logId: row.log_id,
+    deviceId: row.device_id,
+    appVersion: row.app_version,
+    occurredAt: row.occurred_at,
+    type: row.type === "PERF_WARN" ? "PERF_WARN" : "ERROR",
+    severity: row.severity === "WARN" ? "WARN" : "ERROR",
+    source: row.source,
+    message: row.message,
+    fingerprint: row.fingerprint,
+    payload: parseDiagnosticPayload(row.payload_json),
+    status: row.status === "resolved" ? "resolved" : "open",
+    occurrenceCount: row.occurrence_count,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at
+  };
+}
+
+export function createD1DiagnosticLogPersistence(): DiagnosticLogPersistence {
+  return {
+    async persistLogs(
+      deviceId: string,
+      appVersion: string,
+      logs: DiagnosticLog[],
+      env: Env
+    ): Promise<PersistDiagnosticLogsResult> {
+      const statements = logs.map((log) =>
+        env.DB.prepare(
+          `INSERT INTO diagnostic_log
+             (
+               device_id,
+               log_id,
+               app_version,
+               occurred_at,
+               type,
+               severity,
+               source,
+               message,
+               fingerprint,
+               payload_json,
+               status,
+               occurrence_count,
+               first_seen_at,
+               last_seen_at
+             )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?)
+           ON CONFLICT(device_id, fingerprint) DO UPDATE SET
+             log_id = excluded.log_id,
+             app_version = excluded.app_version,
+             occurred_at = excluded.occurred_at,
+             type = excluded.type,
+             severity = excluded.severity,
+             source = excluded.source,
+             message = excluded.message,
+             payload_json = excluded.payload_json,
+             status = 'open',
+             occurrence_count = diagnostic_log.occurrence_count + 1,
+             last_seen_at = excluded.last_seen_at,
+             updated_at = CURRENT_TIMESTAMP`
+        ).bind(
+          deviceId,
+          log.logId,
+          appVersion,
+          log.occurredAt,
+          log.type,
+          log.severity,
+          log.source,
+          log.message,
+          log.fingerprint,
+          log.payload === null ? null : JSON.stringify(log.payload),
+          log.occurredAt,
+          log.occurredAt
+        )
+      );
+      const affectedCount = await executeBatch(env, statements);
+      return {
+        insertedCount: Math.min(affectedCount, logs.length),
+        dedupedCount: Math.max(0, logs.length - Math.min(affectedCount, logs.length))
+      };
+    },
+
+    async readLogs(
+      deviceId: string,
+      filters: { status?: string; type?: string },
+      env: Env
+    ): Promise<DiagnosticLog[]> {
+      const status = filters.status ?? "open";
+      const type = filters.type ?? null;
+      const result = type === null
+        ? await env.DB.prepare(
+            `SELECT log_id, device_id, app_version, occurred_at, type, severity,
+                    source, message, fingerprint, payload_json, status,
+                    occurrence_count, first_seen_at, last_seen_at
+             FROM diagnostic_log
+             WHERE device_id = ? AND status = ?
+             ORDER BY last_seen_at DESC
+             LIMIT 200`
+          ).bind(deviceId, status).all<DiagnosticLogRow>()
+        : await env.DB.prepare(
+            `SELECT log_id, device_id, app_version, occurred_at, type, severity,
+                    source, message, fingerprint, payload_json, status,
+                    occurrence_count, first_seen_at, last_seen_at
+             FROM diagnostic_log
+             WHERE device_id = ? AND status = ? AND type = ?
+             ORDER BY last_seen_at DESC
+             LIMIT 200`
+          ).bind(deviceId, status, type).all<DiagnosticLogRow>();
+      return (result.results ?? []).map(mapDiagnosticLogRow);
+    },
+
+    async resolveLogs(
+      deviceId: string,
+      fingerprints: string[],
+      env: Env
+    ): Promise<number> {
+      const statements = fingerprints.map((fingerprint) =>
+        env.DB.prepare(
+          `UPDATE diagnostic_log
+           SET status = 'resolved', resolved_at = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE device_id = ? AND fingerprint = ? AND status != 'resolved'`
+        ).bind(Date.now(), deviceId, fingerprint)
+      );
+      return executeBatch(env, statements);
+    },
+
+    async deleteResolvedBefore(beforeMillis: number, env: Env): Promise<number> {
+      const result = await env.DB.prepare(
+        `DELETE FROM diagnostic_log
+         WHERE status = 'resolved' AND COALESCE(resolved_at, last_seen_at) < ?`
+      ).bind(beforeMillis).all();
+      return extractChanges(result);
     }
   };
 }

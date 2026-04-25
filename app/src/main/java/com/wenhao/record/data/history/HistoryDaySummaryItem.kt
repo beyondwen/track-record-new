@@ -14,6 +14,7 @@ data class HistoryDaySummaryItem(
     val totalDurationSeconds: Int,
     val averageSpeedKmh: Double,
     val sourceIds: List<Long> = emptyList(),
+    val routeTitle: String? = null,
 ) {
     val displayTitle: String
         get() = summaryDisplayTitleFormatter.get()!!.format(Date(dayStartMillis))
@@ -52,7 +53,7 @@ data class HistoryDaySummaryItem(
         get() = "$formattedDateTitle · 最近 $formattedLatestTime"
 }
 
-fun HistoryDayItem.toSummaryItem(): HistoryDaySummaryItem {
+fun HistoryDayItem.toSummaryItem(routeTitleOverride: String? = routeTitle): HistoryDaySummaryItem {
     return HistoryDaySummaryItem(
         dayStartMillis = dayStartMillis,
         latestTimestamp = latestTimestamp,
@@ -61,6 +62,7 @@ fun HistoryDayItem.toSummaryItem(): HistoryDaySummaryItem {
         totalDurationSeconds = totalDurationSeconds,
         averageSpeedKmh = averageSpeedKmh,
         sourceIds = sourceIds,
+        routeTitle = routeTitleOverride,
     )
 }
 

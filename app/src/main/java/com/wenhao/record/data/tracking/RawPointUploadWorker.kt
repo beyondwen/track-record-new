@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.wenhao.record.BuildConfig
+import com.wenhao.record.data.diagnostics.DiagnosticLogger
 import com.wenhao.record.data.local.TrackDatabase
+import org.json.JSONObject
 
 class RawPointUploadWorker(
     appContext: Context,
@@ -51,6 +53,7 @@ class RawPointUploadWorker(
                 return Result.success()
             }
 
+            val uploadStartedAt = System.currentTimeMillis()
             when (
                 val result = uploadService.upload(
                     config = config,
@@ -60,6 +63,11 @@ class RawPointUploadWorker(
                 )
             ) {
                 is RawPointUploadResult.Success -> {
+                    reportSlowUploadIfNeeded(
+                        durationMs = System.currentTimeMillis() - uploadStartedAt,
+                        batchSize = rows.size,
+                        acceptedMaxPointId = result.acceptedMaxPointId,
+                    )
                     cursorStorage.markUploaded(
                         type = UploadCursorType.RAW_POINT,
                         lastUploadedId = result.acceptedMaxPointId,
@@ -68,12 +76,39 @@ class RawPointUploadWorker(
                 }
 
                 is RawPointUploadResult.Failure -> {
+                    val durationMs = System.currentTimeMillis() - uploadStartedAt
+                    DiagnosticLogger.error(
+                        context = applicationContext,
+                        source = "RawPointUploadWorker",
+                        message = result.message,
+                        fingerprint = "raw-point-upload-failed",
+                        payloadJson = JSONObject().apply {
+                            put("batchSize", rows.size)
+                            put("durationMs", durationMs)
+                            put("lastPointId", rows.lastOrNull()?.pointId ?: 0L)
+                        }.toString(),
+                    )
                     return retryOrFail(result.message)
                 }
             }
         }
 
         return Result.success()
+    }
+
+    private fun reportSlowUploadIfNeeded(durationMs: Long, batchSize: Int, acceptedMaxPointId: Long) {
+        if (durationMs < PERF_WARN_UPLOAD_MS) return
+        DiagnosticLogger.perfWarn(
+            context = applicationContext,
+            source = "RawPointUploadWorker",
+            message = "raw point upload took ${durationMs}ms",
+            fingerprint = "raw-point-upload-slow",
+            payloadJson = JSONObject().apply {
+                put("durationMs", durationMs)
+                put("batchSize", batchSize)
+                put("acceptedMaxPointId", acceptedMaxPointId)
+            }.toString(),
+        )
     }
 
     private fun retryOrFail(message: String): Result {
@@ -91,5 +126,6 @@ class RawPointUploadWorker(
     companion object {
         private const val BATCH_SIZE = 200
         private const val MAX_BATCHES_PER_RUN = 25
+        private const val PERF_WARN_UPLOAD_MS = 5_000L
     }
 }

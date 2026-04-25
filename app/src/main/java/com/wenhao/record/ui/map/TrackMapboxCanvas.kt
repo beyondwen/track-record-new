@@ -69,6 +69,7 @@ fun TrackMapboxCanvas(
     interactive: Boolean = true,
     onUserGestureMove: (() -> Unit)? = null,
     onUserLocationPuckClick: (() -> Unit)? = null,
+    onMapClick: (() -> Unit)? = null,
     snapshotCacheKey: String? = null,
     onSnapshotCached: (() -> Unit)? = null,
 ) {
@@ -166,10 +167,13 @@ fun TrackMapboxCanvas(
                         currentLocation.latitude,
                         currentLocation.longitude,
                     ) <= USER_LOCATION_PUCK_HIT_RADIUS_METERS
-                if (didHitPuck) {
-                    onUserLocationPuckClick?.invoke()
+                if (didHitPuck && onUserLocationPuckClick != null) {
+                    onUserLocationPuckClick.invoke()
+                    true
+                } else {
+                    onMapClick?.invoke()
+                    false
                 }
-                didHitPuck
             },
             compass = {},
             scaleBar = {},
@@ -177,6 +181,12 @@ fun TrackMapboxCanvas(
             MapEffect(state.polylines) { mapView ->
                 mapView.mapboxMap.style?.let { style ->
                     TrackRouteStyleLayerManager.render(style, state.polylines)
+                }
+            }
+
+            MapEffect(state.heatPoints) { mapView ->
+                mapView.mapboxMap.style?.let { style ->
+                    TrackRawPointStyleLayerManager.render(style, state.heatPoints)
                 }
             }
 

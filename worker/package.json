@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "test": "vitest run"
+    "test": "vitest run",
+    "logs:open": "node scripts/query-diagnostics.mjs open",
+    "logs:perf": "node scripts/query-diagnostics.mjs perf",
+    "logs:resolve": "node scripts/query-diagnostics.mjs resolve",
+    "logs:cleanup": "node scripts/query-diagnostics.mjs cleanup",
+    "logs:migrate": "wrangler d1 execute track-record --remote --file src/schema.sql"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "4.20260418.1",

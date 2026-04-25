@@ -98,6 +98,32 @@ class HomeMapControllerTest {
         assertTrue(controller.renderState.polylines.any { it.id.startsWith("today-") })
     }
 
+
+    @Test
+    fun `render sanitizes active session spike before drawing polyline`() {
+        val controller = HomeMapController()
+        val points = listOf(
+            point(latitude = 30.0, longitude = 120.0, timestampMillis = now, accuracyMeters = 8f),
+            point(latitude = 30.0011, longitude = 120.0011, timestampMillis = now + 10_000L, accuracyMeters = 55f),
+            point(latitude = 30.00002, longitude = 120.00002, timestampMillis = now + 20_000L, accuracyMeters = 8f),
+        )
+
+        controller.render(
+            runtimeSnapshot = trackingSnapshot(
+                phase = TrackingPhase.ACTIVE,
+                latestPoint = points.last(),
+            ),
+            previewLocation = GeoCoordinate(30.0, 120.0),
+            todayHistoryItems = emptyList(),
+            activeSessionPoints = points,
+        )
+
+        val renderedPoints = controller.renderState.polylines
+            .filter { it.id.startsWith("active-") }
+            .flatMap { it.points }
+        assertTrue(renderedPoints.isNotEmpty())
+        assertFalse(renderedPoints.any { it.latitude == 30.0011 && it.longitude == 120.0011 })
+    }
     private fun trackingSnapshot(
         phase: TrackingPhase,
         latestPoint: TrackPoint?,
@@ -113,9 +139,11 @@ class HomeMapControllerTest {
         latitude: Double,
         longitude: Double,
         timestampMillis: Long,
+        accuracyMeters: Float? = null,
     ) = TrackPoint(
         latitude = latitude,
         longitude = longitude,
         timestampMillis = timestampMillis,
+        accuracyMeters = accuracyMeters,
     )
 }

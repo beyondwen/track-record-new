@@ -18,6 +18,39 @@ class TrackAnalysisRunnerTest {
         assertTrue(result.stayClusters.isNotEmpty())
     }
 
+    @Test
+    fun `classifier does not treat missing wifi fingerprint as stable wifi`() {
+        val classifier = PointSignalClassifier()
+
+        val score = classifier.classify(
+            listOf(
+                analyzedPoint(timestampMillis = 0L, latitude = 30.0, longitude = 120.0, speedMetersPerSecond = 0.1f),
+                analyzedPoint(timestampMillis = 30_000L, latitude = 30.00001, longitude = 120.00001, speedMetersPerSecond = 0.1f),
+                analyzedPoint(timestampMillis = 60_000L, latitude = 30.00002, longitude = 120.00002, speedMetersPerSecond = 0.1f),
+            )
+        )
+
+        assertTrue(score.staticScore < 0.6f)
+    }
+
+    @Test
+    fun `analyze splits static segments across long time gaps`() {
+        val runner = TrackAnalysisRunner()
+
+        val result = runner.analyze(
+            points = listOf(
+                analyzedPoint(timestampMillis = 0L, latitude = 30.0, longitude = 120.0, speedMetersPerSecond = 0.0f, activityType = "STILL", activityConfidence = 0.95f, wifiFingerprintDigest = "home"),
+                analyzedPoint(timestampMillis = 60_000L, latitude = 30.00001, longitude = 120.00001, speedMetersPerSecond = 0.0f, activityType = "STILL", activityConfidence = 0.95f, wifiFingerprintDigest = "home"),
+                analyzedPoint(timestampMillis = 120_000L, latitude = 30.00002, longitude = 120.00002, speedMetersPerSecond = 0.0f, activityType = "STILL", activityConfidence = 0.95f, wifiFingerprintDigest = "home"),
+                analyzedPoint(timestampMillis = 2 * 60 * 60_000L, latitude = 30.01, longitude = 120.01, speedMetersPerSecond = 0.0f, activityType = "STILL", activityConfidence = 0.95f, wifiFingerprintDigest = "office"),
+                analyzedPoint(timestampMillis = 2 * 60 * 60_000L + 60_000L, latitude = 30.01001, longitude = 120.01001, speedMetersPerSecond = 0.0f, activityType = "STILL", activityConfidence = 0.95f, wifiFingerprintDigest = "office"),
+                analyzedPoint(timestampMillis = 2 * 60 * 60_000L + 120_000L, latitude = 30.01002, longitude = 120.01002, speedMetersPerSecond = 0.0f, activityType = "STILL", activityConfidence = 0.95f, wifiFingerprintDigest = "office"),
+            )
+        )
+
+        assertEquals(2, result.segments.count { it.kind == SegmentKind.STATIC })
+    }
+
     private fun commuteWindow(): List<AnalyzedPoint> {
         return listOf(
             analyzedPoint(

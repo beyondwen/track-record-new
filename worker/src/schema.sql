@@ -141,3 +141,31 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_stay_cluster_device_stay
 
 CREATE INDEX IF NOT EXISTS idx_stay_cluster_device_segment
   ON stay_cluster (device_id, segment_id);
+
+
+CREATE TABLE IF NOT EXISTS diagnostic_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  log_id TEXT NOT NULL,
+  app_version TEXT NOT NULL,
+  occurred_at INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  source TEXT NOT NULL,
+  message TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  payload_json TEXT,
+  status TEXT NOT NULL DEFAULT 'open',
+  occurrence_count INTEGER NOT NULL DEFAULT 1,
+  first_seen_at INTEGER NOT NULL,
+  last_seen_at INTEGER NOT NULL,
+  resolved_at INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_diagnostic_log_device_fingerprint
+  ON diagnostic_log (device_id, fingerprint);
+
+CREATE INDEX IF NOT EXISTS idx_diagnostic_log_device_status_type
+  ON diagnostic_log (device_id, status, type, last_seen_at DESC);

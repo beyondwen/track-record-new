@@ -94,4 +94,22 @@ class SegmentPostProcessorTest {
         assertEquals(0L, refined.single().startTimestamp)
         assertEquals(420_000L, refined.single().endTimestamp)
     }
+    @Test
+    fun `refine keeps sparse dynamic segment when duration is long enough`() {
+        val processor = SegmentPostProcessor()
+        val segments = listOf(
+            SegmentCandidate(
+                kind = SegmentKind.DYNAMIC,
+                startTimestamp = 0L,
+                endTimestamp = 240_000L,
+                pointCount = 2,
+            ),
+        )
+
+        val refined = processor.refine(segments)
+
+        assertEquals(1, refined.size)
+        assertEquals(SegmentKind.DYNAMIC, refined.single().kind)
+    }
+
 }

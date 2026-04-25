@@ -60,6 +60,28 @@ class ContinuousPointStorageTest {
     }
 
     @Test
+    fun `load raw points between keeps newest database rows chronological`() = runBlocking {
+        val dao = FakeContinuousTrackDao()
+        val storage = ContinuousPointStorage(dao)
+
+        repeat(650) { index ->
+            storage.appendRawPoint(
+                samplePoint(
+                    timestampMillis = 1_000L + index,
+                    samplingTier = SamplingTier.ACTIVE,
+                )
+            )
+        }
+
+        val points = storage.loadRawPointsBetween(startMillis = 1_000L, endMillis = 1_649L, limit = 500)
+
+        assertEquals(500, points.size)
+        assertEquals(1_150L, points.first().timestampMillis)
+        assertEquals(1_649L, points.last().timestampMillis)
+        assertEquals(500, dao.lastRawPointsBetweenLimit)
+    }
+
+    @Test
     fun `save analysis result persists segments stay clusters and analysis cursor`() = runBlocking {
         val dao = FakeContinuousTrackDao()
         val storage = ContinuousPointStorage(dao)
@@ -133,6 +155,8 @@ class ContinuousPointStorageTest {
         private val stayClusters = mutableListOf<StayClusterEntity>()
         private var analysisCursor: AnalysisCursorEntity? = null
         private var nextPointId = 1L
+        var lastRawPointsBetweenLimit: Int? = null
+            private set
 
         override suspend fun insertRawPoint(entity: RawLocationPointEntity): Long {
             val stored = entity.copy(pointId = nextPointId++)
@@ -144,8 +168,24 @@ class ContinuousPointStorageTest {
             return items.filter { it.pointId > afterPointId }.sortedBy { it.pointId }.take(limit)
         }
 
+        override suspend fun loadRawPointsBetween(startMillis: Long, endMillis: Long, limit: Int): List<RawLocationPointEntity> {
+            lastRawPointsBetweenLimit = limit
+            return items
+                .filter { it.timestampMillis in startMillis..endMillis }
+                .sortedByDescending { it.timestampMillis }
+                .take(limit)
+        }
+
+        override suspend fun countRawPoints(): Int {
+            return items.size
+        }
+
         override suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
             return segments.filter { it.segmentId > afterSegmentId }.sortedBy { it.segmentId }.take(limit)
+        }
+
+        override suspend fun countAnalysisSegments(): Int {
+            return segments.size
         }
 
         override suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {

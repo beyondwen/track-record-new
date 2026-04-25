@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.wenhao.record.BuildConfig
+import com.wenhao.record.data.diagnostics.DiagnosticLogger
 import com.wenhao.record.data.local.TrackDatabase
+import org.json.JSONObject
 
 class AnalysisUploadWorker(
     appContext: Context,
@@ -14,6 +16,9 @@ class AnalysisUploadWorker(
     ),
     val cursorStorage: UploadCursorStorage = UploadCursorStorage(
         TrackDatabase.getInstance(appContext).continuousTrackDao(),
+    ),
+    private val syncOutboxStorage: SyncOutboxStorage = SyncOutboxStorage(
+        TrackDatabase.getInstance(appContext).syncOutboxDao(),
     ),
     private val uploadService: AnalysisUploadService = AnalysisUploadService(),
     private val configLoader: (Context) -> TrainingSampleUploadConfig = TrainingSampleUploadConfigStorage::load,
@@ -31,6 +36,9 @@ class AnalysisUploadWorker(
         ),
         cursorStorage = UploadCursorStorage(
             TrackDatabase.getInstance(appContext).continuousTrackDao(),
+        ),
+        syncOutboxStorage = SyncOutboxStorage(
+            TrackDatabase.getInstance(appContext).syncOutboxDao(),
         ),
         uploadService = AnalysisUploadService(),
         configLoader = TrainingSampleUploadConfigStorage::load,
@@ -51,6 +59,12 @@ class AnalysisUploadWorker(
                 return Result.success()
             }
 
+            val outboxKeys = rows.map { it.segmentId.toString() }
+            val startedAt = System.currentTimeMillis()
+            syncOutboxStorage.enqueueMany(SyncOutboxType.ANALYSIS_UPLOAD, outboxKeys, startedAt)
+            syncOutboxStorage.markInProgress(SyncOutboxType.ANALYSIS_UPLOAD, outboxKeys, startedAt)
+
+            val uploadStartedAt = System.currentTimeMillis()
             when (
                 val result = uploadService.upload(
                     config = config,
@@ -60,20 +74,66 @@ class AnalysisUploadWorker(
                 )
             ) {
                 is AnalysisUploadResult.Success -> {
+                    val uploadedAt = System.currentTimeMillis()
+                    reportSlowUploadIfNeeded(
+                        durationMs = uploadedAt - uploadStartedAt,
+                        batchSize = rows.size,
+                        acceptedMaxSegmentId = result.acceptedMaxSegmentId,
+                    )
                     cursorStorage.markUploaded(
                         type = UploadCursorType.ANALYSIS_SEGMENT,
                         lastUploadedId = result.acceptedMaxSegmentId,
-                        updatedAt = System.currentTimeMillis(),
+                        updatedAt = uploadedAt,
+                    )
+                    syncOutboxStorage.markSucceeded(
+                        type = SyncOutboxType.ANALYSIS_UPLOAD,
+                        keys = rows
+                            .filter { it.segmentId <= result.acceptedMaxSegmentId }
+                            .map { it.segmentId.toString() },
+                        nowMillis = uploadedAt,
                     )
                 }
 
                 is AnalysisUploadResult.Failure -> {
+                    val durationMs = System.currentTimeMillis() - uploadStartedAt
+                    DiagnosticLogger.error(
+                        context = applicationContext,
+                        source = "AnalysisUploadWorker",
+                        message = result.message,
+                        fingerprint = "analysis-upload-failed",
+                        payloadJson = JSONObject().apply {
+                            put("batchSize", rows.size)
+                            put("durationMs", durationMs)
+                            put("lastSegmentId", rows.lastOrNull()?.segmentId ?: 0L)
+                        }.toString(),
+                    )
+                    syncOutboxStorage.markFailed(
+                        type = SyncOutboxType.ANALYSIS_UPLOAD,
+                        keys = outboxKeys,
+                        error = result.message,
+                        nowMillis = System.currentTimeMillis(),
+                    )
                     return retryOrFail(result.message)
                 }
             }
         }
 
         return Result.success()
+    }
+
+    private fun reportSlowUploadIfNeeded(durationMs: Long, batchSize: Int, acceptedMaxSegmentId: Long) {
+        if (durationMs < PERF_WARN_UPLOAD_MS) return
+        DiagnosticLogger.perfWarn(
+            context = applicationContext,
+            source = "AnalysisUploadWorker",
+            message = "analysis upload took ${durationMs}ms",
+            fingerprint = "analysis-upload-slow",
+            payloadJson = JSONObject().apply {
+                put("durationMs", durationMs)
+                put("batchSize", batchSize)
+                put("acceptedMaxSegmentId", acceptedMaxSegmentId)
+            }.toString(),
+        )
     }
 
     private fun retryOrFail(message: String): Result {
@@ -91,5 +151,6 @@ class AnalysisUploadWorker(
     companion object {
         private const val BATCH_SIZE = 100
         private const val MAX_BATCHES_PER_RUN = 3
+        private const val PERF_WARN_UPLOAD_MS = 5_000L
     }
 }

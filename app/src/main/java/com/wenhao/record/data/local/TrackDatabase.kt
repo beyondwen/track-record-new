@@ -14,6 +14,10 @@ import com.wenhao.record.data.local.stream.AnalysisSegmentEntity
 import com.wenhao.record.data.local.stream.ContinuousTrackDao
 import com.wenhao.record.data.local.stream.RawLocationPointEntity
 import com.wenhao.record.data.local.stream.StayClusterEntity
+import com.wenhao.record.data.local.stream.SyncOutboxDao
+import com.wenhao.record.data.local.stream.SyncOutboxEntity
+import com.wenhao.record.data.local.stream.TodayDisplayPointEntity
+import com.wenhao.record.data.local.stream.TodayTrackDisplayDao
 import com.wenhao.record.data.local.stream.UploadCursorEntity
 
 @Database(
@@ -25,8 +29,10 @@ import com.wenhao.record.data.local.stream.UploadCursorEntity
         StayClusterEntity::class,
         AnalysisCursorEntity::class,
         UploadCursorEntity::class,
+        TodayDisplayPointEntity::class,
+        SyncOutboxEntity::class,
     ],
-    version = 11,
+    version = 14,
     exportSchema = true,
 )
 abstract class TrackDatabase : RoomDatabase() {
@@ -34,6 +40,10 @@ abstract class TrackDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
 
     abstract fun continuousTrackDao(): ContinuousTrackDao
+
+    abstract fun todayTrackDisplayDao(): TodayTrackDisplayDao
+
+    abstract fun syncOutboxDao(): SyncOutboxDao
 
     companion object {
 
@@ -231,6 +241,56 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `today_display_point` (
+                        `timestampMillis` INTEGER NOT NULL,
+                        `dayStartMillis` INTEGER NOT NULL,
+                        `latitude` REAL NOT NULL,
+                        `longitude` REAL NOT NULL,
+                        `accuracyMeters` REAL,
+                        `altitudeMeters` REAL,
+                        PRIMARY KEY(`timestampMillis`)
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_raw_location_point_timestampMillis` ON `raw_location_point` (`timestampMillis`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_raw_location_point_pointId_timestampMillis` ON `raw_location_point` (`pointId`, `timestampMillis`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_analysis_segment_startTimestamp` ON `analysis_segment` (`startTimestamp`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_analysis_segment_endTimestamp` ON `analysis_segment` (`endTimestamp`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_stay_cluster_segmentId` ON `stay_cluster` (`segmentId`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_display_point_dayStartMillis_timestampMillis` ON `today_display_point` (`dayStartMillis`, `timestampMillis`)")
+            }
+        }
+
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `sync_outbox` (
+                        `outboxId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `itemType` TEXT NOT NULL,
+                        `itemKey` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `retryCount` INTEGER NOT NULL,
+                        `lastError` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_outbox_itemType_itemKey` ON `sync_outbox` (`itemType`, `itemKey`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_sync_outbox_status_updatedAt` ON `sync_outbox` (`status`, `updatedAt`)")
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -252,6 +312,9 @@ abstract class TrackDatabase : RoomDatabase() {
                         MIGRATION_8_9,
                         MIGRATION_9_10,
                         MIGRATION_10_11,
+                        MIGRATION_11_12,
+                        MIGRATION_12_13,
+                        MIGRATION_13_14,
                     )
                     .build()
                     .also { instance = it }

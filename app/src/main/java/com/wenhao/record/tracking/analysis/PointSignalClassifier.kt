@@ -24,19 +24,17 @@ class PointSignalClassifier {
                 second.longitude,
             )
         }.sum()
-        val observedSpeed = points.mapNotNull { it.speedMetersPerSecond }.average().toFloat()
+        val observedSpeed = points.mapNotNull { it.speedMetersPerSecond }.averageOrNull() ?: 0f
         val inferredSpeed = when {
             durationMillis <= 0L -> 0f
             else -> pathDistanceMeters / (durationMillis / 1_000f)
         }
         val blendedSpeed = maxOf(observedSpeed, inferredSpeed)
-        val averageAccuracy = points.mapNotNull { it.accuracyMeters }.average().toFloat()
-            .takeIf { it.isFinite() }
-            ?: 20f
+        val averageAccuracy = points.mapNotNull { it.accuracyMeters }.averageOrNull() ?: 20f
 
         val stillConfidence = points.mapNotNull { point ->
             point.activityConfidence?.takeIf { point.activityType == "STILL" }
-        }.average().toFloat()
+        }.averageOrNull() ?: 0f
 
         val movingConfidence = points.mapNotNull { point ->
             point.activityConfidence?.takeIf {
@@ -44,9 +42,10 @@ class PointSignalClassifier {
                 point.activityType == "ON_BICYCLE" ||
                 point.activityType == "IN_VEHICLE"
             }
-        }.average().toFloat()
+        }.averageOrNull() ?: 0f
 
-        val stableWifi = points.mapNotNull { it.wifiFingerprintDigest }.distinct().size <= 1
+        val wifiDigests = points.mapNotNull { it.wifiFingerprintDigest }
+        val stableWifi = wifiDigests.isNotEmpty() && wifiDigests.distinct().size <= 1
         val lowAccuracyPenalty = when {
             averageAccuracy >= 80f -> 0.32f
             averageAccuracy >= 60f -> 0.2f
@@ -101,5 +100,11 @@ class PointSignalClassifier {
         val staticScore = (staticScoreBase + staticBoost).coerceIn(0.05f, 1f)
 
         return PointSignalScore(staticScore = staticScore, dynamicScore = dynamicScore)
+    }
+
+    private fun List<Float>.averageOrNull(): Float? {
+        if (isEmpty()) return null
+        val average = average().toFloat()
+        return average.takeIf { it.isFinite() }
     }
 }
