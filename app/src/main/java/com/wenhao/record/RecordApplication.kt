@@ -14,5 +14,6 @@ class RecordApplication : Application() {
         TrackingRuntimeSnapshotStorage.warmUp(this)
         HistoryStorage.warmUp(this)
         TrackUploadScheduler.ensureScheduled(this)
+        TrackUploadScheduler.kickMirrorRecovery(this)
     }
 }

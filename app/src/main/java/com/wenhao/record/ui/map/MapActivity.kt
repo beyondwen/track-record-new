@@ -20,6 +20,9 @@ import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.util.AppTaskExecutor
 import kotlinx.coroutines.runBlocking
 
+internal const val HISTORY_POLYLINE_MAX_POINTS_PER_SEGMENT = 180
+internal const val HISTORY_POLYLINE_ALTITUDE_BUCKETS = 4
+
 class MapActivity : AppCompatActivity() {
 
     companion object {
@@ -73,7 +76,7 @@ class MapActivity : AppCompatActivity() {
         val appContext = applicationContext
         AppTaskExecutor.runOnIo {
             val item = runBlocking {
-                remoteHistoryRepository.loadDay(appContext, dayStartMillis)
+                remoteHistoryRepository.loadLocalDay(appContext, dayStartMillis)
             }
             AppTaskExecutor.runOnMain {
                 if (isFinishing || isDestroyed || generation != renderGeneration) return@runOnMain
@@ -161,8 +164,8 @@ class MapActivity : AppCompatActivity() {
                 segments = preparedGeometry.renderableSegments,
                 idPrefix = "history",
                 width = 6.6,
-                maxPointsPerSegment = 90,
-                altitudeBuckets = 2,
+                maxPointsPerSegment = HISTORY_POLYLINE_MAX_POINTS_PER_SEGMENT,
+                altitudeBuckets = HISTORY_POLYLINE_ALTITUDE_BUCKETS,
             ),
             markers = markers,
             viewportRequest = TrackMapViewportRequest.Fit(

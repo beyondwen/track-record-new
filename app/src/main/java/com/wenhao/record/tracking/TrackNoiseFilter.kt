@@ -30,7 +30,7 @@ internal data class TrackNoiseResult(
 internal object TrackNoiseFilter {
     private const val MIN_ACCEPTED_POINT_DISTANCE_METERS = 5f
     private const val MAX_STATIONARY_JITTER_METERS = 25f
-    private const val MAX_POOR_ACCURACY_METERS = 35f
+    private const val MAX_POOR_ACCURACY_METERS = 40f
     private const val MAX_POOR_ACCURACY_INITIAL_METERS = 35f
     private const val MAX_EXTREME_ACCURACY_METERS = 120f
     private const val MAX_ACCEPTED_SPEED_METERS_PER_SECOND = 45f
@@ -60,7 +60,6 @@ internal object TrackNoiseFilter {
     ): TrackNoiseResult {
         val candidatePoint = sample.point
 
-        // Validate candidate point coordinates
         if (!candidatePoint.hasValidCoordinate()) {
             return TrackNoiseResult(TrackNoiseAction.DROP_DRIFT)
         }
@@ -70,7 +69,7 @@ internal object TrackNoiseFilter {
         if (candidateSpeed > MAX_ACCEPTED_SPEED_METERS_PER_SECOND) {
             return TrackNoiseResult(TrackNoiseAction.DROP_JUMP)
         }
-        if (candidateAccuracy > MAX_POOR_ACCURACY_METERS) {
+        if (candidateAccuracy > MAX_POOR_ACCURACY_METERS && lastPoint == null) {
             return TrackNoiseResult(TrackNoiseAction.DROP_DRIFT)
         }
 

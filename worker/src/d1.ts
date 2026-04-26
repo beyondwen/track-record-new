@@ -12,9 +12,13 @@ import type {
   PersistDiagnosticLogsResult,
   PersistHistoriesResult,
   PersistRawPointsResult,
+  PersistTodaySessionsResult,
   RawLocationPoint,
   RawPointDaySummary,
-  RawPointPersistence
+  RawPointPersistence,
+  TodaySessionPersistence,
+  TodaySessionPoint,
+  TodaySessionRecord
 } from "./types";
 
 function dedupeRawPointsById(points: RawLocationPoint[]): RawLocationPoint[] {
@@ -51,6 +55,22 @@ function dedupeHistoriesById(histories: HistoryRecord[]): HistoryRecord[] {
 
 function getAcceptedHistoryIds(histories: HistoryRecord[]): number[] {
   return [...new Set(histories.map((history) => history.historyId))];
+}
+
+function dedupeTodaySessionsById(sessions: TodaySessionRecord[]): TodaySessionRecord[] {
+  const bySessionId = new Map<string, TodaySessionRecord>();
+  for (const session of sessions) {
+    bySessionId.set(session.sessionId, session);
+  }
+  return [...bySessionId.values()];
+}
+
+function dedupeTodaySessionPointsByKey(points: TodaySessionPoint[]): TodaySessionPoint[] {
+  const byKey = new Map<string, TodaySessionPoint>();
+  for (const point of points) {
+    byKey.set(`${point.sessionId}:${point.pointId}`, point);
+  }
+  return [...byKey.values()];
 }
 
 interface UploadedHistoryRow {
@@ -109,6 +129,32 @@ interface ProcessedHistoryDaySummarySourceRow {
   points_json?: string | null;
 }
 
+interface TodaySessionRow {
+  session_id: string;
+  day_start_millis: number;
+  status: string;
+  started_at: number;
+  last_point_at: number | null;
+  ended_at: number | null;
+  phase: string;
+  updated_at: number;
+}
+
+interface TodaySessionPointRow {
+  session_id: string;
+  point_id: number;
+  day_start_millis: number;
+  timestamp_millis: number;
+  latitude: number;
+  longitude: number;
+  accuracy_meters: number | null;
+  altitude_meters: number | null;
+  speed_meters_per_second: number | null;
+  provider: string;
+  sampling_tier: string;
+  updated_at: number;
+}
+
 interface DiagnosticLogRow {
   log_id: string;
   device_id: string;
@@ -160,6 +206,16 @@ export function buildPersistAnalysisResult(
     dedupedCount: rawSegments.length - insertedCount,
     acceptedMaxSegmentId:
       acceptedSegmentIds.length === 0 ? 0 : Math.max(...acceptedSegmentIds)
+  };
+}
+
+function buildPersistTodaySessionsResult(
+  rawCount: number,
+  insertedCount: number
+): PersistTodaySessionsResult {
+  return {
+    insertedCount,
+    dedupedCount: rawCount - insertedCount
   };
 }
 
@@ -477,6 +533,36 @@ function mapRawPointDaySummaryRow(row: RawPointDaySummaryRow): RawPointDaySummar
     dayStartMillis: row.day_start_millis,
     pointCount: row.point_count,
     maxPointId: row.max_point_id
+  };
+}
+
+function mapTodaySessionRow(row: TodaySessionRow): TodaySessionRecord {
+  return {
+    sessionId: row.session_id,
+    dayStartMillis: row.day_start_millis,
+    status: row.status,
+    startedAt: row.started_at,
+    lastPointAt: row.last_point_at,
+    endedAt: row.ended_at,
+    phase: row.phase,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapTodaySessionPointRow(row: TodaySessionPointRow): TodaySessionPoint {
+  return {
+    sessionId: row.session_id,
+    pointId: row.point_id,
+    dayStartMillis: row.day_start_millis,
+    timestampMillis: row.timestamp_millis,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    accuracyMeters: row.accuracy_meters,
+    altitudeMeters: row.altitude_meters,
+    speedMetersPerSecond: row.speed_meters_per_second,
+    provider: row.provider,
+    samplingTier: row.sampling_tier,
+    updatedAt: row.updated_at
   };
 }
 
@@ -950,6 +1036,168 @@ export function createD1AnalysisPersistence(): AnalysisPersistence {
   };
 }
 
+export function createD1TodaySessionPersistence(): TodaySessionPersistence {
+  return {
+    async persistSessions(
+      deviceId: string,
+      _appVersion: string,
+      sessions: TodaySessionRecord[],
+      env: Env
+    ): Promise<PersistTodaySessionsResult> {
+      const uniqueSessions = dedupeTodaySessionsById(sessions);
+      if (uniqueSessions.length === 0) {
+        return buildPersistTodaySessionsResult(sessions.length, 0);
+      }
+
+      const statements = uniqueSessions.map((session) =>
+        env.DB.prepare(
+          `INSERT INTO today_session
+             (
+               device_id,
+               session_id,
+               day_start_millis,
+               status,
+               started_at,
+               last_point_at,
+               ended_at,
+               phase,
+               updated_at
+             )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(device_id, session_id) DO UPDATE SET
+             day_start_millis = excluded.day_start_millis,
+             status = excluded.status,
+             started_at = excluded.started_at,
+             last_point_at = excluded.last_point_at,
+             ended_at = excluded.ended_at,
+             phase = excluded.phase,
+             updated_at = excluded.updated_at`
+        ).bind(
+          deviceId,
+          session.sessionId,
+          session.dayStartMillis,
+          session.status,
+          session.startedAt,
+          session.lastPointAt,
+          session.endedAt,
+          session.phase,
+          session.updatedAt
+        )
+      );
+
+      const insertedCount = await executeBatch(env, statements);
+      return buildPersistTodaySessionsResult(sessions.length, insertedCount);
+    },
+
+    async persistSessionPoints(
+      deviceId: string,
+      _appVersion: string,
+      points: TodaySessionPoint[],
+      env: Env
+    ): Promise<PersistTodaySessionsResult> {
+      const uniquePoints = dedupeTodaySessionPointsByKey(points);
+      if (uniquePoints.length === 0) {
+        return buildPersistTodaySessionsResult(points.length, 0);
+      }
+
+      const statements = uniquePoints.map((point) =>
+        env.DB.prepare(
+          `INSERT OR IGNORE INTO today_session_point
+             (
+               device_id,
+               session_id,
+               point_id,
+               day_start_millis,
+               timestamp_millis,
+               latitude,
+               longitude,
+               accuracy_meters,
+               altitude_meters,
+               speed_meters_per_second,
+               provider,
+               sampling_tier,
+               updated_at
+             )
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          deviceId,
+          point.sessionId,
+          point.pointId,
+          point.dayStartMillis,
+          point.timestampMillis,
+          point.latitude,
+          point.longitude,
+          point.accuracyMeters,
+          point.altitudeMeters,
+          point.speedMetersPerSecond,
+          point.provider,
+          point.samplingTier,
+          point.updatedAt
+        )
+      );
+
+      const insertedCount = await executeBatch(env, statements);
+      return buildPersistTodaySessionsResult(points.length, insertedCount);
+    },
+
+    async readLatestOpenSession(
+      deviceId: string,
+      env: Env
+    ): Promise<{ session: TodaySessionRecord; points: TodaySessionPoint[] } | null> {
+      const sessionResult = await env.DB.prepare(
+        `SELECT
+           session_id,
+           day_start_millis,
+           status,
+           started_at,
+           last_point_at,
+           ended_at,
+           phase,
+           updated_at
+         FROM today_session
+         WHERE device_id = ?
+           AND status != 'COMPLETED'
+         ORDER BY updated_at DESC, started_at DESC
+         LIMIT 1`
+      )
+        .bind(deviceId)
+        .all<TodaySessionRow>();
+
+      const sessionRow = sessionResult.results?.[0];
+      if (!sessionRow) {
+        return null;
+      }
+
+      const pointResult = await env.DB.prepare(
+        `SELECT
+           session_id,
+           point_id,
+           day_start_millis,
+           timestamp_millis,
+           latitude,
+           longitude,
+           accuracy_meters,
+           altitude_meters,
+           speed_meters_per_second,
+           provider,
+           sampling_tier,
+           updated_at
+         FROM today_session_point
+         WHERE device_id = ?
+           AND session_id = ?
+         ORDER BY timestamp_millis ASC, point_id ASC`
+      )
+        .bind(deviceId, sessionRow.session_id)
+        .all<TodaySessionPointRow>();
+
+      return {
+        session: mapTodaySessionRow(sessionRow),
+        points: (pointResult.results ?? []).map(mapTodaySessionPointRow)
+      };
+    }
+  };
+}
+
 export function createD1ProcessedHistoryPersistence() {
   return {
     async persistHistories(
@@ -1190,7 +1438,6 @@ export function createD1HistoryDaySummaryPersistence(): HistoryDaySummaryPersist
     }
   };
 }
-
 
 function parseDiagnosticPayload(payloadJson: string | null): unknown | null {
   if (payloadJson === null || payloadJson.trim().length === 0) {

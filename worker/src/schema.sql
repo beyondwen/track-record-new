@@ -94,6 +94,50 @@ CREATE UNIQUE INDEX IF NOT EXISTS uk_raw_location_point_device_point
 CREATE INDEX IF NOT EXISTS idx_raw_location_point_device_timestamp
   ON raw_location_point (device_id, timestamp_millis);
 
+CREATE TABLE IF NOT EXISTS today_session (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  day_start_millis INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  started_at INTEGER NOT NULL,
+  last_point_at INTEGER,
+  ended_at INTEGER,
+  phase TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_today_session_device_session
+  ON today_session (device_id, session_id);
+
+CREATE INDEX IF NOT EXISTS idx_today_session_device_day_status
+  ON today_session (device_id, day_start_millis, status);
+
+CREATE TABLE IF NOT EXISTS today_session_point (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  point_id INTEGER NOT NULL,
+  day_start_millis INTEGER NOT NULL,
+  timestamp_millis INTEGER NOT NULL,
+  latitude REAL NOT NULL,
+  longitude REAL NOT NULL,
+  accuracy_meters REAL,
+  altitude_meters REAL,
+  speed_meters_per_second REAL,
+  provider TEXT NOT NULL,
+  sampling_tier TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uk_today_session_point_device_session_point
+  ON today_session_point (device_id, session_id, point_id);
+
+CREATE INDEX IF NOT EXISTS idx_today_session_point_device_session_time
+  ON today_session_point (device_id, session_id, timestamp_millis);
+
 CREATE TABLE IF NOT EXISTS analysis_segment (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   device_id TEXT NOT NULL,

@@ -17,6 +17,9 @@ import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.local.stream.SyncOutboxDao
 import com.wenhao.record.data.local.stream.SyncOutboxEntity
 import com.wenhao.record.data.local.stream.TodayDisplayPointEntity
+import com.wenhao.record.data.local.stream.TodaySessionDao
+import com.wenhao.record.data.local.stream.TodaySessionEntity
+import com.wenhao.record.data.local.stream.TodaySessionPointEntity
 import com.wenhao.record.data.local.stream.TodayTrackDisplayDao
 import com.wenhao.record.data.local.stream.UploadCursorEntity
 
@@ -30,9 +33,11 @@ import com.wenhao.record.data.local.stream.UploadCursorEntity
         AnalysisCursorEntity::class,
         UploadCursorEntity::class,
         TodayDisplayPointEntity::class,
+        TodaySessionEntity::class,
+        TodaySessionPointEntity::class,
         SyncOutboxEntity::class,
     ],
-    version = 14,
+    version = 16,
     exportSchema = true,
 )
 abstract class TrackDatabase : RoomDatabase() {
@@ -42,6 +47,8 @@ abstract class TrackDatabase : RoomDatabase() {
     abstract fun continuousTrackDao(): ContinuousTrackDao
 
     abstract fun todayTrackDisplayDao(): TodayTrackDisplayDao
+
+    abstract fun todaySessionDao(): TodaySessionDao
 
     abstract fun syncOutboxDao(): SyncOutboxDao
 
@@ -291,6 +298,81 @@ abstract class TrackDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `today_session` (
+                        `sessionId` TEXT NOT NULL,
+                        `dayStartMillis` INTEGER NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `startedAt` INTEGER NOT NULL,
+                        `lastPointAt` INTEGER,
+                        `endedAt` INTEGER,
+                        `lastSyncedAt` INTEGER,
+                        `syncState` TEXT NOT NULL,
+                        `phase` TEXT,
+                        `anchorPointRef` INTEGER,
+                        `recoveredFromRemote` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`)
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_dayStartMillis_status_startedAt` ON `today_session` (`dayStartMillis`, `status`, `startedAt`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_status_dayStartMillis` ON `today_session` (`status`, `dayStartMillis`)")
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `today_session_point` (
+                        `sessionId` TEXT NOT NULL,
+                        `pointId` INTEGER NOT NULL,
+                        `timestampMillis` INTEGER NOT NULL,
+                        `latitude` REAL NOT NULL,
+                        `longitude` REAL NOT NULL,
+                        `accuracyMeters` REAL,
+                        `altitudeMeters` REAL,
+                        `speedMetersPerSecond` REAL,
+                        `bearingDegrees` REAL,
+                        `provider` TEXT NOT NULL,
+                        `sourceType` TEXT NOT NULL,
+                        `isMock` INTEGER NOT NULL,
+                        `wifiFingerprintDigest` TEXT,
+                        `activityType` TEXT,
+                        `activityConfidence` REAL,
+                        `samplingTier` TEXT NOT NULL,
+                        `phase` TEXT NOT NULL,
+                        `syncState` TEXT NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        PRIMARY KEY(`sessionId`, `pointId`)
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_point_sessionId_timestampMillis` ON `today_session_point` (`sessionId`, `timestampMillis`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_point_sessionId_syncState_timestampMillis` ON `today_session_point` (`sessionId`, `syncState`, `timestampMillis`)")
+            }
+        }
+
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL(
+                    "ALTER TABLE history_record ADD COLUMN sourceSessionId TEXT"
+                )
+                database.execSQL(
+                    "ALTER TABLE history_record ADD COLUMN dateKey INTEGER NOT NULL DEFAULT 0"
+                )
+                database.execSQL(
+                    "ALTER TABLE history_record ADD COLUMN syncState TEXT NOT NULL DEFAULT 'SYNCED'"
+                )
+                database.execSQL(
+                    "ALTER TABLE history_record ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
+                )
+                database.execSQL(
+                    "UPDATE history_record SET dateKey = timestamp - (timestamp % 86400000) WHERE dateKey = 0"
+                )
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_history_record_dateKey_timestamp` ON `history_record` (`dateKey`, `timestamp`)")
+            }
+        }
+
         @Volatile
         private var instance: TrackDatabase? = null
 
@@ -315,6 +397,8 @@ abstract class TrackDatabase : RoomDatabase() {
                         MIGRATION_11_12,
                         MIGRATION_12_13,
                         MIGRATION_13_14,
+                        MIGRATION_14_15,
+                        MIGRATION_15_16,
                     )
                     .build()
                     .also { instance = it }

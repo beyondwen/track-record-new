@@ -59,8 +59,9 @@ object HistoryStorage {
         val appContext = context.applicationContext
         return withContext(Dispatchers.IO) {
             ensureHistoryCache(appContext)
-            ensureDailyCache()
-            copyDailyList(dailyCache)
+            LocalHistoryRepository(
+                TrackDatabase.getInstance(appContext).historyDao(),
+            ).loadDailyItems()
         }
     }
 
@@ -82,9 +83,9 @@ object HistoryStorage {
         val appContext = context.applicationContext
         return withContext(Dispatchers.IO) {
             ensureHistoryCache(appContext)
-            ensureDailyCache()
-            dailyCache.firstOrNull { item -> item.dayStartMillis == dayStartMillis }
-                ?.let(::copyDailyItem)
+            LocalHistoryRepository(
+                TrackDatabase.getInstance(appContext).historyDao(),
+            ).loadDayDetail(dayStartMillis)
         }
     }
 
@@ -130,6 +131,7 @@ object HistoryStorage {
                 records = normalizedItems.map { item ->
                     HistoryRecordEntity(
                         historyId = item.id,
+                        dateKey = HistoryDayAggregator.startOfDay(item.timestamp),
                         timestamp = item.timestamp,
                         distanceKm = item.distanceKm,
                         durationSeconds = item.durationSeconds,
@@ -217,6 +219,11 @@ object HistoryStorage {
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
+    }
+
+    suspend fun restoreFromRemote(context: Context, remoteItems: List<HistoryItem>) {
+        if (remoteItems.isEmpty()) return
+        upsertProjectedItems(context, remoteItems)
     }
 
     suspend fun rename(context: Context, historyId: Long, newTitle: String?) {
@@ -430,11 +437,15 @@ object HistoryStorage {
             records = legacyItems.map { item ->
                 HistoryRecordEntity(
                     historyId = item.id,
+                    sourceSessionId = null,
+                    dateKey = HistoryDayAggregator.startOfDay(item.timestamp),
                     timestamp = item.timestamp,
                     distanceKm = item.distanceKm,
                     durationSeconds = item.durationSeconds,
                     averageSpeedKmh = item.averageSpeedKmh,
                     title = item.title,
+                    syncState = "SYNCED",
+                    version = 1L,
                     startSource = item.startSource.name,
                     stopSource = item.stopSource.name,
                     manualStartAt = item.manualStartAt,
@@ -508,6 +519,7 @@ object HistoryStorage {
     private fun HistoryItem.toRecordEntity(): HistoryRecordEntity {
         return HistoryRecordEntity(
             historyId = id,
+            dateKey = HistoryDayAggregator.startOfDay(timestamp),
             timestamp = timestamp,
             distanceKm = distanceKm,
             durationSeconds = durationSeconds,

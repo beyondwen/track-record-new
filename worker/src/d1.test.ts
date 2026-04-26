@@ -487,6 +487,173 @@ describe("createD1 persistence", () => {
     ]);
   });
 
+  it("persists today sessions through D1 batch statements", async () => {
+    const { createD1TodaySessionPersistence } = await import("./d1");
+    const { env, prepare, batch, bindCollector } = createMockEnv([1]);
+
+    const result = await createD1TodaySessionPersistence().persistSessions(
+      "device-1",
+      "1.0.23",
+      [
+        {
+          sessionId: "session_1",
+          dayStartMillis: 1714300800000,
+          status: "ACTIVE",
+          startedAt: 1714300900000,
+          lastPointAt: 1714300910000,
+          endedAt: null,
+          phase: "ACTIVE",
+          updatedAt: 1714300910000
+        }
+      ],
+      env
+    );
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare.mock.calls[0]?.[0]).toContain("INSERT INTO today_session");
+    expect(batch).toHaveBeenCalledTimes(1);
+    expect(bindCollector[0]?.args).toEqual([
+      "device-1",
+      "session_1",
+      1714300800000,
+      "ACTIVE",
+      1714300900000,
+      1714300910000,
+      null,
+      "ACTIVE",
+      1714300910000
+    ]);
+    expect(result).toEqual({
+      insertedCount: 1,
+      dedupedCount: 0
+    });
+  });
+
+  it("persists today session points through D1 batch statements", async () => {
+    const { createD1TodaySessionPersistence } = await import("./d1");
+    const { env, prepare, batch, bindCollector } = createMockEnv([1]);
+
+    const result = await createD1TodaySessionPersistence().persistSessionPoints(
+      "device-1",
+      "1.0.23",
+      [
+        {
+          sessionId: "session_1",
+          pointId: 18,
+          dayStartMillis: 1714300800000,
+          timestampMillis: 1714300910000,
+          latitude: 30.1,
+          longitude: 120.1,
+          accuracyMeters: 8,
+          altitudeMeters: 12,
+          speedMetersPerSecond: 1.2,
+          provider: "gps",
+          samplingTier: "ACTIVE",
+          updatedAt: 1714300910000
+        }
+      ],
+      env
+    );
+
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare.mock.calls[0]?.[0]).toContain("INSERT OR IGNORE INTO today_session_point");
+    expect(batch).toHaveBeenCalledTimes(1);
+    expect(bindCollector[0]?.args).toEqual([
+      "device-1",
+      "session_1",
+      18,
+      1714300800000,
+      1714300910000,
+      30.1,
+      120.1,
+      8,
+      12,
+      1.2,
+      "gps",
+      "ACTIVE",
+      1714300910000
+    ]);
+    expect(result).toEqual({
+      insertedCount: 1,
+      dedupedCount: 0
+    });
+  });
+
+  it("reads latest open today session snapshot from D1", async () => {
+    const { createD1TodaySessionPersistence } = await import("./d1");
+    const { env, bindCollector } = createMockReadEnv([
+      {
+        sqlIncludes: "FROM today_session\n         WHERE device_id = ?",
+        rows: [
+          {
+            session_id: "session_1",
+            day_start_millis: 1714300800000,
+            status: "ACTIVE",
+            started_at: 1714300900000,
+            last_point_at: 1714300910000,
+            ended_at: null,
+            phase: "ACTIVE",
+            updated_at: 1714300910000
+          }
+        ]
+      },
+      {
+        sqlIncludes: "FROM today_session_point",
+        rows: [
+          {
+            session_id: "session_1",
+            point_id: 18,
+            day_start_millis: 1714300800000,
+            timestamp_millis: 1714300910000,
+            latitude: 30.1,
+            longitude: 120.1,
+            accuracy_meters: 8,
+            altitude_meters: 12,
+            speed_meters_per_second: 1.2,
+            provider: "gps",
+            sampling_tier: "ACTIVE",
+            updated_at: 1714300910000
+          }
+        ]
+      }
+    ]);
+
+    const snapshot = await createD1TodaySessionPersistence().readLatestOpenSession(
+      "device-1",
+      env
+    );
+
+    expect(bindCollector[0]?.args).toEqual(["device-1"]);
+    expect(bindCollector[1]?.args).toEqual(["device-1", "session_1"]);
+    expect(snapshot).toEqual({
+      session: {
+        sessionId: "session_1",
+        dayStartMillis: 1714300800000,
+        status: "ACTIVE",
+        startedAt: 1714300900000,
+        lastPointAt: 1714300910000,
+        endedAt: null,
+        phase: "ACTIVE",
+        updatedAt: 1714300910000
+      },
+      points: [
+        {
+          sessionId: "session_1",
+          pointId: 18,
+          dayStartMillis: 1714300800000,
+          timestampMillis: 1714300910000,
+          latitude: 30.1,
+          longitude: 120.1,
+          accuracyMeters: 8,
+          altitudeMeters: 12,
+          speedMetersPerSecond: 1.2,
+          provider: "gps",
+          samplingTier: "ACTIVE",
+          updatedAt: 1714300910000
+        }
+      ]
+    });
+  });
   it("persists processed histories and refreshes day summaries", async () => {
     const { createD1ProcessedHistoryPersistence } = await import("./d1");
     const timestampMillis = 1700000000000;

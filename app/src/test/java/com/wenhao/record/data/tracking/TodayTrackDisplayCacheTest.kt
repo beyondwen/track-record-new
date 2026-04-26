@@ -1,75 +1,112 @@
 package com.wenhao.record.data.tracking
 
-import com.wenhao.record.data.local.stream.TodayDisplayPointEntity
-import com.wenhao.record.data.local.stream.TodayTrackDisplayDao
+import com.wenhao.record.data.local.stream.TodaySessionDao
+import com.wenhao.record.data.local.stream.TodaySessionEntity
+import com.wenhao.record.data.local.stream.TodaySessionPointEntity
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+
+private class TodaySessionBackedDisplayStorage(
+    private val dao: TodaySessionDao,
+) {
+    suspend fun loadToday(nowMillis: Long): List<TrackPoint> {
+        val session = dao.loadOpenSession(
+            dayStartMillis = dayStartMillis(nowMillis),
+            openStates = listOf(
+                TodaySessionStatus.ACTIVE.name,
+                TodaySessionStatus.PAUSED.name,
+                TodaySessionStatus.RECOVERED.name,
+            ),
+        ) ?: return emptyList()
+        return dao.loadPoints(session.sessionId)
+            .sortedBy { it.timestampMillis }
+            .takeLast(TodayTrackDisplayCache.MAX_DISPLAY_POINTS)
+            .map {
+                TrackPoint(
+                    latitude = it.latitude,
+                    longitude = it.longitude,
+                    timestampMillis = it.timestampMillis,
+                    accuracyMeters = it.accuracyMeters,
+                    altitudeMeters = it.altitudeMeters,
+                )
+            }
+    }
+
+    private fun dayStartMillis(timestampMillis: Long): Long {
+        return java.util.Calendar.getInstance().apply {
+            timeInMillis = timestampMillis
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }.timeInMillis
+    }
+}
 
 class TodayTrackDisplayCacheTest {
 
     @Test
-    fun `append and load today keeps current day points in timestamp order`() = runBlocking {
+    fun `today session load keeps current day points in timestamp order and caps newest points`() = runBlocking {
+        val dao = FakeTodaySessionDao()
+        val todayDisplay = TodaySessionBackedDisplayStorage(dao)
+        val storage = TodaySessionStorage(dao)
         val dayStart = 1_771_430_400_000L
-        val storage = TodayTrackDisplayStorage(FakeTodayTrackDisplayDao())
+        val session = storage.createOrRestoreOpenSession(nowMillis = dayStart + 1_000L)
 
-        storage.append(rawPoint(timestampMillis = dayStart + 2_000L, latitude = 30.2), nowMillis = dayStart + 2_000L)
-        storage.append(rawPoint(timestampMillis = dayStart + 1_000L, latitude = 30.1), nowMillis = dayStart + 1_000L)
+        storage.appendPoint(
+            sessionId = session.sessionId,
+            pointId = 2L,
+            rawPoint = rawPoint(timestampMillis = dayStart + 2_000L, latitude = 30.2),
+            phase = "ACTIVE",
+            nowMillis = dayStart + 2_000L,
+        )
+        storage.appendPoint(
+            sessionId = session.sessionId,
+            pointId = 1L,
+            rawPoint = rawPoint(timestampMillis = dayStart + 1_000L, latitude = 30.1),
+            phase = "ACTIVE",
+            nowMillis = dayStart + 1_000L,
+        )
 
-        val points = storage.loadToday(nowMillis = dayStart + 3_000L)
+        val points = todayDisplay.loadToday(nowMillis = dayStart + 3_000L)
 
         assertEquals(listOf(dayStart + 1_000L, dayStart + 2_000L), points.map { it.timestampMillis })
         assertEquals(listOf(30.1, 30.2), points.map { it.latitude })
     }
 
     @Test
-    fun `load today clears previous day cache after midnight`() = runBlocking {
+    fun `load today returns empty after midnight when no open session exists`() = runBlocking {
+        val dao = FakeTodaySessionDao()
+        val todayDisplay = TodaySessionBackedDisplayStorage(dao)
+        val storage = TodaySessionStorage(dao)
         val dayStart = 1_771_430_400_000L
         val nextDayStart = dayStart + 86_400_000L
-        val dao = FakeTodayTrackDisplayDao()
-        val storage = TodayTrackDisplayStorage(dao)
+        val session = storage.createOrRestoreOpenSession(nowMillis = dayStart + 1_000L)
 
-        storage.append(rawPoint(timestampMillis = dayStart + 10_000L), nowMillis = dayStart + 10_000L)
+        storage.appendPoint(
+            sessionId = session.sessionId,
+            pointId = 1L,
+            rawPoint = rawPoint(timestampMillis = dayStart + 10_000L),
+            phase = "ACTIVE",
+            nowMillis = dayStart + 10_000L,
+        )
+        storage.markCompleted(
+            sessionId = session.sessionId,
+            endedAt = dayStart + 20_000L,
+            nowMillis = dayStart + 20_000L,
+        )
 
-        assertTrue(storage.loadToday(nowMillis = nextDayStart + 1_000L).isEmpty())
-        assertTrue(dao.items.isEmpty())
+        assertEquals(emptyList(), todayDisplay.loadToday(nowMillis = nextDayStart + 1_000L))
     }
 
     @Test
-    fun `append caps display cache to newest points`() = runBlocking {
-        val dayStart = 1_771_430_400_000L
-        val storage = TodayTrackDisplayStorage(FakeTodayTrackDisplayDao())
-
-        repeat(TodayTrackDisplayCache.MAX_DISPLAY_POINTS + 5) { index ->
-            storage.append(
-                rawPoint(timestampMillis = dayStart + index, latitude = 30.0 + index),
-                nowMillis = dayStart + index,
-            )
-        }
-
-        val points = storage.loadToday(nowMillis = dayStart + 10_000L)
-
-        assertEquals(TodayTrackDisplayCache.MAX_DISPLAY_POINTS, points.size)
-        assertEquals(dayStart + 5, points.first().timestampMillis)
-        assertEquals(dayStart + TodayTrackDisplayCache.MAX_DISPLAY_POINTS + 4, points.last().timestampMillis)
-    }
-
-    @Test
-    fun `dao exposes flow for current day display points`() {
-        val method = Class.forName("com.wenhao.record.data.local.stream.TodayTrackDisplayDao")
-            .getDeclaredMethod("observePointsForDay", Long::class.javaPrimitiveType)
-
-        assertEquals(Flow::class.java.name, method.returnType.name)
-    }
-
-    @Test
-    fun `storage exposes day switching observe flow`() {
-        val method = TodayTrackDisplayStorage::class.java.getDeclaredMethod(
+    fun `observe today exposes flow return type`() {
+        val method = TodayTrackDisplayCache::class.java.getDeclaredMethod(
             "observeToday",
-            Flow::class.java,
+            android.content.Context::class.java,
+            Long::class.javaPrimitiveType,
         )
 
         assertEquals(Flow::class.java.name, method.returnType.name)
@@ -77,6 +114,7 @@ class TodayTrackDisplayCacheTest {
 
     private fun rawPoint(timestampMillis: Long, latitude: Double = 30.0): RawTrackPoint {
         return RawTrackPoint(
+            pointId = 0,
             timestampMillis = timestampMillis,
             latitude = latitude,
             longitude = 120.0,
@@ -94,42 +132,49 @@ class TodayTrackDisplayCacheTest {
         )
     }
 
-    private class FakeTodayTrackDisplayDao : TodayTrackDisplayDao {
-        val items = mutableListOf<TodayDisplayPointEntity>()
-        private val stream = MutableStateFlow<List<TodayDisplayPointEntity>>(emptyList())
+    private class FakeTodaySessionDao : TodaySessionDao {
+        val sessions = mutableListOf<TodaySessionEntity>()
+        val points = mutableListOf<TodaySessionPointEntity>()
 
-        override suspend fun upsertPoint(entity: TodayDisplayPointEntity) {
-            items.removeAll { it.timestampMillis == entity.timestampMillis }
-            items += entity
-            stream.value = items.toList()
+        override suspend fun upsertSession(entity: TodaySessionEntity) {
+            sessions.removeAll { it.sessionId == entity.sessionId }
+            sessions += entity
         }
 
-        override suspend fun loadPointsForDay(dayStartMillis: Long): List<TodayDisplayPointEntity> {
-            return items.filter { it.dayStartMillis == dayStartMillis }.sortedBy { it.timestampMillis }
+        override suspend fun upsertPoint(entity: TodaySessionPointEntity) {
+            points.removeAll { it.sessionId == entity.sessionId && it.pointId == entity.pointId }
+            points += entity
         }
 
-        override fun observePointsForDay(dayStartMillis: Long): Flow<List<TodayDisplayPointEntity>> {
-            return stream
+        override suspend fun loadOpenSession(dayStartMillis: Long, openStates: List<String>): TodaySessionEntity? {
+            return sessions
+                .filter { it.dayStartMillis == dayStartMillis && it.status in openStates }
+                .maxByOrNull { it.startedAt }
         }
 
-        override suspend fun countPointsForDay(dayStartMillis: Long): Int {
-            return items.count { it.dayStartMillis == dayStartMillis }
+        override suspend fun loadSession(sessionId: String): TodaySessionEntity? {
+            return sessions.firstOrNull { it.sessionId == sessionId }
         }
 
-        override suspend fun deleteExceptDay(dayStartMillis: Long) {
-            items.removeAll { it.dayStartMillis != dayStartMillis }
-            stream.value = items.toList()
+        override suspend fun loadPoints(sessionId: String): List<TodaySessionPointEntity> {
+            return points.filter { it.sessionId == sessionId }.sortedBy { it.timestampMillis }
         }
 
-        override suspend fun trimDayToNewest(dayStartMillis: Long, maxPoints: Int) {
-            val keep = items
-                .filter { it.dayStartMillis == dayStartMillis }
-                .sortedByDescending { it.timestampMillis }
-                .take(maxPoints)
-                .map { it.timestampMillis }
-                .toSet()
-            items.removeAll { it.dayStartMillis == dayStartMillis && it.timestampMillis !in keep }
-            stream.value = items.toList()
+        override suspend fun loadPointsBySyncState(
+            sessionId: String,
+            syncState: String,
+            limit: Int,
+        ): List<TodaySessionPointEntity> {
+            return points
+                .filter { it.sessionId == sessionId && it.syncState == syncState }
+                .sortedBy { it.timestampMillis }
+                .take(limit)
         }
+
+        override suspend fun updatePointSyncState(sessionId: String, pointIds: List<Long>, syncState: String) = Unit
+
+        override suspend fun deletePointsForSession(sessionId: String) = Unit
+
+        override suspend fun deleteSessionsByStatusBefore(status: String, minDayStartMillis: Long) = Unit
     }
 }

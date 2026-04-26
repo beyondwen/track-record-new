@@ -13,6 +13,7 @@ import com.wenhao.record.data.history.HistoryDaySummaryItem
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryProjectionRecovery
 import com.wenhao.record.data.history.HistoryStorage
+import com.wenhao.record.data.history.LocalHistoryRepository
 import com.wenhao.record.data.history.RemoteHistoryRepository
 import com.wenhao.record.data.history.toSummaryItem
 import com.wenhao.record.data.local.TrackDatabase
@@ -71,6 +72,20 @@ class HistoryViewModel(
 
         viewModelScope.launch(Dispatchers.IO) {
             val application = getApplication<Application>()
+            val localRepository = LocalHistoryRepository(
+                TrackDatabase.getInstance(application).historyDao(),
+            )
+            val freshLocalItems = localRepository.loadDailySummaries()
+            withContext(Dispatchers.Main) {
+                if (generation != reloadGeneration) return@withContext
+                historyItems = if (hasRemoteSummaryCache) {
+                    mergeLocalWithCached(freshLocalItems)
+                } else {
+                    freshLocalItems
+                }
+                recalculateTotals()
+                updateContent()
+            }
             if (!hasImmediateLocalItems && !hasRemoteSummaryCache) {
                 val existingHistories = HistoryStorage.load(application)
                 if (existingHistories.isEmpty()) {

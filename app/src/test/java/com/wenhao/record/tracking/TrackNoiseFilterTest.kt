@@ -77,7 +77,7 @@ class TrackNoiseFilterTest {
     }
 
     @Test
-    fun `drops active point with poor accuracy above strict shield`() {
+    fun `drops poor accuracy active point when displacement is still drift-like`() {
         val result = TrackNoiseFilter.evaluate(
             previousPoint = null,
             lastPoint = TrackPoint(
@@ -88,10 +88,10 @@ class TrackNoiseFilterTest {
             ),
             sample = TrackNoiseSample(
                 point = TrackPoint(
-                    latitude = 30.0003,
-                    longitude = 120.0003,
+                    latitude = 30.0001,
+                    longitude = 120.0001,
                     timestampMillis = 6_000L,
-                    accuracyMeters = 36f
+                    accuracyMeters = 41f
                 ),
                 speedMetersPerSecond = 1.2f,
                 locationAgeMs = 100L
@@ -99,6 +99,31 @@ class TrackNoiseFilterTest {
         )
 
         assertEquals(TrackNoiseAction.DROP_DRIFT, result.action)
+    }
+
+    @Test
+    fun `keeps moderate active fix for later path sanitizing`() {
+        val result = TrackNoiseFilter.evaluate(
+            previousPoint = null,
+            lastPoint = TrackPoint(
+                latitude = 30.0,
+                longitude = 120.0,
+                timestampMillis = 1_000L,
+                accuracyMeters = 8f,
+            ),
+            sample = TrackNoiseSample(
+                point = TrackPoint(
+                    latitude = 30.00018,
+                    longitude = 120.00018,
+                    timestampMillis = 6_000L,
+                    accuracyMeters = 32f,
+                ),
+                speedMetersPerSecond = 1.0f,
+                locationAgeMs = 100L,
+            ),
+        )
+
+        assertEquals(TrackNoiseAction.ACCEPT, result.action)
     }
 
     @Test

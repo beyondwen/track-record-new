@@ -15,7 +15,7 @@ import org.robolectric.annotation.Config
 class HistoryRetentionPolicyTest {
 
     @Test
-    fun `pruneUploadedHistories deletes only uploaded histories older than retention`() = runBlocking {
+    fun `pruneUploadedHistories keeps local histories and only forgets expired uploaded ids`() = runBlocking {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val deletedIds = mutableListOf<List<Long>>()
         val removedUploadedIds = mutableListOf<List<Long>>()
@@ -36,7 +36,7 @@ class HistoryRetentionPolicyTest {
         )
 
         assertEquals(listOf(1L), prunedIds)
-        assertEquals(listOf(listOf(1L)), deletedIds)
+        assertEquals(emptyList<List<Long>>(), deletedIds)
         assertEquals(listOf(listOf(1L)), removedUploadedIds)
     }
 

@@ -19,19 +19,18 @@ object HistoryRetentionPolicy {
         }
 
         val cutoffMillis = nowMillis - RETENTION_WINDOW_MILLIS
-        val prunedIds = historyLoader(context)
+        val expiredUploadedIds = historyLoader(context)
             .asSequence()
             .filter { history -> history.id in uploadedHistoryIds }
             .filter { history -> history.timestamp < cutoffMillis }
             .map { history -> history.id }
             .toList()
 
-        if (prunedIds.isEmpty()) {
+        if (expiredUploadedIds.isEmpty()) {
             return emptyList()
         }
 
-        deleteMany(context, prunedIds)
-        removeUploadedIds(context, prunedIds)
-        return prunedIds
+        removeUploadedIds(context, expiredUploadedIds)
+        return expiredUploadedIds
     }
 }

@@ -15,6 +15,38 @@ class BackgroundTrackingServicePhasePolicy(
 ) {
     fun nextPhase(
         current: TrackingPhase,
+        lowPowerSignals: TrackingLowPowerSignalsSnapshot,
+        hasEnoughGoodFixesToRecord: Boolean,
+        signalLost: Boolean,
+        prolongedStill: Boolean,
+    ): TrackingPhase {
+        return when (current) {
+            TrackingPhase.IDLE -> {
+                if (lowPowerSignals.shouldEnterSuspectMoving) TrackingPhase.SUSPECT_MOVING else TrackingPhase.IDLE
+            }
+
+            TrackingPhase.SUSPECT_MOVING -> when {
+                hasEnoughGoodFixesToRecord -> TrackingPhase.ACTIVE
+                !lowPowerSignals.shouldEnterSuspectMoving -> TrackingPhase.IDLE
+                else -> TrackingPhase.SUSPECT_MOVING
+            }
+
+            TrackingPhase.ACTIVE -> when {
+                prolongedStill -> TrackingPhase.SUSPECT_STOPPING
+                else -> TrackingPhase.ACTIVE
+            }
+
+            TrackingPhase.SUSPECT_STOPPING -> when {
+                hasEnoughGoodFixesToRecord -> TrackingPhase.ACTIVE
+                prolongedStill -> TrackingPhase.IDLE
+                signalLost -> TrackingPhase.SUSPECT_STOPPING
+                else -> TrackingPhase.SUSPECT_STOPPING
+            }
+        }
+    }
+
+    fun nextPhase(
+        current: TrackingPhase,
         motionType: String?,
         motionConfidence: Float,
         netDistanceMeters: Float,

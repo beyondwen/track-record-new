@@ -13,12 +13,14 @@ import androidx.work.WorkManager
 import com.wenhao.record.data.diagnostics.DiagnosticLogUploadWorker
 import com.wenhao.record.data.history.HistoryUploadWorker
 import com.wenhao.record.data.history.ProcessedHistorySyncWorker
+import com.wenhao.record.data.history.TrackMirrorRecoveryWorker
 import kotlin.reflect.KClass
 import java.util.concurrent.TimeUnit
 
 object TrackUploadPipelinePlan {
     val ONE_TIME_CHAIN: List<KClass<out androidx.work.ListenableWorker>> = listOf(
         RawPointUploadWorker::class,
+        TodaySessionSyncWorker::class,
         ProcessedHistorySyncWorker::class,
         AnalysisUploadWorker::class,
         HistoryUploadWorker::class,
@@ -40,9 +42,11 @@ object TrackUploadScheduler {
     private const val ANALYSIS_ONE_TIME_WORK = "analysis-upload-once"
     private const val HISTORY_ONE_TIME_WORK = "history-upload-once"
     private const val PROCESSED_HISTORY_SYNC_ONE_TIME_WORK = "processed-history-sync-once"
+    private const val TODAY_SESSION_SYNC_ONE_TIME_WORK = "today-session-sync-once"
     private const val FULL_PIPELINE_ONE_TIME_WORK = "track-upload-pipeline-once"
     private const val LOCAL_RESULT_PIPELINE_ONE_TIME_WORK = "track-local-result-upload-pipeline-once"
     private const val DIAGNOSTIC_LOG_ONE_TIME_WORK = "diagnostic-log-upload-once"
+    private const val MIRROR_RECOVERY_ONE_TIME_WORK = "track-mirror-recovery-once"
 
     fun ensureScheduled(context: Context) {
         val appContext = context.applicationContext
@@ -170,11 +174,27 @@ object TrackUploadScheduler {
         )
     }
 
+    fun kickTodaySessionSync(context: Context) {
+        workManager(context.applicationContext).enqueueUniqueWork(
+            TODAY_SESSION_SYNC_ONE_TIME_WORK,
+            ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<TodaySessionSyncWorker>().build(),
+        )
+    }
+
     fun kickDiagnosticLogSync(context: Context) {
         workManager(context.applicationContext).enqueueUniqueWork(
             DIAGNOSTIC_LOG_ONE_TIME_WORK,
             ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<DiagnosticLogUploadWorker>().build(),
+        )
+    }
+
+    fun kickMirrorRecovery(context: Context) {
+        workManager(context.applicationContext).enqueueUniqueWork(
+            MIRROR_RECOVERY_ONE_TIME_WORK,
+            ExistingWorkPolicy.KEEP,
+            OneTimeWorkRequestBuilder<TrackMirrorRecoveryWorker>().build(),
         )
     }
 

@@ -21,6 +21,15 @@ data class HistoryRecordWithPoints(
 @Dao
 interface HistoryDao {
 
+    @Query("SELECT * FROM history_record ORDER BY timestamp DESC, historyId DESC")
+    suspend fun getHistoryRecords(): List<HistoryRecordEntity>
+
+    @Query("SELECT * FROM history_record WHERE dateKey = :dayStartMillis ORDER BY timestamp ASC, historyId ASC")
+    suspend fun getHistoryRecordsByDay(dayStartMillis: Long): List<HistoryRecordEntity>
+
+    @Query("SELECT * FROM history_point WHERE historyId = :historyId ORDER BY pointOrder ASC")
+    suspend fun getHistoryPoints(historyId: Long): List<HistoryPointEntity>
+
     @Transaction
     @Query("SELECT * FROM history_record ORDER BY timestamp DESC, historyId DESC")
     suspend fun getHistoryWithPoints(): List<HistoryRecordWithPoints>

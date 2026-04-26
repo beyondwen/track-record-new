@@ -101,6 +101,59 @@ data class TodayDisplayPointEntity(
 )
 
 @Entity(
+    tableName = "today_session",
+    indices = [
+        Index(value = ["dayStartMillis", "status", "startedAt"]),
+        Index(value = ["status", "dayStartMillis"]),
+    ],
+)
+data class TodaySessionEntity(
+    @PrimaryKey
+    val sessionId: String,
+    val dayStartMillis: Long,
+    val status: String,
+    val startedAt: Long,
+    val lastPointAt: Long?,
+    val endedAt: Long?,
+    val lastSyncedAt: Long?,
+    val syncState: String,
+    val phase: String?,
+    val anchorPointRef: Long?,
+    val recoveredFromRemote: Boolean,
+    val updatedAt: Long,
+)
+
+@Entity(
+    tableName = "today_session_point",
+    primaryKeys = ["sessionId", "pointId"],
+    indices = [
+        Index(value = ["sessionId", "timestampMillis"]),
+        Index(value = ["sessionId", "syncState", "timestampMillis"]),
+    ],
+)
+data class TodaySessionPointEntity(
+    val sessionId: String,
+    val pointId: Long,
+    val timestampMillis: Long,
+    val latitude: Double,
+    val longitude: Double,
+    val accuracyMeters: Float?,
+    val altitudeMeters: Double?,
+    val speedMetersPerSecond: Float?,
+    val bearingDegrees: Float?,
+    val provider: String,
+    val sourceType: String,
+    val isMock: Boolean,
+    val wifiFingerprintDigest: String?,
+    val activityType: String?,
+    val activityConfidence: Float?,
+    val samplingTier: String,
+    val phase: String,
+    val syncState: String,
+    val updatedAt: Long,
+)
+
+@Entity(
     tableName = "sync_outbox",
     indices = [
         Index(value = ["itemType", "itemKey"], unique = true),

@@ -71,6 +71,20 @@ class TrackDatabaseMigrationTest {
         assertTrue(classExists("com.wenhao.record.data.local.stream.SyncOutboxDao"))
     }
 
+    @Test
+    fun `track database declares migration 14 to 15 and exposes today session entities`() {
+        val companionClass = Class.forName("com.wenhao.record.data.local.TrackDatabase\$Companion")
+
+        assertTrue(
+            companionClass.declaredFields.any { it.name == "MIGRATION_14_15" } ||
+                companionClass.declaredMethods.any { it.name == "getMIGRATION_14_15" }
+        )
+
+        assertTrue(classExists("com.wenhao.record.data.local.stream.TodaySessionEntity"))
+        assertTrue(classExists("com.wenhao.record.data.local.stream.TodaySessionPointEntity"))
+        assertTrue(classExists("com.wenhao.record.data.local.stream.TodaySessionDao"))
+    }
+
     private fun classExists(name: String): Boolean {
         return runCatching { Class.forName(name) }.isSuccess
     }

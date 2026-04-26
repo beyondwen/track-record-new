@@ -6,82 +6,65 @@ import org.junit.Test
 class BackgroundTrackingServicePhasePolicyTest {
 
     @Test
-    fun `promotes to active only when motion and displacement signals both pass`() {
+    fun `enters suspect moving when low power signals indicate movement`() {
+        val policy = BackgroundTrackingServicePhasePolicy()
+        assertEquals(
+            TrackingPhase.SUSPECT_MOVING,
+            policy.nextPhase(
+                current = TrackingPhase.IDLE,
+                lowPowerSignals = TrackingLowPowerSignalsSnapshot(
+                    hasFreshLocation = true,
+                    hasMeaningfulDisplacement = true,
+                    shouldEnterSuspectMoving = true,
+                ),
+                hasEnoughGoodFixesToRecord = false,
+                signalLost = false,
+                prolongedStill = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `promotes to active only after continuous good fixes are ready`() {
         val policy = BackgroundTrackingServicePhasePolicy()
         assertEquals(
             TrackingPhase.ACTIVE,
             policy.nextPhase(
-                current = TrackingPhase.IDLE,
-                motionType = "WALKING",
-                motionConfidence = 0.75f,
-                netDistanceMeters = 55f,
-                inferredSpeedMetersPerSecond = 1.2f,
-                stillDurationMillis = 0L,
+                current = TrackingPhase.SUSPECT_MOVING,
+                lowPowerSignals = TrackingLowPowerSignalsSnapshot(true, true, true),
+                hasEnoughGoodFixesToRecord = true,
+                signalLost = false,
+                prolongedStill = false,
             ),
         )
     }
 
     @Test
-    fun `enters suspect when only one side of the dual signal is present`() {
+    fun `keeps active when signal is temporarily lost but still not proven still`() {
         val policy = BackgroundTrackingServicePhasePolicy()
         assertEquals(
-            TrackingPhase.SUSPECT_MOVING,
+            TrackingPhase.ACTIVE,
             policy.nextPhase(
-                current = TrackingPhase.IDLE,
-                motionType = "WALKING",
-                motionConfidence = 0.76f,
-                netDistanceMeters = 20f,
-                inferredSpeedMetersPerSecond = 0.4f,
-                stillDurationMillis = 0L,
-            ),
-        )
-        assertEquals(
-            TrackingPhase.SUSPECT_MOVING,
-            policy.nextPhase(
-                current = TrackingPhase.IDLE,
-                motionType = "STILL",
-                motionConfidence = 0.9f,
-                netDistanceMeters = 80f,
-                inferredSpeedMetersPerSecond = 1.2f,
-                stillDurationMillis = 0L,
+                current = TrackingPhase.ACTIVE,
+                lowPowerSignals = TrackingLowPowerSignalsSnapshot(false, false, false),
+                hasEnoughGoodFixesToRecord = false,
+                signalLost = true,
+                prolongedStill = false,
             ),
         )
     }
 
     @Test
-    fun `downshifts active only after sustained still evidence`() {
+    fun `downshifts only after prolonged still evidence`() {
         val policy = BackgroundTrackingServicePhasePolicy()
         assertEquals(
             TrackingPhase.SUSPECT_STOPPING,
             policy.nextPhase(
                 current = TrackingPhase.ACTIVE,
-                motionType = "STILL",
-                motionConfidence = 0.92f,
-                netDistanceMeters = 18f,
-                inferredSpeedMetersPerSecond = 0.12f,
-                stillDurationMillis = 6 * 60_000L,
-            ),
-        )
-        assertEquals(
-            TrackingPhase.ACTIVE,
-            policy.nextPhase(
-                current = TrackingPhase.ACTIVE,
-                motionType = "STILL",
-                motionConfidence = 0.92f,
-                netDistanceMeters = 18f,
-                inferredSpeedMetersPerSecond = 0.12f,
-                stillDurationMillis = 2 * 60_000L,
-            ),
-        )
-        assertEquals(
-            TrackingPhase.IDLE,
-            policy.nextPhase(
-                current = TrackingPhase.SUSPECT_STOPPING,
-                motionType = "STILL",
-                motionConfidence = 0.92f,
-                netDistanceMeters = 12f,
-                inferredSpeedMetersPerSecond = 0.08f,
-                stillDurationMillis = 10 * 60_000L,
+                lowPowerSignals = TrackingLowPowerSignalsSnapshot(false, false, false),
+                hasEnoughGoodFixesToRecord = false,
+                signalLost = false,
+                prolongedStill = true,
             ),
         )
     }

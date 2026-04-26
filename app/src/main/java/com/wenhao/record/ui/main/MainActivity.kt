@@ -266,6 +266,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshDashboardContent() {
+        lifecycleScope.launch(Dispatchers.IO) {
+            TodayTrackDisplayCache.clearIfExpired(this@MainActivity)
+        }
         val runtimeSnapshot = TrackingRuntimeSnapshotStorage.peek(this)
         val previewLocation = loadPreviewLocation()
         val todayHistoryItems = HistoryStorage.peek(this)

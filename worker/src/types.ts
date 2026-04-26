@@ -89,8 +89,37 @@ export interface HistoryDaySummary {
   sourceIds: number[];
 }
 
+export interface TodaySessionRecord {
+  sessionId: string;
+  dayStartMillis: number;
+  status: string;
+  startedAt: number;
+  lastPointAt: number | null;
+  endedAt: number | null;
+  phase: string;
+  updatedAt: number;
+}
+
+export interface TodaySessionPoint {
+  sessionId: string;
+  pointId: number;
+  dayStartMillis: number;
+  timestampMillis: number;
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number | null;
+  altitudeMeters: number | null;
+  speedMetersPerSecond: number | null;
+  provider: string;
+  samplingTier: string;
+  updatedAt: number;
+}
+
+
 export type DiagnosticLogType = "ERROR" | "PERF_WARN";
+
 export type DiagnosticLogSeverity = "ERROR" | "WARN";
+
 export type DiagnosticLogStatus = "open" | "resolved";
 
 export interface DiagnosticLog {
@@ -129,6 +158,18 @@ export interface ValidatedHistoryBatchRequest {
   histories: HistoryRecord[];
 }
 
+export interface ValidatedTodaySessionBatchRequest {
+  deviceId: string;
+  appVersion: string;
+  sessions: TodaySessionRecord[];
+}
+
+export interface ValidatedTodaySessionPointBatchRequest {
+  deviceId: string;
+  appVersion: string;
+  points: TodaySessionPoint[];
+}
+
 export interface ValidatedDiagnosticLogBatchRequest {
   deviceId: string;
   appVersion: string;
@@ -139,6 +180,7 @@ export interface ValidatedDiagnosticLogResolveRequest {
   deviceId: string;
   fingerprints: string[];
 }
+
 
 export interface PersistRawPointsResult {
   insertedCount: number;
@@ -158,10 +200,16 @@ export interface PersistHistoriesResult {
   acceptedHistoryIds: number[];
 }
 
+export interface PersistTodaySessionsResult {
+  insertedCount: number;
+  dedupedCount: number;
+}
+
 export interface PersistDiagnosticLogsResult {
   insertedCount: number;
   dedupedCount: number;
 }
+
 
 export interface RawPointPersistence {
   persistRawPoints(
@@ -242,6 +290,47 @@ export interface HistoryDaySummaryPersistence {
   ): Promise<HistoryDaySummary[]>;
 }
 
+export interface TodaySessionPersistence {
+  persistSessions(
+    deviceId: string,
+    appVersion: string,
+    sessions: TodaySessionRecord[],
+    env: Env
+  ): Promise<PersistTodaySessionsResult>;
+
+  persistSessionPoints(
+    deviceId: string,
+    appVersion: string,
+    points: TodaySessionPoint[],
+    env: Env
+  ): Promise<PersistTodaySessionsResult>;
+
+  readLatestOpenSession(
+    deviceId: string,
+    env: Env
+  ): Promise<{
+    session: TodaySessionRecord;
+    points: TodaySessionPoint[];
+  } | null>;
+}
+
+
+export interface RawPointSuccessResponseBody extends PersistRawPointsResult {
+  ok: true;
+}
+
+export interface AnalysisSuccessResponseBody extends PersistAnalysisResult {
+  ok: true;
+}
+
+export interface HistorySuccessResponseBody extends PersistHistoriesResult {
+  ok: true;
+}
+
+export interface DiagnosticLogSuccessResponseBody extends PersistDiagnosticLogsResult {
+  ok: true;
+}
+
 export interface DiagnosticLogPersistence {
   persistLogs(
     deviceId: string,
@@ -265,21 +354,10 @@ export interface DiagnosticLogPersistence {
   deleteResolvedBefore(beforeMillis: number, env: Env): Promise<number>;
 }
 
-export interface RawPointSuccessResponseBody extends PersistRawPointsResult {
+export interface TodaySessionSuccessResponseBody extends PersistTodaySessionsResult {
   ok: true;
 }
 
-export interface AnalysisSuccessResponseBody extends PersistAnalysisResult {
-  ok: true;
-}
-
-export interface HistorySuccessResponseBody extends PersistHistoriesResult {
-  ok: true;
-}
-
-export interface DiagnosticLogSuccessResponseBody extends PersistDiagnosticLogsResult {
-  ok: true;
-}
 
 export interface DiagnosticLogReadSuccessResponseBody {
   ok: true;
@@ -294,6 +372,12 @@ export interface DiagnosticLogResolveSuccessResponseBody {
 export interface DiagnosticLogCleanupSuccessResponseBody {
   ok: true;
   deletedCount: number;
+}
+
+export interface TodaySessionOpenReadSuccessResponseBody {
+  ok: true;
+  session: TodaySessionRecord | null;
+  points: TodaySessionPoint[];
 }
 
 export interface HistoryReadSuccessResponseBody {

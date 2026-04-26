@@ -5,7 +5,8 @@ import {
   createD1HistoryDaySummaryPersistence,
   createD1RawPointPersistence,
   createD1HistoryPersistence,
-  createD1ProcessedHistoryPersistence
+  createD1ProcessedHistoryPersistence,
+  createD1TodaySessionPersistence
 } from "./d1";
 import type {
   AnalysisPersistence,
@@ -27,7 +28,10 @@ import type {
   RawPointDayReadSuccessResponseBody,
   RawPointReadSuccessResponseBody,
   RawPointPersistence,
-  RawPointSuccessResponseBody
+  RawPointSuccessResponseBody,
+  TodaySessionOpenReadSuccessResponseBody,
+  TodaySessionPersistence,
+  TodaySessionSuccessResponseBody
 } from "./types";
 import {
   validateAnalysisBatchRequest,
@@ -35,13 +39,16 @@ import {
   validateDiagnosticLogResolveRequest,
   ValidationError,
   validateRawPointBatchRequest,
-  validateHistoryBatchRequest
+  validateHistoryBatchRequest,
+  validateTodaySessionBatchRequest,
+  validateTodaySessionPointBatchRequest
 } from "./validation";
 
 export type {
   AnalysisPersistence,
   HistoryPersistence,
-  RawPointPersistence
+  RawPointPersistence,
+  TodaySessionPersistence
 } from "./types";
 
 interface AppDependencies {
@@ -51,6 +58,7 @@ interface AppDependencies {
   rawPointPersistence?: RawPointPersistence;
   analysisPersistence?: AnalysisPersistence;
   diagnosticLogPersistence?: DiagnosticLogPersistence;
+  todaySessionPersistence?: TodaySessionPersistence;
 }
 
 function jsonResponse(
@@ -72,6 +80,8 @@ function jsonResponse(
     | DiagnosticLogReadSuccessResponseBody
     | DiagnosticLogResolveSuccessResponseBody
     | DiagnosticLogCleanupSuccessResponseBody
+    | TodaySessionSuccessResponseBody
+    | TodaySessionOpenReadSuccessResponseBody
     | ErrorResponseBody
 ): Response {
   return new Response(JSON.stringify(body), {
@@ -137,6 +147,8 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
     deps.analysisPersistence ?? createD1AnalysisPersistence();
   const diagnosticLogPersistence =
     deps.diagnosticLogPersistence ?? createD1DiagnosticLogPersistence();
+  const todaySessionPersistence =
+    deps.todaySessionPersistence ?? createD1TodaySessionPersistence();
 
   return {
     async fetch(request, env): Promise<Response> {
@@ -170,6 +182,9 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
         url.pathname !== "/diagnostics/logs" &&
         url.pathname !== "/diagnostics/logs/batch" &&
         url.pathname !== "/diagnostics/logs/resolve" &&
+        url.pathname !== "/today-sessions/open" &&
+        url.pathname !== "/today-sessions/batch" &&
+        url.pathname !== "/today-session-points/batch" &&
         url.pathname !== "/app-config"
       ) {
         return jsonResponse(404, {
@@ -206,6 +221,30 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           return jsonResponse(200, {
             ok: true,
             mapboxPublicToken
+          });
+        }
+
+        if (url.pathname === "/today-sessions/open") {
+          if (request.method !== "GET") {
+            return jsonResponse(405, {
+              ok: false,
+              message: "Method not allowed"
+            });
+          }
+
+          const deviceId = parseRequiredQueryString(
+            url.searchParams.get("deviceId"),
+            "`deviceId`"
+          );
+          const snapshot = await todaySessionPersistence.readLatestOpenSession(
+            deviceId,
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            session: snapshot?.session ?? null,
+            points: snapshot?.points ?? []
           });
         }
 
@@ -439,6 +478,38 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
 
 
 
+        if (url.pathname === "/today-sessions/batch") {
+          const validated = validateTodaySessionBatchRequest(payload);
+          const persisted = await todaySessionPersistence.persistSessions(
+            validated.deviceId,
+            validated.appVersion,
+            validated.sessions,
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            insertedCount: persisted.insertedCount,
+            dedupedCount: persisted.dedupedCount
+          });
+        }
+
+        if (url.pathname === "/today-session-points/batch") {
+          const validated = validateTodaySessionPointBatchRequest(payload);
+          const persisted = await todaySessionPersistence.persistSessionPoints(
+            validated.deviceId,
+            validated.appVersion,
+            validated.points,
+            env
+          );
+
+          return jsonResponse(200, {
+            ok: true,
+            insertedCount: persisted.insertedCount,
+            dedupedCount: persisted.dedupedCount
+          });
+        }
+
         if (url.pathname === "/diagnostics/logs/batch") {
           const validated = validateDiagnosticLogBatchRequest(payload);
           const persisted = await diagnosticLogPersistence.persistLogs(
@@ -549,6 +620,12 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
         console.error(
           url.pathname === "/histories/batch" || url.pathname === "/processed-histories/batch"
             ? "Failed to persist histories"
+            : url.pathname === "/today-sessions/batch"
+              ? "Failed to persist today sessions"
+            : url.pathname === "/today-session-points/batch"
+              ? "Failed to persist today session points"
+            : url.pathname === "/today-sessions/open"
+              ? "Failed to read open today session"
             : url.pathname.startsWith("/diagnostics/logs")
               ? "Failed to process diagnostic logs"
             : url.pathname === "/raw-points/day"
