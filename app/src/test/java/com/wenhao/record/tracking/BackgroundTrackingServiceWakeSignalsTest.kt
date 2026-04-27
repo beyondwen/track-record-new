@@ -65,6 +65,21 @@ class BackgroundTrackingServiceWakeSignalsTest {
         assertEquals(TrackingPhase.SUSPECT_MOVING, currentPhase(service))
     }
 
+    @Test
+    fun `sensor motion evidence alone wakes suspect moving before any location callback`() {
+        val service = Robolectric.buildService(BackgroundTrackingService::class.java).create().get()
+        setField(service, "enabled", true)
+        setField(service, "currentPhase", TrackingPhase.IDLE)
+        val engine = getField(service, "motionConfidenceEngine") as MotionConfidenceEngine
+        val now = System.currentTimeMillis()
+        engine.noteStepCount(10f, now - 3_000L)
+        engine.noteStepCount(15f, now - 500L)
+        engine.noteAccelerationVariance(1.2f, now - 1_000L)
+        invokeWakeFromSensorMotion(service, "测试触发")
+
+        assertEquals(TrackingPhase.SUSPECT_MOVING, currentPhase(service))
+    }
+
     private fun passiveLocation(
         latitude: Double,
         longitude: Double,
@@ -83,6 +98,15 @@ class BackgroundTrackingServiceWakeSignalsTest {
         val method = BackgroundTrackingService::class.java.getDeclaredMethod("handleLocationUpdate", Location::class.java)
         method.isAccessible = true
         method.invoke(service, location)
+    }
+
+    private fun invokeWakeFromSensorMotion(service: BackgroundTrackingService, reason: String) {
+        val method = BackgroundTrackingService::class.java.getDeclaredMethod(
+            "wakeFromSensorMotionIfNeeded",
+            String::class.java,
+        )
+        method.isAccessible = true
+        method.invoke(service, reason)
     }
 
     private fun currentPhase(service: BackgroundTrackingService): TrackingPhase {

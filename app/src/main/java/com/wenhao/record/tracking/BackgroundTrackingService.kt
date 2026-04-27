@@ -119,10 +119,13 @@ class BackgroundTrackingService : Service() {
         override fun onSensorChanged(event: SensorEvent) {
             when (event.sensor.type) {
                 Sensor.TYPE_ACCELEROMETER -> noteAccelerometerSample(event)
-                Sensor.TYPE_STEP_COUNTER -> motionConfidenceEngine.noteStepCount(
-                    event.values.firstOrNull() ?: return,
-                    System.currentTimeMillis(),
-                )
+                Sensor.TYPE_STEP_COUNTER -> {
+                    motionConfidenceEngine.noteStepCount(
+                        event.values.firstOrNull() ?: return,
+                        System.currentTimeMillis(),
+                    )
+                    wakeFromSensorMotionIfNeeded("步数传感器检测到移动趋势")
+                }
             }
         }
 
@@ -588,6 +591,32 @@ class BackgroundTrackingService : Service() {
         lastAccelerometerMagnitude = magnitude
         if (delta > 0.85f) {
             motionConfidenceEngine.noteAccelerationVariance(delta, System.currentTimeMillis())
+            wakeFromSensorMotionIfNeeded("加速度传感器检测到移动趋势")
+        }
+    }
+
+    private fun wakeFromSensorMotionIfNeeded(reason: String) {
+        if (!enabled || currentPhase != TrackingPhase.IDLE) return
+        val nowMillis = System.currentTimeMillis()
+        val stepDelta = motionConfidenceEngine.currentStepDelta()
+        val motionSnapshot = motionConfidenceEngine.evaluate(
+            nowMillis = nowMillis,
+            signals = MotionSignals(
+                stepDelta = stepDelta,
+                effectiveDistanceMeters = 0f,
+                reportedSpeedMetersPerSecond = 0f,
+                inferredSpeedMetersPerSecond = 0f,
+                insideAnchor = false,
+                sameAnchorWifi = false,
+                poorAccuracy = false,
+            ),
+        )
+        val strongSensorEvidence =
+            motionConfidenceEngine.hasRecentSignificantMotion(nowMillis) ||
+                stepDelta >= 3 ||
+                (stepDelta > 0 && motionConfidenceEngine.hasRecentAccelerationMotion(nowMillis))
+        if (strongSensorEvidence || motionSnapshot.movingLikely) {
+            enterPhase(TrackingPhase.SUSPECT_MOVING, reason = reason)
         }
     }
 
