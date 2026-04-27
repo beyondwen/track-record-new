@@ -6,6 +6,8 @@ import androidx.work.WorkerParameters
 import com.wenhao.record.BuildConfig
 import com.wenhao.record.data.local.TrackDatabase
 import com.wenhao.record.data.local.stream.TodaySessionPointEntity
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 
 class TodaySessionSyncWorker(
     appContext: Context,
@@ -21,6 +23,7 @@ class TodaySessionSyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.WORKER_TODAY_SESSION_SYNC)
         val config = configLoader(applicationContext)
         if (!config.isConfigured()) return Result.success()
 

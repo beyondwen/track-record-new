@@ -1,6 +1,8 @@
 package com.wenhao.record.data.tracking
 
 import com.wenhao.record.data.history.executeWithHttpUrlConnection
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -40,6 +42,7 @@ class RemoteRawPointReadService(
         deviceId: String,
         utcOffsetMinutes: Int,
     ): RemoteRawPointDaySummaryReadResult {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_REMOTE_RAW_POINT_READ, "loadDays")
         return executeDaySummaryRead(
             url = buildString {
                 append(config.workerBaseUrl.trim().trimEnd('/'))
@@ -57,6 +60,7 @@ class RemoteRawPointReadService(
         deviceId: String,
         dayStartMillis: Long,
     ): RemoteRawPointReadResult {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_REMOTE_RAW_POINT_READ, "loadByDay")
         return executeRead(
             url = buildString {
                 append(config.workerBaseUrl.trim().trimEnd('/'))

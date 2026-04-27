@@ -1,6 +1,8 @@
 package com.wenhao.record.data.tracking
 
 import com.wenhao.record.data.history.executeWithHttpUrlConnection
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import org.json.JSONObject
 import java.io.IOException
 
@@ -18,6 +20,7 @@ class WorkerAppConfigService(
     private val requestExecutor: UploadHttpRequestExecutor = ::executeWithHttpUrlConnection,
 ) {
     fun load(config: TrainingSampleUploadConfig): WorkerAppConfigResult {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_WORKER_APP_CONFIG)
         return try {
             val request = UploadHttpRequest(
                 url = "${config.workerBaseUrl.trim().trimEnd('/')}/app-config",

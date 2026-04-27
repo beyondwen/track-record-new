@@ -6,6 +6,8 @@ import androidx.work.WorkerParameters
 import com.wenhao.record.BuildConfig
 import com.wenhao.record.data.diagnostics.DiagnosticLogger
 import com.wenhao.record.data.local.TrackDatabase
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import org.json.JSONObject
 
 class AnalysisUploadWorker(
@@ -46,6 +48,7 @@ class AnalysisUploadWorker(
     )
 
     override suspend fun doWork(): Result {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.WORKER_ANALYSIS_UPLOAD)
         val config = configLoader(applicationContext)
         if (!config.isConfigured()) return Result.success()
 

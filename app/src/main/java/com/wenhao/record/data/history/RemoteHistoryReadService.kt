@@ -5,6 +5,8 @@ import com.wenhao.record.data.tracking.UploadHttpRequest
 import com.wenhao.record.data.tracking.UploadHttpRequestExecutor
 import com.wenhao.record.data.tracking.UploadHttpResponse
 import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -47,6 +49,7 @@ class RemoteHistoryReadService(
         deviceId: String,
         utcOffsetMinutes: Int = TimeZone.getDefault().getOffset(System.currentTimeMillis()).div(60_000),
     ): RemoteHistoryDaySummaryReadResult {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_REMOTE_HISTORY_READ, "loadDays")
         return executeDaySummaryRead(
             url = buildString {
                 append(config.workerBaseUrl.trim().trimEnd('/'))
@@ -63,6 +66,7 @@ class RemoteHistoryReadService(
         config: TrainingSampleUploadConfig,
         deviceId: String,
     ): RemoteHistoryReadResult {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_REMOTE_HISTORY_READ, "loadAll")
         return executeRead(
             url = "${config.workerBaseUrl.trim().trimEnd('/')}/processed-histories?deviceId=${deviceId.encodeUrlQuery()}",
             token = config.uploadToken,
@@ -74,6 +78,7 @@ class RemoteHistoryReadService(
         deviceId: String,
         dayStartMillis: Long,
     ): RemoteHistoryReadResult {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_REMOTE_HISTORY_READ, "loadByDay")
         return executeRead(
             url = buildString {
                 append(config.workerBaseUrl.trim().trimEnd('/'))
@@ -91,6 +96,7 @@ class RemoteHistoryReadService(
         deviceId: String,
         dayStartMillis: Long,
     ): RemoteHistoryMutationResult {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_REMOTE_HISTORY_READ, "deleteByDay")
         return executeMutation(
             method = "DELETE",
             url = buildString {

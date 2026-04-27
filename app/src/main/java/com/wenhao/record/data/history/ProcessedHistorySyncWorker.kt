@@ -14,6 +14,8 @@ import com.wenhao.record.data.tracking.RemoteRawPointReadService
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
 import com.wenhao.record.data.tracking.uploadDeviceId
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import org.json.JSONObject
 import com.wenhao.record.tracking.analysis.AnalysisContext
 import com.wenhao.record.tracking.analysis.AnalyzedPoint
@@ -52,6 +54,7 @@ class ProcessedHistorySyncWorker(
     )
 
     override suspend fun doWork(): Result {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.WORKER_PROCESSED_HISTORY_SYNC)
         val config = configLoader(applicationContext)
         if (!config.isConfigured()) return Result.success()
 

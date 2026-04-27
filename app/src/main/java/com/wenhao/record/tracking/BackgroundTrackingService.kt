@@ -49,6 +49,8 @@ import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
 import com.wenhao.record.data.tracking.UploadCursorStorage
 import com.wenhao.record.data.tracking.UploadCursorType
 import com.wenhao.record.map.GeoMath
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import com.wenhao.record.tracking.analysis.AnalyzedPoint
 import com.wenhao.record.tracking.analysis.SegmentKind
 import com.wenhao.record.tracking.analysis.TrackAnalysisRunner
@@ -168,6 +170,7 @@ class BackgroundTrackingService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_BACKGROUND_TRACKING)
         locationManager = getSystemService(LocationManager::class.java)
         sensorManager = getSystemService(SensorManager::class.java)
         accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)

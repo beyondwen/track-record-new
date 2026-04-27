@@ -1,5 +1,7 @@
 package com.wenhao.record.data.tracking
 
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -30,6 +32,7 @@ class WorkerConnectivityService(
     private val requestExecutor: WorkerConnectivityRequestExecutor = ::executeWorkerConnectivityRequest,
 ) {
     fun check(workerBaseUrl: String): WorkerConnectivityResult {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_WORKER_CONNECTIVITY)
         return try {
             val response = requestExecutor(
                 WorkerConnectivityRequest(

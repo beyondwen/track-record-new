@@ -46,6 +46,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.wenhao.record.R
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import com.wenhao.record.ui.dashboard.DashboardOverlayUiState
 import com.wenhao.record.ui.dashboard.DashboardScreenUiState
 import com.wenhao.record.ui.designsystem.TrackAtmosphericBackground
@@ -95,6 +97,15 @@ fun MainComposeScreen(
 ) {
     val isRecordTab = currentTab == MainTab.RECORD
     val bottomNavigationChrome = buildMainBottomNavigationChrome(currentTab)
+    LaunchedEffect(currentTab) {
+        RuntimeUsageRecorder.hit(
+            when (currentTab) {
+                MainTab.RECORD -> RuntimeUsageModule.UI_TAB_RECORD
+                MainTab.HISTORY -> RuntimeUsageModule.UI_TAB_HISTORY
+                MainTab.ABOUT -> RuntimeUsageModule.UI_TAB_ABOUT
+            },
+        )
+    }
     Box(modifier = modifier.fillMaxSize()) {
         DashboardRoot(
             dashboardState = dashboardState,

@@ -10,6 +10,8 @@ import com.wenhao.record.data.tracking.TodaySessionStorage
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
 import com.wenhao.record.data.tracking.uploadDeviceId
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 
 class TrackMirrorRecoveryWorker(
     appContext: Context,
@@ -30,6 +32,7 @@ class TrackMirrorRecoveryWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.WORKER_TRACK_MIRROR_RECOVERY)
         val config = configLoader(applicationContext)
         if (!config.isConfigured()) return Result.success()
 

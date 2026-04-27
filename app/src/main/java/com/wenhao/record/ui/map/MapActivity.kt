@@ -16,6 +16,8 @@ import com.wenhao.record.data.history.RemoteHistoryRepository
 import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.map.GeoCoordinate
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import com.wenhao.record.ui.designsystem.TrackRecordTheme
 import com.wenhao.record.util.AppTaskExecutor
 import kotlinx.coroutines.runBlocking
@@ -41,6 +43,7 @@ class MapActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.UI_MAP_ACTIVITY)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         mapboxAccessToken = MapboxTokenStorage.load(this)
 

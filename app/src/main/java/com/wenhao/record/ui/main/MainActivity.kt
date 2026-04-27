@@ -37,6 +37,8 @@ import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.permissions.PermissionHelper
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import com.wenhao.record.stability.CrashLogStore
 import com.wenhao.record.tracking.LocationSelectionUtils
 import com.wenhao.record.tracking.TrackingPhase
@@ -116,6 +118,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.UI_MAIN_ACTIVITY)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         locationManager = getSystemService(LocationManager::class.java)
 

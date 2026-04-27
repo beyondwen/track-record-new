@@ -296,45 +296,5 @@ fun TrackRecordTheme(
     )
 }
 
-// ===== Legacy ColorScheme Extensions (redirect to Material 3 standard) =====
-// These are kept for backward compatibility during the migration.
-// They map old custom colors to standard Material 3 color roles.
-
-val ColorScheme.trackPageBackground: Color
-    get() = background
-
-val ColorScheme.trackSoftSurface: Color
-    get() = surfaceVariant
-
-val ColorScheme.trackSecondarySurface: Color
-    get() = surfaceVariant
-
-val ColorScheme.trackSoftAccent: Color
-    get() = primaryContainer
-
-val ColorScheme.trackSoftOutline: Color
-    get() = outline
-
-val ColorScheme.trackGlassSurface: Color
-    get() = surface
-
-val ColorScheme.trackGlassStrongSurface: Color
-    get() = surface
-
-val ColorScheme.trackGlassBorder: Color
-    get() = outline
-
-val ColorScheme.trackInnerPanelSurface: Color
-    get() = surfaceVariant
-
-val ColorScheme.trackInnerPanelBorder: Color
-    get() = outlineVariant
-
-val ColorScheme.trackGlowPrimary: Color
-    get() = primary
-
-val ColorScheme.trackGlowSecondary: Color
-    get() = tertiary
-
 private fun ColorScheme.isLightTrackPalette(): Boolean =
     background == BackgroundLight || surface == SurfaceLight

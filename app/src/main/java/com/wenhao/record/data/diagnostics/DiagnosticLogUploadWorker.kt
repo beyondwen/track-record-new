@@ -7,6 +7,8 @@ import com.wenhao.record.BuildConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
 import com.wenhao.record.data.tracking.uploadDeviceId
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 
 class DiagnosticLogUploadWorker(
     appContext: Context,
@@ -27,6 +29,7 @@ class DiagnosticLogUploadWorker(
     )
 
     override suspend fun doWork(): Result {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.WORKER_DIAGNOSTIC_LOG_UPLOAD)
         val config = configLoader(applicationContext)
         if (!config.isConfigured()) return Result.success()
 

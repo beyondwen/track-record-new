@@ -1,6 +1,8 @@
 package com.wenhao.record.data.tracking
 
 import com.wenhao.record.data.history.executeWithHttpUrlConnection
+import com.wenhao.record.runtimeusage.RuntimeUsageModule
+import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
@@ -54,6 +56,7 @@ class TodaySessionRemoteReadService(
         config: TrainingSampleUploadConfig,
         deviceId: String,
     ): RemoteTodaySessionReadResult {
+        RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_TODAY_SESSION_REMOTE_READ, "loadOpenSession")
         return try {
             val request = UploadHttpRequest(
                 url = buildString {
