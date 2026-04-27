@@ -48,13 +48,27 @@ class WorkerConnectivityService(
 
     private fun parseResponse(response: WorkerConnectivityResponse): WorkerConnectivityResult {
         val message = when (response.statusCode) {
+            in 300..399 -> "Worker 地址被重定向拦截（返回 ${response.statusCode}）"
             200 -> "Worker 可达，健康检查正常（返回 200）"
             401, 403 -> "Worker 可达，但健康检查不该要求鉴权（返回 ${response.statusCode}）"
             404 -> "Worker 可达，但接口路径不对（返回 404）"
             in 500..599 -> "Worker 可达，但服务端异常（返回 ${response.statusCode}）"
-            else -> "Worker 可达（返回 ${response.statusCode}）"
+            else -> {
+                if (isProtectedByCloudflareAccess(response)) {
+                    "Worker 地址被 Cloudflare Access 拦截，App 无法直接访问"
+                } else {
+                    "Worker 可达（返回 ${response.statusCode}）"
+                }
+            }
         }
         return WorkerConnectivityResult.Reachable(message)
+    }
+
+    private fun isProtectedByCloudflareAccess(response: WorkerConnectivityResponse): Boolean {
+        val normalizedBody = response.body.lowercase()
+        return normalizedBody.contains("cloudflareaccess.com") ||
+            normalizedBody.contains("/cdn-cgi/access/login") ||
+            normalizedBody.contains("cloudflare access")
     }
 }
 

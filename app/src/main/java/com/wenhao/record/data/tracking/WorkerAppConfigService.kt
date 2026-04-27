@@ -36,6 +36,10 @@ class WorkerAppConfigService(
     }
 
     private fun parseResponse(response: UploadHttpResponse): WorkerAppConfigResult {
+        if (isProtectedByCloudflareAccess(response)) {
+            return WorkerAppConfigResult.Failure(WORKER_APP_CONFIG_CLOUDFLARE_ACCESS_MESSAGE)
+        }
+
         if (response.statusCode == 401 || response.statusCode == 403) {
             return WorkerAppConfigResult.Failure(WORKER_APP_CONFIG_AUTH_FAILURE_MESSAGE)
         }
@@ -82,9 +86,21 @@ class WorkerAppConfigService(
             null
         }
     }
+
+    private fun isProtectedByCloudflareAccess(response: UploadHttpResponse): Boolean {
+        if (response.statusCode in 300..399) {
+            return true
+        }
+        val normalizedBody = response.body.lowercase()
+        return normalizedBody.contains("cloudflareaccess.com") ||
+            normalizedBody.contains("/cdn-cgi/access/login") ||
+            normalizedBody.contains("cloudflare access")
+    }
 }
 
 private const val WORKER_APP_CONFIG_AUTH_FAILURE_MESSAGE = "鉴权失败，请检查上传令牌"
 private const val WORKER_APP_CONFIG_NETWORK_FAILURE_MESSAGE = "读取 Mapbox 配置失败，请检查网络后重试"
 private const val WORKER_APP_CONFIG_GENERIC_FAILURE_MESSAGE = "读取 Mapbox 配置失败，请稍后重试"
 private const val WORKER_APP_CONFIG_EMPTY_TOKEN_MESSAGE = "Worker 未返回有效的 Mapbox Token"
+private const val WORKER_APP_CONFIG_CLOUDFLARE_ACCESS_MESSAGE =
+    "Worker 地址被 Cloudflare Access 拦截，App 无法直接读取 Mapbox Token"

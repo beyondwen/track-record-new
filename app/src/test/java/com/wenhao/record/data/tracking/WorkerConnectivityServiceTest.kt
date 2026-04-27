@@ -78,6 +78,26 @@ class WorkerConnectivityServiceTest {
     }
 
     @Test
+    fun `check reports cloudflare access redirect explicitly`() {
+        val service = WorkerConnectivityService(
+            requestExecutor = {
+                WorkerConnectivityResponse(
+                    statusCode = 302,
+                    body = """<html><a href="https://example.cloudflareaccess.com/cdn-cgi/access/login">login</a></html>""",
+                )
+            }
+        )
+
+        val result = service.check("https://worker.example.com")
+
+        assertTrue(result is WorkerConnectivityResult.Reachable)
+        assertEquals(
+            "Worker 地址被重定向拦截（返回 302）",
+            (result as WorkerConnectivityResult.Reachable).message,
+        )
+    }
+
+    @Test
     fun `check reports network exception as unreachable`() {
         val service = WorkerConnectivityService(
             requestExecutor = {

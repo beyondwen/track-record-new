@@ -76,6 +76,26 @@ class WorkerAppConfigServiceTest {
         assertEquals("读取 Mapbox 配置失败，请检查网络后重试", (result as WorkerAppConfigResult.Failure).message)
     }
 
+    @Test
+    fun `load returns explicit failure when worker is protected by cloudflare access`() {
+        val service = WorkerAppConfigService(
+            requestExecutor = {
+                UploadHttpResponse(
+                    statusCode = 302,
+                    body = """<html><a href="https://example.cloudflareaccess.com/cdn-cgi/access/login">login</a></html>""",
+                )
+            },
+        )
+
+        val result = service.load(validConfig())
+
+        assertTrue(result is WorkerAppConfigResult.Failure)
+        assertEquals(
+            "Worker 地址被 Cloudflare Access 拦截，App 无法直接读取 Mapbox Token",
+            (result as WorkerAppConfigResult.Failure).message,
+        )
+    }
+
     private fun validConfig(): TrainingSampleUploadConfig {
         return TrainingSampleUploadConfig(
             workerBaseUrl = "https://worker.example.com",
