@@ -109,7 +109,6 @@ class MainActivity : AppCompatActivity() {
     private var historyViewModel: HistoryViewModel? = null
     private var mapViewModel: MapViewModel? = null
     private var recordingHealthState by mutableStateOf(RecordingHealthUiState.EMPTY)
-    private var showRecordingHealthDiagnostics by mutableStateOf(false)
 
     private fun getMainViewModel(): MainViewModel? = mainViewModel
     private fun getDashboardViewModel(): DashboardViewModel? = dashboardViewModel
@@ -151,7 +150,6 @@ class MainActivity : AppCompatActivity() {
                     mapboxAccessToken = mapboxAccessToken,
                     dashboardMapState = dashboardMapState,
                     recordingHealthState = recordingHealthState,
-                    showRecordingHealthDiagnostics = showRecordingHealthDiagnostics,
                     onRecordTabClick = { showTab(MainTab.RECORD) },
                     onHistoryTabClick = { showTab(MainTab.HISTORY) },
                     onAboutTabClick = { showTab(MainTab.ABOUT) },
@@ -170,8 +168,6 @@ class MainActivity : AppCompatActivity() {
                     onSyncDiagnosticsRefreshClick = { mainVm.refreshSyncDiagnostics() },
                     onLocateClick = ::handleLocateAction,
                     onRecordingHealthPrimaryAction = ::handleRecordingHealthPrimaryAction,
-                    onRecordingHealthItemAction = ::handleRecordingHealthAction,
-                    onRecordingHealthDiagnosticsDismiss = { showRecordingHealthDiagnostics = false },
                     onHistoryOpen = { dayStartMillis ->
                         startActivity(MapActivity.createHistoryIntent(this, dayStartMillis))
                     },
@@ -187,7 +183,6 @@ class MainActivity : AppCompatActivity() {
         mainViewModel?.setCurrentTab(MainTab.RECORD)
         syncRecordTabToCurrentLocation()
         refreshGpsStatus()
-        permissionHelper.ensureSmartTrackingEnabled()
     }
 
     private fun showTab(tab: MainTab) {
@@ -312,8 +307,6 @@ class MainActivity : AppCompatActivity() {
 
         return when (runtimeSnapshot.phase) {
             TrackingPhase.ACTIVE -> AutoTrackUiState.TRACKING
-            TrackingPhase.SUSPECT_MOVING -> AutoTrackUiState.PREPARING
-            TrackingPhase.SUSPECT_STOPPING -> AutoTrackUiState.PAUSED_STILL
             TrackingPhase.IDLE -> AutoTrackUiState.IDLE
         }
     }
@@ -323,7 +316,6 @@ class MainActivity : AppCompatActivity() {
         recordingHealthState = buildRecordingHealthUiState(
             RecordingHealthInputs(
                 hasLocationPermission = permissionHelper.hasLocationPermission(),
-                hasActivityRecognitionPermission = permissionHelper.hasActivityRecognitionPermission(),
                 hasBackgroundLocationPermission = !permissionHelper.needsBackgroundLocationPermission(),
                 hasNotificationPermission = !permissionHelper.needsNotificationPermission(),
                 ignoresBatteryOptimizations = !permissionHelper.shouldRequestIgnoreBatteryOptimizations(),
@@ -463,9 +455,6 @@ class MainActivity : AppCompatActivity() {
             RecordingHealthAction.REQUEST_LOCATION_PERMISSION ->
                 permissionHelper.requestLocationPermissionForRepair()
 
-            RecordingHealthAction.REQUEST_ACTIVITY_RECOGNITION_PERMISSION ->
-                permissionHelper.requestActivityRecognitionPermissionForRepair()
-
             RecordingHealthAction.OPEN_APP_SETTINGS_FOR_BACKGROUND_LOCATION ->
                 permissionHelper.openAppSettings()
 
@@ -476,10 +465,12 @@ class MainActivity : AppCompatActivity() {
                 permissionHelper.openBatteryOptimizationSettings()
 
             RecordingHealthAction.START_BACKGROUND_TRACKING ->
-                permissionHelper.ensureSmartTrackingEnabled()
+                permissionHelper.ensureBackgroundTrackingEnabled()
 
-            RecordingHealthAction.SHOW_DIAGNOSTICS ->
-                showRecordingHealthDiagnostics = true
+            RecordingHealthAction.STOP_BACKGROUND_TRACKING ->
+                permissionHelper.stopBackgroundTracking()
+
+            RecordingHealthAction.SHOW_DIAGNOSTICS -> Unit
 
             RecordingHealthAction.NO_OP -> Unit
         }
@@ -488,7 +479,6 @@ class MainActivity : AppCompatActivity() {
     private fun buildPermissionSummarySafe(): String = when {
         !permissionHelper.hasLocationPermission() -> "缺少定位权限"
         permissionHelper.needsBackgroundLocationPermission() -> "缺少后台定位权限"
-        !permissionHelper.hasActivityRecognitionPermission() -> "缺少活动识别权限"
         permissionHelper.needsNotificationPermission() -> "通知权限未开启"
         else -> "权限完整"
     }

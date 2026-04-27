@@ -10,10 +10,6 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
@@ -59,7 +55,6 @@ import com.wenhao.record.util.AppTaskExecutor
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import kotlin.math.max
-import kotlin.math.sqrt
 
 class BackgroundTrackingService : Service() {
     companion object {
@@ -67,10 +62,9 @@ class BackgroundTrackingService : Service() {
         const val ACTION_START = "com.wenhao.record.action.START_BACKGROUND_TRACKING"
         const val ACTION_STOP = "com.wenhao.record.action.STOP_BACKGROUND_TRACKING"
 
-        private const val CHANNEL_ID = "smart_tracking"
+        private const val CHANNEL_ID = "manual_tracking"
         private const val NOTIFICATION_ID = 1107
         private const val ANALYSIS_VERSION = 1
-        private const val MAX_IDLE_ACCURACY_METERS = 80f
         private const val MAX_ACTIVE_ACCURACY_METERS = 35f
         private const val MAX_ACTIVE_SPEED_METERS_PER_SECOND = 45f
         private const val PERF_WARN_REALTIME_ANALYSIS_MS = 2_500L
@@ -96,14 +90,9 @@ class BackgroundTrackingService : Service() {
         val minDistanceMeters: Float,
     )
 
-    private val phasePolicy = BackgroundTrackingServicePhasePolicy()
     private val analysisRunner = TrackAnalysisRunner()
     private val analysisHistoryProjector = AnalysisHistoryProjector()
-    private val motionConfidenceEngine = MotionConfidenceEngine()
     private lateinit var locationManager: LocationManager
-    private lateinit var sensorManager: SensorManager
-    private var accelerometer: Sensor? = null
-    private var stepCounter: Sensor? = null
     private lateinit var trackingThread: HandlerThread
     private lateinit var trackingHandler: Handler
     private lateinit var pointStorage: ContinuousPointStorage
@@ -115,23 +104,6 @@ class BackgroundTrackingService : Service() {
         runOnTrackingThread {
             handleLocationUpdate(location)
         }
-    }
-
-    private val sensorListener = object : SensorEventListener {
-        override fun onSensorChanged(event: SensorEvent) {
-            when (event.sensor.type) {
-                Sensor.TYPE_ACCELEROMETER -> noteAccelerometerSample(event)
-                Sensor.TYPE_STEP_COUNTER -> {
-                    motionConfidenceEngine.noteStepCount(
-                        event.values.firstOrNull() ?: return,
-                        System.currentTimeMillis(),
-                    )
-                    wakeFromSensorMotionIfNeeded("步数传感器检测到移动趋势")
-                }
-            }
-        }
-
-        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
     }
 
     private val fixQualityGate = TrackFixQualityGate(
@@ -147,34 +119,18 @@ class BackgroundTrackingService : Service() {
     private var latestPoint: TrackPoint? = null
     private var previousAcceptedPoint: TrackPoint? = null
     private var phaseAnchorPoint: TrackPoint? = null
-    private var stillSinceMillis: Long? = null
     private var lastAnalysisAt: Long? = null
     private var analysisInFlight = false
-    private var suspectEnteredAt: Long? = null
     private var acceptedPointCount = 0
     private var signalLost = false
-    private var lastLowPowerLocation: Location? = null
+    private var latestLocation: Location? = null
     private var lastGoodFixCandidate: TrackPoint? = null
-    private var lastAccelerometerMagnitude = 0f
     private var currentSessionId: String? = null
-
-    private val suspectTimeoutCheck = Runnable {
-        val enteredAt = suspectEnteredAt
-        if (currentPhase == TrackingPhase.SUSPECT_MOVING && enteredAt != null) {
-            val elapsed = System.currentTimeMillis() - enteredAt
-            if (elapsed >= 90_000L) {
-                enterPhase(TrackingPhase.IDLE, reason = "疑似移动超时未确认，恢复低功耗待命")
-            }
-        }
-    }
 
     override fun onCreate() {
         super.onCreate()
         RuntimeUsageRecorder.hit(RuntimeUsageModule.SERVICE_BACKGROUND_TRACKING)
         locationManager = getSystemService(LocationManager::class.java)
-        sensorManager = getSystemService(SensorManager::class.java)
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        stepCounter = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
         trackingThread = HandlerThread("continuous-tracking").apply { start() }
         trackingHandler = Handler(trackingThread.looper)
         val database = TrackDatabase.getInstance(this)
@@ -210,7 +166,6 @@ class BackgroundTrackingService : Service() {
 
     override fun onDestroy() {
         stopLocationUpdates()
-        unregisterMotionSensors()
         if (enabled) {
             saveSnapshot()
         }
@@ -228,8 +183,11 @@ class BackgroundTrackingService : Service() {
         if (enabled) {
             ensureNotificationChannel()
             startForeground(NOTIFICATION_ID, buildNotification())
-            registerMotionSensors()
-            requestLocationUpdatesForPhase(currentPhase)
+            if (currentPhase != TrackingPhase.ACTIVE) {
+                enterPhase(TrackingPhase.ACTIVE, reason = "恢复手动记录")
+            } else {
+                requestLocationUpdatesForPhase(currentPhase)
+            }
             AutoTrackDiagnosticsStorage.markServiceStatus(
                 this,
                 status = phaseLabel(currentPhase),
@@ -241,14 +199,13 @@ class BackgroundTrackingService : Service() {
         enabled = true
         ensureNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
-        registerMotionSensors()
         initializePhaseAnchorFromLastKnownLocation()
-        enterPhase(TrackingPhase.IDLE, reason = "启用连续采点")
+        enterPhase(TrackingPhase.ACTIVE, reason = "手动开始记录")
         TrackingRuntimeSnapshotStorage.setEnabled(this, true)
         AutoTrackDiagnosticsStorage.markServiceStatus(
             this,
             status = phaseLabel(currentPhase),
-            event = "后台采点服务已启动",
+            event = "手动记录已启动",
         )
     }
 
@@ -258,6 +215,9 @@ class BackgroundTrackingService : Service() {
             return
         }
         enabled = false
+        if (currentSessionId != null) {
+            triggerAnalysis(reason = "手动结束记录")
+        }
         currentSessionId?.let { sessionId ->
             runBlocking {
                 todaySessionStorage.markPaused(
@@ -270,18 +230,18 @@ class BackgroundTrackingService : Service() {
         }
         currentSessionId = null
         stopLocationUpdates()
-        unregisterMotionSensors()
         currentPhase = TrackingPhase.IDLE
         phaseAnchorPoint = latestPoint
-        stillSinceMillis = null
         saveSnapshot()
         TrackingRuntimeSnapshotStorage.setEnabled(this, false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         AutoTrackDiagnosticsStorage.markServiceStatus(
             this,
             status = "后台待命中",
-            event = "后台采点已停止",
+            event = "手动记录已结束",
         )
+        TrackDataChangeNotifier.notifyDashboardChanged()
+        TrackDataChangeNotifier.notifyDiagnosticsChanged()
         stopSelf()
     }
 
@@ -294,13 +254,6 @@ class BackgroundTrackingService : Service() {
             phaseAnchorPoint = latestPoint
         }
 
-        trackingHandler.removeCallbacks(suspectTimeoutCheck)
-        if (phase == TrackingPhase.SUSPECT_MOVING) {
-            suspectEnteredAt = System.currentTimeMillis()
-            trackingHandler.postDelayed(suspectTimeoutCheck, 90_000L)
-        } else {
-            suspectEnteredAt = null
-        }
         requestLocationUpdatesForPhase(phase)
         updateNotification(reason)
         saveSnapshot()
@@ -311,10 +264,7 @@ class BackgroundTrackingService : Service() {
         )
         Log.i(TAG, "Phase changed to $phase, reason=$reason")
 
-        if (
-            previousPhase == TrackingPhase.ACTIVE &&
-            (phase == TrackingPhase.SUSPECT_STOPPING || phase == TrackingPhase.IDLE)
-        ) {
+        if (previousPhase == TrackingPhase.ACTIVE && phase == TrackingPhase.IDLE) {
             triggerAnalysis(reason = "活跃采样降频")
         }
         currentSessionId?.let { sessionId ->
@@ -368,9 +318,7 @@ class BackgroundTrackingService : Service() {
     private fun providersForPhase(phase: TrackingPhase): List<String> {
         return when (phase) {
             TrackingPhase.IDLE -> listOf(LocationManager.PASSIVE_PROVIDER)
-            TrackingPhase.SUSPECT_MOVING -> listOf(LocationManager.PASSIVE_PROVIDER, LocationManager.NETWORK_PROVIDER)
             TrackingPhase.ACTIVE -> listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
-            TrackingPhase.SUSPECT_STOPPING -> listOf(LocationManager.PASSIVE_PROVIDER, LocationManager.NETWORK_PROVIDER)
         }
     }
 
@@ -379,16 +327,6 @@ class BackgroundTrackingService : Service() {
         runCatching {
             locationManager.removeUpdates(locationListener)
         }
-    }
-
-    private fun registerMotionSensors() {
-        val samplingPeriod = SensorManager.SENSOR_DELAY_NORMAL
-        accelerometer?.let { sensorManager.registerListener(sensorListener, it, samplingPeriod, trackingHandler) }
-        stepCounter?.let { sensorManager.registerListener(sensorListener, it, samplingPeriod, trackingHandler) }
-    }
-
-    private fun unregisterMotionSensors() {
-        sensorManager.unregisterListener(sensorListener)
     }
 
     private fun initializePhaseAnchorFromLastKnownLocation() {
@@ -404,14 +342,13 @@ class BackgroundTrackingService : Service() {
         val point = lastKnownLocation.toTrackPoint()
         latestPoint = point
         phaseAnchorPoint = point
-        lastLowPowerLocation = lastKnownLocation
+        latestLocation = lastKnownLocation
     }
 
 
     private fun samplingConfigFor(phase: TrackingPhase): SamplingConfig {
-        return when (phasePolicy.samplingTierFor(phase)) {
+        return when (samplingTierFor(phase)) {
             SamplingTier.IDLE -> SamplingConfig(intervalMillis = 30_000L, minDistanceMeters = 30f)
-            SamplingTier.SUSPECT -> SamplingConfig(intervalMillis = 10_000L, minDistanceMeters = 12f)
             SamplingTier.ACTIVE -> SamplingConfig(intervalMillis = 3_000L, minDistanceMeters = 4f)
         }
     }
@@ -468,41 +405,19 @@ class BackgroundTrackingService : Service() {
             fixQualityGate.reset()
             lastGoodFixCandidate = null
             phaseAnchorPoint = point
-            stillSinceMillis = null
         }
-        val lowPowerSignals = TrackingLowPowerSignals.fromLocations(
-            previous = lastLowPowerLocation,
-            current = location,
-            nowMillis = nowMillis,
-        )
-        lastLowPowerLocation = location
+        latestLocation = location
         val netDistanceMeters = GeoMath.distanceMeters(anchorPoint, point)
         val inferredSpeedMetersPerSecond = inferredSpeed(
             previousPoint = previousPoint,
             currentPoint = point,
             location = location,
         )
-        val motionSnapshot = motionConfidenceEngine.evaluate(
-            nowMillis = nowMillis,
-            signals = MotionSignals(
-                stepDelta = motionConfidenceEngine.currentStepDelta(),
-                effectiveDistanceMeters = netDistanceMeters,
-                reportedSpeedMetersPerSecond = speedMetersPerSecond ?: 0f,
-                inferredSpeedMetersPerSecond = inferredSpeedMetersPerSecond,
-                insideAnchor = false,
-                sameAnchorWifi = false,
-                poorAccuracy = (point.accuracyMeters ?: Float.MAX_VALUE) > 35f,
-            ),
-        )
-        val shouldWake = lowPowerSignals.shouldEnterSuspectMoving || motionSnapshot.movingLikely
-        val motionType = if (motionSnapshot.stronglyMoving) "WALKING" else inferMotionType(
-            location = location,
-            speedMetersPerSecond = inferredSpeedMetersPerSecond,
-        )
-        val motionConfidence = motionSnapshot.score.coerceAtLeast(1) / 12f
+        val motionType = inferMotionType(speedMetersPerSecond = inferredSpeedMetersPerSecond)
+        val motionConfidence = defaultMotionConfidence(motionType)
         val noiseResult = if (recoveredFromSignalLost) {
             TrackNoiseResult(TrackNoiseAction.ACCEPT, acceptedPoint = point)
-        } else if (currentPhase == TrackingPhase.ACTIVE || currentPhase == TrackingPhase.SUSPECT_STOPPING) {
+        } else if (currentPhase == TrackingPhase.ACTIVE) {
             TrackNoiseFilter.evaluate(
                 previousPoint = previousAcceptedPoint,
                 lastPoint = previousPoint,
@@ -532,13 +447,6 @@ class BackgroundTrackingService : Service() {
             )
             return
         }
-        val stillDurationMillis = updateStillDuration(
-            timestampMillis = point.timestampMillis,
-            motionType = motionType,
-            netDistanceMeters = netDistanceMeters,
-            inferredSpeedMetersPerSecond = inferredSpeedMetersPerSecond,
-        )
-
         previousAcceptedPoint = previousPoint
         latestPoint = point
         acceptedPointCount += 1
@@ -566,60 +474,9 @@ class BackgroundTrackingService : Service() {
             )
         }
 
-        val nextPhase = phasePolicy.nextPhase(
-            current = currentPhase,
-            lowPowerSignals = lowPowerSignals.copy(
-                shouldEnterSuspectMoving = shouldWake,
-            ),
-            hasEnoughGoodFixesToRecord = goodFixReady,
-            signalLost = signalLost,
-            prolongedStill = stillDurationMillis >= 5 * 60_000L,
-        )
-        if (nextPhase != currentPhase) {
-            enterPhase(nextPhase, reason = "定位与运动信号触发相位调整")
-        } else {
-            saveSnapshot()
-            if (currentPhase == TrackingPhase.ACTIVE && shouldTriggerRollingAnalysis(point.timestampMillis)) {
-                triggerAnalysis(reason = "长时活跃窗口补算")
-            }
-        }
-    }
-
-    private fun noteAccelerometerSample(event: SensorEvent) {
-        val x = event.values.getOrNull(0) ?: return
-        val y = event.values.getOrNull(1) ?: return
-        val z = event.values.getOrNull(2) ?: return
-        val magnitude = sqrt((x * x) + (y * y) + (z * z))
-        val delta = kotlin.math.abs(magnitude - lastAccelerometerMagnitude)
-        lastAccelerometerMagnitude = magnitude
-        if (delta > 0.85f) {
-            motionConfidenceEngine.noteAccelerationVariance(delta, System.currentTimeMillis())
-            wakeFromSensorMotionIfNeeded("加速度传感器检测到移动趋势")
-        }
-    }
-
-    private fun wakeFromSensorMotionIfNeeded(reason: String) {
-        if (!enabled || currentPhase != TrackingPhase.IDLE) return
-        val nowMillis = System.currentTimeMillis()
-        val stepDelta = motionConfidenceEngine.currentStepDelta()
-        val motionSnapshot = motionConfidenceEngine.evaluate(
-            nowMillis = nowMillis,
-            signals = MotionSignals(
-                stepDelta = stepDelta,
-                effectiveDistanceMeters = 0f,
-                reportedSpeedMetersPerSecond = 0f,
-                inferredSpeedMetersPerSecond = 0f,
-                insideAnchor = false,
-                sameAnchorWifi = false,
-                poorAccuracy = false,
-            ),
-        )
-        val strongSensorEvidence =
-            motionConfidenceEngine.hasRecentSignificantMotion(nowMillis) ||
-                stepDelta >= 3 ||
-                (stepDelta > 0 && motionConfidenceEngine.hasRecentAccelerationMotion(nowMillis))
-        if (strongSensorEvidence || motionSnapshot.movingLikely) {
-            enterPhase(TrackingPhase.SUSPECT_MOVING, reason = reason)
+        saveSnapshot()
+        if (currentPhase == TrackingPhase.ACTIVE && shouldTriggerRollingAnalysis(point.timestampMillis)) {
+            triggerAnalysis(reason = "长时活跃窗口补算")
         }
     }
 
@@ -628,23 +485,6 @@ class BackgroundTrackingService : Service() {
         return timestampMillis - referenceTimestamp >= 8 * 60_000L
     }
 
-
-    private fun updateStillDuration(
-        timestampMillis: Long,
-        motionType: String,
-        netDistanceMeters: Float,
-        inferredSpeedMetersPerSecond: Float,
-    ): Long {
-        val qualifiesStill = motionType == "STILL" &&
-            netDistanceMeters <= 25f &&
-            inferredSpeedMetersPerSecond <= 0.35f
-        stillSinceMillis = when {
-            qualifiesStill && stillSinceMillis == null -> timestampMillis
-            qualifiesStill -> stillSinceMillis
-            else -> null
-        }
-        return stillSinceMillis?.let { timestampMillis - it } ?: 0L
-    }
 
     private fun shouldPersistPoint(point: TrackPoint, goodFixReady: Boolean): Boolean {
         return when {
@@ -687,7 +527,7 @@ class BackgroundTrackingService : Service() {
             wifiFingerprintDigest = null,
             activityType = motionType,
             activityConfidence = motionConfidence,
-            samplingTier = phasePolicy.samplingTierFor(currentPhase),
+            samplingTier = samplingTierFor(currentPhase),
         )
         runBlocking {
             val pointId = pointStorage.appendRawPoint(rawPoint)
@@ -953,7 +793,7 @@ class BackgroundTrackingService : Service() {
             snapshot = TrackingRuntimeSnapshot(
                 isEnabled = enabled,
                 phase = currentPhase,
-                samplingTier = phasePolicy.samplingTierFor(currentPhase),
+                samplingTier = samplingTierFor(currentPhase),
                 latestPoint = latestPoint,
                 lastAnalysisAt = lastAnalysisAt,
                 sessionId = currentSessionId,
@@ -1004,26 +844,16 @@ class BackgroundTrackingService : Service() {
     private fun phaseLabel(phase: TrackingPhase): String {
         return when (phase) {
             TrackingPhase.IDLE -> "后台待命中"
-            TrackingPhase.SUSPECT_MOVING -> "疑似移动，确认中"
             TrackingPhase.ACTIVE -> "正在连续记录"
-            TrackingPhase.SUSPECT_STOPPING -> "疑似静止，观察中"
         }
     }
 
     private fun shouldIgnoreLocation(location: Location): Boolean {
-        if (location.provider == LocationManager.PASSIVE_PROVIDER) {
-            val accuracy = location.accuracy.takeIf { location.hasAccuracy() } ?: Float.MAX_VALUE
-            if (accuracy > MAX_IDLE_ACCURACY_METERS) {
-                return true
-            }
-        }
-
         val accuracy = location.accuracy.takeIf { location.hasAccuracy() }
         val speed = location.speed.takeIf { location.hasSpeed() && it >= 0f }
         return when (currentPhase) {
-            TrackingPhase.IDLE -> (accuracy ?: Float.MAX_VALUE) > MAX_IDLE_ACCURACY_METERS
-            TrackingPhase.SUSPECT_MOVING -> (accuracy ?: Float.MAX_VALUE) > MAX_ACTIVE_ACCURACY_METERS
-            TrackingPhase.ACTIVE, TrackingPhase.SUSPECT_STOPPING -> {
+            TrackingPhase.IDLE -> false
+            TrackingPhase.ACTIVE -> {
                 val tooInaccurate = (accuracy ?: Float.MAX_VALUE) > MAX_ACTIVE_ACCURACY_METERS
                 val impossibleSpeed = (speed ?: 0f) > MAX_ACTIVE_SPEED_METERS_PER_SECOND
                 tooInaccurate || impossibleSpeed
@@ -1037,17 +867,8 @@ class BackgroundTrackingService : Service() {
         speedMetersPerSecond: Float?,
     ): String? {
         return when (phase) {
-            TrackingPhase.IDLE -> if ((accuracyMeters ?: Float.MAX_VALUE) > MAX_IDLE_ACCURACY_METERS) {
-                "已忽略：后台待命阶段定位精度较差"
-            } else {
-                null
-            }
-            TrackingPhase.SUSPECT_MOVING -> if ((accuracyMeters ?: Float.MAX_VALUE) > MAX_ACTIVE_ACCURACY_METERS) {
-                "已忽略：确认移动阶段定位精度较差"
-            } else {
-                null
-            }
-            TrackingPhase.ACTIVE, TrackingPhase.SUSPECT_STOPPING -> when {
+            TrackingPhase.IDLE -> null
+            TrackingPhase.ACTIVE -> when {
                 (accuracyMeters ?: Float.MAX_VALUE) > MAX_ACTIVE_ACCURACY_METERS -> "已忽略：活跃定位精度较差"
                 (speedMetersPerSecond ?: 0f) > MAX_ACTIVE_SPEED_METERS_PER_SECOND -> "已忽略：活跃定位速度异常"
                 else -> null
@@ -1063,13 +884,11 @@ class BackgroundTrackingService : Service() {
         val accuracyLabel = accuracyMeters?.let { "精度 ${it.toInt()} 米" } ?: "精度未知"
         return when (phase) {
             TrackingPhase.IDLE -> "待命阶段收到可信定位（$accuracyLabel）"
-            TrackingPhase.SUSPECT_MOVING -> "确认移动中，已采集第 $acceptedPointCount 个点（$accuracyLabel）"
             TrackingPhase.ACTIVE -> "记录中，已采集第 $acceptedPointCount 个点（$accuracyLabel）"
-            TrackingPhase.SUSPECT_STOPPING -> "疑似静止观察中，仍收到定位（$accuracyLabel）"
         }
     }
 
-    private fun inferMotionType(location: Location, speedMetersPerSecond: Float): String {
+    private fun inferMotionType(speedMetersPerSecond: Float): String {
         return when {
             speedMetersPerSecond < 0.6f -> "STILL"
             speedMetersPerSecond < 2.2f -> "WALKING"
@@ -1091,11 +910,25 @@ class BackgroundTrackingService : Service() {
     }
 
     private fun latestProvider(timestampMillis: Long): String {
-        val currentLocation = lastLowPowerLocation
+        val currentLocation = latestLocation
         return if (currentLocation != null && currentLocation.time == timestampMillis) {
             currentLocation.provider ?: "unknown"
         } else {
             "unknown"
+        }
+    }
+
+    private fun samplingTierFor(phase: TrackingPhase): SamplingTier {
+        return when (phase) {
+            TrackingPhase.IDLE -> SamplingTier.IDLE
+            TrackingPhase.ACTIVE -> SamplingTier.ACTIVE
+        }
+    }
+
+    private fun defaultMotionConfidence(motionType: String): Float {
+        return when (motionType) {
+            "STILL" -> 0.75f
+            else -> 0.85f
         }
     }
 

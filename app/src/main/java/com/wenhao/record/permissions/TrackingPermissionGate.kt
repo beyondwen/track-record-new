@@ -24,14 +24,6 @@ object TrackingPermissionGate {
         return fineGranted || coarseGranted
     }
 
-    fun hasActivityRecognitionPermission(context: Context): Boolean {
-        return Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACTIVITY_RECOGNITION
-            ) == PackageManager.PERMISSION_GRANTED
-    }
-
     fun needsBackgroundLocationPermission(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
         return ContextCompat.checkSelfPermission(
@@ -71,7 +63,6 @@ object TrackingPermissionGate {
 
     fun canRunBackgroundTracking(context: Context): Boolean {
         return hasLocationPermission(context) &&
-            hasActivityRecognitionPermission(context) &&
             !needsBackgroundLocationPermission(context)
     }
 }

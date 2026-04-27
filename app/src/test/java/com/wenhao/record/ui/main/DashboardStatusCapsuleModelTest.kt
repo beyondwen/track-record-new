@@ -37,7 +37,7 @@ class DashboardStatusCapsuleModelTest {
         val model = buildDashboardStatusCapsuleModel(
             dashboardState = DashboardScreenUiState(
                 autoTrackTitle = "准备记录下一段移动",
-                autoTrackMeta = "检测到明显移动后会自动开始记录",
+                autoTrackMeta = "点击开始记录后才会采集轨迹",
                 statusLabel = "",
             ),
             recordingHealthState = RecordingHealthUiState.EMPTY,

@@ -8,14 +8,13 @@
     <string name="location_permission_denied">定位权限被拒绝</string>
     <string name="location_service_disabled">请先开启定位服务</string>
     <string name="location_unavailable">暂时无法获取当前位置</string>
-    <string name="smart_tracking_permission_required">开启持续采点需要定位和活动识别权限。</string>
+    <string name="background_tracking_permission_required">开启持续采点需要定位权限。</string>
     <string name="background_location_permission_required">如需后台持续采点，请在系统设置里把定位权限改为“始终允许”。</string>
     <string name="background_location_settings_title">后台采点需要“始终允许”</string>
     <string name="background_location_settings_message">为了让应用在后台持续采集点位，请在接下来的系统设置页面里把定位权限设为“始终允许”。</string>
     <string name="notification_permission_limited">后台采点已开启，但通知权限未开启，系统前台服务提醒可能不可见。</string>
-    <string name="activity_recognition_permission_required">缺少活动识别权限时，移动状态可能无法稳定识别。</string>
     <string name="diagnostics_status_waiting_permissions">等待权限完整</string>
-    <string name="diagnostics_event_boot_permissions_missing">系统重启后未恢复后台采点，请补齐定位、后台定位和活动识别权限。</string>
+    <string name="diagnostics_event_boot_permissions_missing">系统重启后未恢复后台采点，请补齐定位和后台定位权限。</string>
 
     <string name="action_cancel">取消</string>
     <string name="action_go_to_settings">去设置</string>

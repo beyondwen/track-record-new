@@ -8,7 +8,6 @@ import com.wenhao.record.data.local.stream.StayClusterEntity
 
 enum class SamplingTier {
     IDLE,
-    SUSPECT,
     ACTIVE,
 }
 

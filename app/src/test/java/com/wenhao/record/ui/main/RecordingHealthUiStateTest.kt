@@ -12,7 +12,6 @@ class RecordingHealthUiStateTest {
         val state = buildRecordingHealthUiState(
             RecordingHealthInputs(
                 hasLocationPermission = false,
-                hasActivityRecognitionPermission = true,
                 hasBackgroundLocationPermission = true,
                 hasNotificationPermission = true,
                 ignoresBatteryOptimizations = true,
@@ -37,7 +36,6 @@ class RecordingHealthUiStateTest {
         val state = buildRecordingHealthUiState(
             RecordingHealthInputs(
                 hasLocationPermission = true,
-                hasActivityRecognitionPermission = true,
                 hasBackgroundLocationPermission = true,
                 hasNotificationPermission = true,
                 ignoresBatteryOptimizations = false,
@@ -54,11 +52,10 @@ class RecordingHealthUiStateTest {
     }
 
     @Test
-    fun `tracking active yields diagnostics primary action`() {
+    fun `tracking active yields stop primary action`() {
         val state = buildRecordingHealthUiState(
             RecordingHealthInputs(
                 hasLocationPermission = true,
-                hasActivityRecognitionPermission = true,
                 hasBackgroundLocationPermission = true,
                 hasNotificationPermission = true,
                 ignoresBatteryOptimizations = true,
@@ -71,8 +68,8 @@ class RecordingHealthUiStateTest {
         )
 
         assertEquals(RecordingHealthOverallStatus.READY, state.overallStatus)
-        assertEquals(RecordingHealthAction.SHOW_DIAGNOSTICS, state.primaryAction)
-        assertEquals("查看诊断", state.primaryActionText)
+        assertEquals(RecordingHealthAction.STOP_BACKGROUND_TRACKING, state.primaryAction)
+        assertEquals("结束记录", state.primaryActionText)
     }
 
     @Test
@@ -80,7 +77,6 @@ class RecordingHealthUiStateTest {
         val state = buildRecordingHealthUiState(
             RecordingHealthInputs(
                 hasLocationPermission = true,
-                hasActivityRecognitionPermission = true,
                 hasBackgroundLocationPermission = false,
                 hasNotificationPermission = false,
                 ignoresBatteryOptimizations = false,
@@ -113,7 +109,6 @@ class RecordingHealthUiStateTest {
         val state = buildRecordingHealthUiState(
             RecordingHealthInputs(
                 hasLocationPermission = true,
-                hasActivityRecognitionPermission = true,
                 hasBackgroundLocationPermission = false,
                 hasNotificationPermission = false,
                 ignoresBatteryOptimizations = false,

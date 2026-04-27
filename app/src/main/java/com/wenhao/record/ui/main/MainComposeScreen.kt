@@ -1,7 +1,7 @@
 package com.wenhao.record.ui.main
 
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateDp
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.updateTransition
@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -22,6 +23,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -39,10 +42,12 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.wenhao.record.R
@@ -72,7 +77,6 @@ fun MainComposeScreen(
     mapboxAccessToken: String,
     dashboardMapState: TrackMapSceneState,
     recordingHealthState: RecordingHealthUiState,
-    showRecordingHealthDiagnostics: Boolean,
     onRecordTabClick: () -> Unit,
     onHistoryTabClick: () -> Unit,
     onAboutTabClick: () -> Unit,
@@ -89,8 +93,6 @@ fun MainComposeScreen(
     onSyncDiagnosticsRefreshClick: () -> Unit,
     onLocateClick: () -> Unit,
     onRecordingHealthPrimaryAction: () -> Unit,
-    onRecordingHealthItemAction: (RecordingHealthAction) -> Unit,
-    onRecordingHealthDiagnosticsDismiss: () -> Unit,
     onHistoryOpen: (Long) -> Unit,
     onHistoryDelete: (Long) -> Unit,
     modifier: Modifier = Modifier,
@@ -113,11 +115,8 @@ fun MainComposeScreen(
             mapState = dashboardMapState,
             mapboxAccessToken = mapboxAccessToken,
             recordingHealthState = recordingHealthState,
-            showRecordingHealthDiagnostics = showRecordingHealthDiagnostics,
             onLocateClick = onLocateClick,
             onRecordingHealthPrimaryAction = onRecordingHealthPrimaryAction,
-            onRecordingHealthItemAction = onRecordingHealthItemAction,
-            onRecordingHealthDiagnosticsDismiss = onRecordingHealthDiagnosticsDismiss,
             isRecordVisible = isRecordTab,
         )
 
@@ -190,11 +189,8 @@ private fun DashboardRoot(
     mapState: TrackMapSceneState,
     mapboxAccessToken: String,
     recordingHealthState: RecordingHealthUiState,
-    showRecordingHealthDiagnostics: Boolean,
     onLocateClick: () -> Unit,
     onRecordingHealthPrimaryAction: () -> Unit,
-    onRecordingHealthItemAction: (RecordingHealthAction) -> Unit,
-    onRecordingHealthDiagnosticsDismiss: () -> Unit,
     isRecordVisible: Boolean,
 ) {
     var showRecenterCue by rememberSaveable { mutableStateOf(false) }
@@ -202,6 +198,7 @@ private fun DashboardRoot(
 
     val navigationBarHeight = 64.dp
     val floatingGap = 8.dp
+    val bottomControlReservedHeight = 104.dp
     val visibleMapState = if (isRecordVisible) {
         mapState
     } else {
@@ -228,7 +225,7 @@ private fun DashboardRoot(
                 top = 24.dp,
                 start = 20.dp,
                 end = 20.dp,
-                bottom = navigationBarHeight + floatingGap + 34.dp,
+                bottom = navigationBarHeight + floatingGap + bottomControlReservedHeight,
             ),
             showUserLocationPuck = true,
             interactive = isRecordVisible,
@@ -283,14 +280,67 @@ private fun DashboardRoot(
             )
         }
 
-        if (isRecordVisible && showRecordingHealthDiagnostics) {
-            RecordingHealthDiagnosticsDialog(
-                state = recordingHealthState,
-                onItemActionClick = onRecordingHealthItemAction,
-                onDismissRequest = onRecordingHealthDiagnosticsDismiss,
+        if (isRecordVisible && recordingHealthState.primaryAction != RecordingHealthAction.NO_OP) {
+            ManualRecordingControl(
+                text = recordingHealthState.primaryActionText,
+                action = recordingHealthState.primaryAction,
+                onClick = onRecordingHealthPrimaryAction,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .zIndex(4f)
+                    .navigationBarsPadding()
+                    .padding(
+                        start = 80.dp,
+                        end = 80.dp,
+                        bottom = navigationBarHeight + floatingGap + 14.dp,
+                    ),
             )
         }
+
     } // Box
+}
+
+@Composable
+private fun ManualRecordingControl(
+    text: String,
+    action: RecordingHealthAction,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isStopAction = action == RecordingHealthAction.STOP_BACKGROUND_TRACKING
+    TrackLiquidPanel(
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = 260.dp),
+        shape = RoundedCornerShape(22.dp),
+        tone = TrackLiquidTone.STRONG,
+        shadowElevation = 8.dp,
+        contentPadding = PaddingValues(6.dp),
+    ) {
+        Button(
+            onClick = onClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 46.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = if (isStopAction) {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            } else {
+                ButtonDefaults.buttonColors()
+            },
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
 }
 
 
@@ -328,46 +378,26 @@ private fun DashboardStatusCapsule(
         recordingHealthState = recordingHealthState,
     )
     val transition = updateTransition(targetState = expanded, label = "statusCapsuleTransition")
-    val capsuleWidth by transition.animateDp(
-        transitionSpec = { tween(durationMillis = 360, easing = FastOutSlowInEasing) },
-        label = "statusCapsuleWidth",
-    ) { isExpanded ->
-        if (isExpanded) 330.dp else 156.dp
-    }
-    val capsuleHeight by transition.animateDp(
-        transitionSpec = { tween(durationMillis = 360, easing = FastOutSlowInEasing) },
-        label = "statusCapsuleHeight",
-    ) { isExpanded ->
-        if (isExpanded) 150.dp else 42.dp
-    }
-    val capsuleCornerRadius by transition.animateDp(
-        transitionSpec = { tween(durationMillis = 360, easing = FastOutSlowInEasing) },
-        label = "statusCapsuleCornerRadius",
-    ) { isExpanded ->
-        if (isExpanded) 30.dp else 999.dp
-    }
-    val collapsedAlpha by transition.animateFloat(
-        transitionSpec = { tween(durationMillis = 90) },
-        label = "statusCapsuleCollapsedAlpha",
-    ) { isExpanded ->
-        if (isExpanded) 0f else 1f
-    }
-    val expandedAlpha by transition.animateFloat(
-        transitionSpec = { tween(durationMillis = 160, delayMillis = 140) },
-        label = "statusCapsuleExpandedAlpha",
+    val progress by transition.animateFloat(
+        transitionSpec = {
+            tween(durationMillis = 430, easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f))
+        },
+        label = "statusCapsuleProgress",
     ) { isExpanded ->
         if (isExpanded) 1f else 0f
     }
-    val collapsedContentOffset by transition.animateDp(
-        transitionSpec = { tween(durationMillis = 360, easing = FastOutSlowInEasing) },
-        label = "statusCapsuleCollapsedOffset",
-    ) { isExpanded ->
-        if (isExpanded) 8.dp else 0.dp
-    }
+    val capsuleWidth = lerpDp(156.dp, 330.dp, progress)
+    val capsuleHeight = lerpDp(42.dp, 154.dp, progress)
+    val capsuleCornerRadius = lerpDp(999.dp, 30.dp, progress)
+    val collapsedAlpha = (1f - progress / 0.3f).coerceIn(0f, 1f)
+    val expandedAlpha = ((progress - 0.22f) / 0.48f).coerceIn(0f, 1f)
+    val collapsedContentOffset = lerpDp(0.dp, 8.dp, progress)
+    val expandedContentOffset = lerpDp(8.dp, 0.dp, progress)
     val chromeModel = buildHomeRecordChromeModel(recordingHealthState)
     val spotlightText = chromeModel.spotlightItem?.let { item ->
         item.riskText ?: item.statusText
     } ?: recordingHealthState.summaryText
+    val statusDetailText = recordingHealthState.diagnosticSummary.recordingStatusText
 
     Surface(
         onClick = { onExpandedChange(!expanded) },
@@ -390,7 +420,10 @@ private fun DashboardStatusCapsule(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .padding(top = collapsedContentOffset)
-                    .alpha(collapsedAlpha),
+                    .graphicsLayer {
+                        alpha = collapsedAlpha
+                        translationX = 8f * progress
+                    },
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -419,16 +452,29 @@ private fun DashboardStatusCapsule(
             DashboardCapsuleExpandedContent(
                 model = model,
                 spotlightText = spotlightText,
-                modifier = Modifier.alpha(expandedAlpha),
+                statusDetailText = statusDetailText,
+                modifier = Modifier.graphicsLayer {
+                    alpha = expandedAlpha
+                    translationY = expandedContentOffset.toPx()
+                    scaleX = 0.985f + 0.015f * expandedAlpha
+                    scaleY = 0.985f + 0.015f * expandedAlpha
+                },
             )
         }
     }
 }
 
+private fun lerpDp(
+    start: Dp,
+    stop: Dp,
+    fraction: Float,
+): Dp = start + (stop - start) * fraction.coerceIn(0f, 1f)
+
 @Composable
 private fun DashboardCapsuleExpandedContent(
     model: DashboardStatusCapsuleModel,
     spotlightText: String,
+    statusDetailText: String,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -479,14 +525,14 @@ private fun DashboardCapsuleExpandedContent(
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.Bottom,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             DashboardCapsuleDistanceBlock(
                 distanceText = model.distanceText,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1.08f),
             )
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(0.92f),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 DashboardCapsuleMetric(
@@ -500,13 +546,49 @@ private fun DashboardCapsuleExpandedContent(
             }
         }
 
-        Text(
-            text = spotlightText,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        DashboardCapsuleStatusStrip(
+            title = spotlightText,
+            detail = statusDetailText,
         )
+    }
+}
+
+@Composable
+private fun DashboardCapsuleStatusStrip(
+    title: String,
+    detail: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f))
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = detail,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -517,7 +599,7 @@ private fun DashboardCapsuleDistanceBlock(
 ) {
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
+        verticalArrangement = Arrangement.spacedBy(0.dp),
     ) {
         Text(
             text = "今日里程",
@@ -531,7 +613,7 @@ private fun DashboardCapsuleDistanceBlock(
         ) {
             Text(
                 text = distanceText,
-                style = MaterialTheme.typography.headlineLarge.copy(fontFeatureSettings = "tnum"),
+                style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,

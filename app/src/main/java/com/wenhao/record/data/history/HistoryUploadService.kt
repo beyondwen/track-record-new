@@ -1,13 +1,8 @@
 package com.wenhao.record.data.history
 
-import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
-import com.wenhao.record.data.tracking.UploadHttpRequest
-import com.wenhao.record.data.tracking.UploadHttpRequestExecutor
 import com.wenhao.record.data.tracking.UploadHttpResponse
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.IOException
-import java.util.TimeZone
 
 sealed interface HistoryUploadResult {
     data class Success(
@@ -19,44 +14,6 @@ sealed interface HistoryUploadResult {
     data class Failure(
         val message: String,
     ) : HistoryUploadResult
-}
-
-class HistoryUploadService(
-    private val requestExecutor: UploadHttpRequestExecutor,
-) {
-    constructor() : this(::executeWithHttpUrlConnection)
-
-    fun upload(
-        config: TrainingSampleUploadConfig,
-        appVersion: String,
-        deviceId: String,
-        rows: List<HistoryUploadRow>,
-    ): HistoryUploadResult {
-        return try {
-            val utcOffsetMinutes = TimeZone.getDefault().getOffset(System.currentTimeMillis()).div(60_000)
-            val request = UploadHttpRequest(
-                url = "${config.workerBaseUrl.trim().trimEnd('/')}/histories/batch",
-                method = "POST",
-                headers = mapOf(
-                    "Authorization" to "Bearer ${config.uploadToken}",
-                    "Content-Type" to "application/json",
-                ),
-                body = HistoryUploadPayloadCodec.encode(
-                    deviceId = deviceId,
-                    appVersion = appVersion,
-                    utcOffsetMinutes = utcOffsetMinutes,
-                    rows = rows,
-                ),
-            )
-
-            val response = requestExecutor.invoke(request)
-            parseHistoryUploadResponse(response)
-        } catch (_: IOException) {
-            HistoryUploadResult.Failure(HISTORY_NETWORK_FAILURE_MESSAGE)
-        } catch (_: Exception) {
-            HistoryUploadResult.Failure(HISTORY_GENERIC_FAILURE_MESSAGE)
-        }
-    }
 }
 
 internal fun parseHistoryUploadResponse(response: UploadHttpResponse): HistoryUploadResult {

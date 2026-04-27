@@ -157,7 +157,7 @@ private fun DashboardComposeScreenPreview() {
                 durationText = "01:42:18",
                 speedText = "12.8 km/h",
                 autoTrackTitle = "正在记录这段移动",
-                autoTrackMeta = "静止后会自动完成分段并写入历史。",
+                autoTrackMeta = "点击结束记录后会整理并写入历史。",
                 statusLabel = "记录中",
                 statusTone = DashboardTone.ACTIVE,
             ),

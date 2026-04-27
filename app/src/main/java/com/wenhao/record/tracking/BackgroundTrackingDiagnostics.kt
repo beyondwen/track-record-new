@@ -7,18 +7,18 @@ internal fun ignoredLocationDecision(
 ): String? {
     val roundedAccuracy = accuracyMeters?.toInt()
     return when {
-        phase in setOf(TrackingPhase.IDLE, TrackingPhase.SUSPECT_MOVING) && roundedAccuracy == null ->
+        phase == TrackingPhase.IDLE && roundedAccuracy == null ->
             "已忽略：低频待命缺少精度信息"
 
-        phase in setOf(TrackingPhase.IDLE, TrackingPhase.SUSPECT_MOVING) &&
+        phase == TrackingPhase.IDLE &&
             accuracyMeters != null &&
             accuracyMeters > 80f ->
             "已忽略：${phaseLabelForDiagnostics(phase)}精度 ${roundedAccuracy}m > 80m"
 
-        phase in setOf(TrackingPhase.ACTIVE, TrackingPhase.SUSPECT_STOPPING) && accuracyMeters != null && accuracyMeters > 35f ->
+        phase == TrackingPhase.ACTIVE && accuracyMeters != null && accuracyMeters > 35f ->
             "已忽略：${phaseLabelForDiagnostics(phase)}精度 ${roundedAccuracy}m > 35m"
 
-        phase in setOf(TrackingPhase.ACTIVE, TrackingPhase.SUSPECT_STOPPING) &&
+        phase == TrackingPhase.ACTIVE &&
             speedMetersPerSecond != null &&
             speedMetersPerSecond > 45f ->
             "已忽略：${phaseLabelForDiagnostics(phase)}速度 ${speedMetersPerSecond.toInt()}m/s > 45m/s"
@@ -49,8 +49,6 @@ internal fun acceptedLocationDecision(
 internal fun phaseLabelForDiagnostics(phase: TrackingPhase): String {
     return when (phase) {
         TrackingPhase.IDLE -> "低频待命"
-        TrackingPhase.SUSPECT_MOVING -> "疑似移动"
         TrackingPhase.ACTIVE -> "活跃采样"
-        TrackingPhase.SUSPECT_STOPPING -> "停止观察"
     }
 }

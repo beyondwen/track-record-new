@@ -4,7 +4,6 @@ import {
   createD1DiagnosticLogPersistence,
   createD1HistoryDaySummaryPersistence,
   createD1RawPointPersistence,
-  createD1HistoryPersistence,
   createD1ProcessedHistoryPersistence,
   createD1TodaySessionPersistence
 } from "./d1";
@@ -21,7 +20,6 @@ import type {
   ErrorResponseBody,
   HistoryDaySummaryPersistence,
   HistoryDaySummaryReadSuccessResponseBody,
-  HistoryPersistence,
   ProcessedHistoryPersistence,
   HistoryReadSuccessResponseBody,
   HistorySuccessResponseBody,
@@ -46,13 +44,11 @@ import {
 
 export type {
   AnalysisPersistence,
-  HistoryPersistence,
   RawPointPersistence,
   TodaySessionPersistence
 } from "./types";
 
 interface AppDependencies {
-  historyPersistence?: HistoryPersistence;
   processedHistoryPersistence?: ProcessedHistoryPersistence;
   historyDaySummaryPersistence?: HistoryDaySummaryPersistence;
   rawPointPersistence?: RawPointPersistence;
@@ -135,8 +131,6 @@ function parseRequiredQueryInteger(value: string | null, label: string): number 
 }
 
 export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
-  const historyPersistence =
-    deps.historyPersistence ?? createD1HistoryPersistence();
   const processedHistoryPersistence =
     deps.processedHistoryPersistence ?? createD1ProcessedHistoryPersistence();
   const historyDaySummaryPersistence =
@@ -168,9 +162,6 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
       }
 
       if (
-        url.pathname !== "/histories" &&
-        url.pathname !== "/histories/day" &&
-        url.pathname !== "/histories/batch" &&
         url.pathname !== "/processed-histories" &&
         url.pathname !== "/processed-histories/day" &&
         url.pathname !== "/processed-histories/batch" &&
@@ -245,36 +236,6 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
             ok: true,
             session: snapshot?.session ?? null,
             points: snapshot?.points ?? []
-          });
-        }
-
-        if (url.pathname === "/histories" || url.pathname === "/histories/day") {
-          if (request.method !== "GET") {
-            return jsonResponse(405, {
-              ok: false,
-              message: "Method not allowed"
-            });
-          }
-
-          const deviceId = parseRequiredQueryString(
-            url.searchParams.get("deviceId"),
-            "`deviceId`"
-          );
-          const histories =
-            url.pathname === "/histories/day"
-              ? await historyPersistence.readHistoriesByDay(
-                  deviceId,
-                  parseRequiredQueryInteger(
-                    url.searchParams.get("dayStartMillis"),
-                    "`dayStartMillis`"
-                  ),
-                  env
-                )
-              : await historyPersistence.readHistories(deviceId, env);
-
-          return jsonResponse(200, {
-            ok: true,
-            histories
           });
         }
 
@@ -574,8 +535,8 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           });
         }
 
-        const validated = validateHistoryBatchRequest(payload);
         if (url.pathname === "/processed-histories/batch") {
+          const validated = validateHistoryBatchRequest(payload);
           const persisted = await processedHistoryPersistence.persistHistories(
             validated.deviceId,
             validated.appVersion,
@@ -592,18 +553,9 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
           });
         }
 
-        const persisted = await historyPersistence.persistHistories(
-          validated.deviceId,
-          validated.appVersion,
-          validated.histories,
-          env
-        );
-
-        return jsonResponse(200, {
-          ok: true,
-          insertedCount: persisted.insertedCount,
-          dedupedCount: persisted.dedupedCount,
-          acceptedHistoryIds: persisted.acceptedHistoryIds
+        return jsonResponse(404, {
+          ok: false,
+          message: "Not found"
         });
       } catch (error) {
         if (error instanceof ValidationError) {
@@ -618,7 +570,7 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
             ? error.message
             : "Internal server error";
         console.error(
-          url.pathname === "/histories/batch" || url.pathname === "/processed-histories/batch"
+          url.pathname === "/processed-histories/batch"
             ? "Failed to persist histories"
             : url.pathname === "/today-sessions/batch"
               ? "Failed to persist today sessions"
@@ -632,9 +584,7 @@ export function createApp(deps: AppDependencies = {}): ExportedHandler<Env> {
               ? "Failed to read raw points"
             : url.pathname === "/raw-points/batch"
               ? "Failed to persist raw points"
-              : url.pathname === "/histories" ||
-                  url.pathname === "/histories/day" ||
-                  url.pathname === "/processed-histories" ||
+              : url.pathname === "/processed-histories" ||
                   url.pathname === "/processed-histories/day"
                 ? "Failed to read histories"
               : "Failed to persist analysis results",

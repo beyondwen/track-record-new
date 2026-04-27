@@ -151,8 +151,8 @@ fun RecordingHealthDiagnosticsDialog(
                 }
                 TrackInsetPanel {
                     DiagnosticLine(
-                        label = stringResource(R.string.compose_dashboard_health_diagnostics_phase),
-                        value = state.diagnosticSummary.phaseText,
+                        label = stringResource(R.string.compose_dashboard_health_diagnostics_recording_status),
+                        value = state.diagnosticSummary.recordingStatusText,
                     )
                     DiagnosticLine(
                         label = stringResource(R.string.compose_dashboard_health_diagnostics_latest_point),

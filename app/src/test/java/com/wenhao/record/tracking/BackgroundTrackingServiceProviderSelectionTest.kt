@@ -15,26 +15,10 @@ class BackgroundTrackingServiceProviderSelectionTest {
     }
 
     @Test
-    fun `suspect moving listens passive and network`() {
-        assertEquals(
-            listOf(LocationManager.PASSIVE_PROVIDER, LocationManager.NETWORK_PROVIDER),
-            providersForPhase(TrackingPhase.SUSPECT_MOVING),
-        )
-    }
-
-    @Test
     fun `active phase listens gps and network`() {
         assertEquals(
             listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER),
             providersForPhase(TrackingPhase.ACTIVE),
-        )
-    }
-
-    @Test
-    fun `suspect stopping listens passive and network`() {
-        assertEquals(
-            listOf(LocationManager.PASSIVE_PROVIDER, LocationManager.NETWORK_PROVIDER),
-            providersForPhase(TrackingPhase.SUSPECT_STOPPING),
         )
     }
 

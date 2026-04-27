@@ -10,7 +10,6 @@ class HomeRecordChromeModelTest {
         val state = buildRecordingHealthUiState(
             RecordingHealthInputs(
                 hasLocationPermission = true,
-                hasActivityRecognitionPermission = true,
                 hasBackgroundLocationPermission = false,
                 hasNotificationPermission = false,
                 ignoresBatteryOptimizations = false,

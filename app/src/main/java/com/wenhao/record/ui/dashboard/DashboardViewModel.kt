@@ -139,21 +139,18 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun titleForState(state: AutoTrackUiState): String = when (state) {
         AutoTrackUiState.TRACKING -> getApplication<Application>().getString(R.string.compose_dashboard_title_tracking)
-        AutoTrackUiState.SAVED_RECENTLY -> getApplication<Application>().getString(R.string.compose_dashboard_title_saved)
         AutoTrackUiState.WAITING_PERMISSION -> getApplication<Application>().getString(R.string.compose_dashboard_title_waiting_permission)
         else -> getApplication<Application>().getString(R.string.compose_dashboard_title_idle)
     }
 
     private fun metaForState(state: AutoTrackUiState): String = when (state) {
         AutoTrackUiState.TRACKING -> getApplication<Application>().getString(R.string.compose_dashboard_meta_tracking)
-        AutoTrackUiState.SAVED_RECENTLY -> getApplication<Application>().getString(R.string.compose_dashboard_meta_saved)
         AutoTrackUiState.WAITING_PERMISSION -> getApplication<Application>().getString(R.string.compose_dashboard_meta_waiting_permission)
         else -> getApplication<Application>().getString(R.string.compose_dashboard_meta_idle)
     }
 
     private fun statusForState(state: AutoTrackUiState): String = when (state) {
         AutoTrackUiState.TRACKING -> getApplication<Application>().getString(R.string.compose_dashboard_status_tracking)
-        AutoTrackUiState.SAVED_RECENTLY -> getApplication<Application>().getString(R.string.compose_dashboard_status_saved)
         AutoTrackUiState.WAITING_PERMISSION -> getApplication<Application>().getString(R.string.compose_dashboard_status_waiting_permission)
         else -> getApplication<Application>().getString(R.string.compose_dashboard_status_idle)
     }
@@ -161,7 +158,6 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     private fun toneForState(state: AutoTrackUiState): DashboardTone = when (state) {
         AutoTrackUiState.TRACKING -> DashboardTone.ACTIVE
         AutoTrackUiState.WAITING_PERMISSION -> DashboardTone.WARNING
-        AutoTrackUiState.SAVED_RECENTLY -> DashboardTone.SUCCESS
         else -> DashboardTone.MUTED
     }
 }

@@ -5,7 +5,6 @@ import com.wenhao.record.data.local.stream.SyncOutboxEntity
 
 enum class SyncOutboxType {
     ANALYSIS_UPLOAD,
-    HISTORY_UPLOAD,
 }
 
 enum class SyncOutboxStatus {

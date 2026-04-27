@@ -24,7 +24,7 @@ class PermissionHelper(
     }
 
     private enum class PendingAppSettingsAction {
-        SMART_TRACKING_ENABLE,
+        BACKGROUND_TRACKING_ENABLE,
         REPAIR_ONLY,
     }
 
@@ -56,40 +56,24 @@ class PermissionHelper(
         }
     }
 
-    private val smartTrackingPermissionLauncher = activity.registerForActivityResult(
+    private val backgroundTrackingPermissionLauncher = activity.registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val locationGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
             hasLocationPermission()
-        val recognitionGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
-            permissions[Manifest.permission.ACTIVITY_RECOGNITION] == true ||
-            hasActivityRecognitionPermission()
-        if (!locationGranted || !recognitionGranted) {
-            Toast.makeText(activity, R.string.smart_tracking_permission_required, Toast.LENGTH_LONG).show()
+        if (!locationGranted) {
+            Toast.makeText(activity, R.string.background_tracking_permission_required, Toast.LENGTH_LONG).show()
             onRefreshDashboard()
             return@registerForActivityResult
         }
 
         if (needsBackgroundLocationPermission()) {
-            showBackgroundLocationSettingsPrompt(PendingAppSettingsAction.SMART_TRACKING_ENABLE)
+            showBackgroundLocationSettingsPrompt(PendingAppSettingsAction.BACKGROUND_TRACKING_ENABLE)
             return@registerForActivityResult
         }
 
         startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
-    }
-
-    private val activityRecognitionPermissionLauncher = activity.registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        onRefreshDashboard()
-        if (!granted) {
-            Toast.makeText(
-                activity,
-                R.string.activity_recognition_permission_required,
-                Toast.LENGTH_LONG
-            ).show()
-        }
     }
 
     private val notificationPermissionLauncher = activity.registerForActivityResult(
@@ -108,7 +92,7 @@ class PermissionHelper(
         pendingAppSettingsAction = null
         if (needsBackgroundLocationPermission()) {
             Toast.makeText(activity, R.string.background_location_permission_required, Toast.LENGTH_LONG).show()
-        } else if (action == PendingAppSettingsAction.SMART_TRACKING_ENABLE) {
+        } else if (action == PendingAppSettingsAction.BACKGROUND_TRACKING_ENABLE) {
             startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
         }
         onRefreshDashboard()
@@ -127,25 +111,33 @@ class PermissionHelper(
         }
     }
 
-    fun ensureSmartTrackingEnabled() {
+    fun ensureBackgroundTrackingEnabled() {
         when {
             canRunBackgroundTracking() -> startBackgroundTrackingWithPrompts(promptBatteryOptimization = true)
-            !hasSmartTrackingBasePermissions() -> smartTrackingPermissionLauncher.launch(buildSmartTrackingPermissionList())
+            !hasBackgroundTrackingBasePermissions() -> backgroundTrackingPermissionLauncher.launch(
+                buildBackgroundTrackingPermissionList()
+            )
             needsBackgroundLocationPermission() -> showBackgroundLocationSettingsPrompt(
-                PendingAppSettingsAction.SMART_TRACKING_ENABLE
+                PendingAppSettingsAction.BACKGROUND_TRACKING_ENABLE
             )
             else -> onRefreshDashboard()
         }
     }
 
     fun startBackgroundTrackingServiceIfReady() {
-        if (canRunBackgroundTracking()) {
+        val runtimeSnapshot = TrackingRuntimeSnapshotStorage.peek(activity)
+        if (runtimeSnapshot.isEnabled && canRunBackgroundTracking()) {
             startBackgroundTrackingWithPrompts(promptBatteryOptimization = false)
             return
         }
-        if (TrackingRuntimeSnapshotStorage.peek(activity).isEnabled) {
+        if (runtimeSnapshot.isEnabled) {
             BackgroundTrackingService.stop(activity)
         }
+        onRefreshDashboard()
+    }
+
+    fun stopBackgroundTracking() {
+        BackgroundTrackingService.stop(activity)
         onRefreshDashboard()
     }
 
@@ -178,14 +170,6 @@ class PermissionHelper(
         )
     }
 
-    fun requestActivityRecognitionPermissionForRepair() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || hasActivityRecognitionPermission()) {
-            onRefreshDashboard()
-            return
-        }
-        activityRecognitionPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
-    }
-
     fun requestNotificationPermissionForRepair() {
         if (!needsNotificationPermission()) {
             onRefreshDashboard()
@@ -216,8 +200,8 @@ class PermissionHelper(
         batteryOptimizationLauncher.launch(intent)
     }
 
-    fun hasSmartTrackingBasePermissions(): Boolean {
-        return hasLocationPermission() && hasActivityRecognitionPermission()
+    fun hasBackgroundTrackingBasePermissions(): Boolean {
+        return hasLocationPermission()
     }
 
     fun hasLocationPermission(): Boolean {
@@ -226,10 +210,6 @@ class PermissionHelper(
 
     fun needsBackgroundLocationPermission(): Boolean {
         return TrackingPermissionGate.needsBackgroundLocationPermission(activity)
-    }
-
-    fun hasActivityRecognitionPermission(): Boolean {
-        return TrackingPermissionGate.hasActivityRecognitionPermission(activity)
     }
 
     fun needsNotificationPermission(): Boolean {
@@ -244,14 +224,11 @@ class PermissionHelper(
         return TrackingPermissionGate.shouldRequestIgnoreBatteryOptimizations(activity)
     }
 
-    private fun buildSmartTrackingPermissionList(): Array<String> {
+    private fun buildBackgroundTrackingPermissionList(): Array<String> {
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
             Manifest.permission.ACCESS_COARSE_LOCATION
         )
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            permissions += Manifest.permission.ACTIVITY_RECOGNITION
-        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             permissions += Manifest.permission.POST_NOTIFICATIONS
         }

@@ -6,7 +6,6 @@ import type {
   Env,
   HistoryDaySummary,
   HistoryDaySummaryPersistence,
-  HistoryPersistence,
   HistoryRecord,
   PersistAnalysisResult,
   PersistDiagnosticLogsResult,
@@ -73,7 +72,7 @@ function dedupeTodaySessionPointsByKey(points: TodaySessionPoint[]): TodaySessio
   return [...byKey.values()];
 }
 
-interface UploadedHistoryRow {
+interface HistoryRecordRow {
   history_id: number;
   timestamp_millis: number;
   distance_km: number;
@@ -492,7 +491,7 @@ function summaryDistanceKm(row: ProcessedHistoryDaySummarySourceRow): number {
   return calculateSanitizedDistanceKm(points);
 }
 
-function mapUploadedHistoryRow(row: UploadedHistoryRow): HistoryRecord {
+function mapHistoryRecordRow(row: HistoryRecordRow): HistoryRecord {
   return {
     historyId: row.history_id,
     timestampMillis: row.timestamp_millis,
@@ -716,115 +715,6 @@ async function readExistingProcessedHistoryTimestamps(
     });
   }
   return timestampsByHistoryId;
-}
-
-export function createD1HistoryPersistence(): HistoryPersistence {
-  return {
-    async persistHistories(
-      deviceId: string,
-      appVersion: string,
-      histories: HistoryRecord[],
-      env: Env
-    ): Promise<PersistHistoriesResult> {
-      const uniqueHistories = dedupeHistoriesById(histories);
-      if (uniqueHistories.length === 0) {
-        return buildPersistHistoriesResult(histories, 0);
-      }
-
-      const statements = uniqueHistories.map((history) =>
-        env.DB.prepare(
-          `INSERT OR IGNORE INTO uploaded_histories
-             (
-               device_id,
-               history_id,
-               app_version,
-               timestamp_millis,
-               distance_km,
-               duration_seconds,
-               average_speed_kmh,
-               title,
-               start_source,
-               stop_source,
-               manual_start_at,
-               manual_stop_at,
-               points_json
-             )
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(
-          deviceId,
-          history.historyId,
-          appVersion,
-          history.timestampMillis,
-          history.distanceKm,
-          history.durationSeconds,
-          history.averageSpeedKmh,
-          history.title,
-          history.startSource,
-          history.stopSource,
-          history.manualStartAt,
-          history.manualStopAt,
-          JSON.stringify(history.points)
-        )
-      );
-
-      const insertedCount = await executeBatch(env, statements);
-      return buildPersistHistoriesResult(histories, insertedCount);
-    },
-
-    async readHistories(deviceId: string, env: Env): Promise<HistoryRecord[]> {
-      const result = await env.DB.prepare(
-        `SELECT
-           history_id,
-           timestamp_millis,
-           distance_km,
-           duration_seconds,
-           average_speed_kmh,
-           title,
-           start_source,
-           stop_source,
-           manual_start_at,
-           manual_stop_at,
-           points_json
-         FROM uploaded_histories
-         WHERE device_id = ?
-         ORDER BY timestamp_millis DESC, history_id DESC`
-      )
-        .bind(deviceId)
-        .all<UploadedHistoryRow>();
-
-      return (result.results ?? []).map(mapUploadedHistoryRow);
-    },
-
-    async readHistoriesByDay(
-      deviceId: string,
-      dayStartMillis: number,
-      env: Env
-    ): Promise<HistoryRecord[]> {
-      const result = await env.DB.prepare(
-        `SELECT
-           history_id,
-           timestamp_millis,
-           distance_km,
-           duration_seconds,
-           average_speed_kmh,
-           title,
-           start_source,
-           stop_source,
-           manual_start_at,
-           manual_stop_at,
-           points_json
-         FROM uploaded_histories
-         WHERE device_id = ?
-           AND timestamp_millis >= ?
-           AND timestamp_millis < ?
-         ORDER BY timestamp_millis DESC, history_id DESC`
-      )
-        .bind(deviceId, dayStartMillis, dayStartMillis + 86_400_000)
-        .all<UploadedHistoryRow>();
-
-      return (result.results ?? []).map(mapUploadedHistoryRow);
-    }
-  };
 }
 
 export function createD1RawPointPersistence(): RawPointPersistence {
@@ -1302,9 +1192,9 @@ export function createD1ProcessedHistoryPersistence() {
          ORDER BY timestamp_millis DESC, history_id DESC`
       )
         .bind(deviceId)
-        .all<UploadedHistoryRow>();
+        .all<HistoryRecordRow>();
 
-      return (result.results ?? []).map(mapUploadedHistoryRow);
+      return (result.results ?? []).map(mapHistoryRecordRow);
     },
 
     async readHistoriesByDay(
@@ -1332,9 +1222,9 @@ export function createD1ProcessedHistoryPersistence() {
          ORDER BY timestamp_millis DESC, history_id DESC`
       )
         .bind(deviceId, dayStartMillis, dayStartMillis + 86_400_000)
-        .all<UploadedHistoryRow>();
+        .all<HistoryRecordRow>();
 
-      return (result.results ?? []).map(mapUploadedHistoryRow);
+      return (result.results ?? []).map(mapHistoryRecordRow);
     },
 
     async deleteHistoriesByDay(
@@ -1344,15 +1234,6 @@ export function createD1ProcessedHistoryPersistence() {
     ): Promise<number> {
       const processedDeleteResult = await env.DB.prepare(
         `DELETE FROM processed_histories
-         WHERE device_id = ?
-           AND timestamp_millis >= ?
-           AND timestamp_millis < ?`
-      )
-        .bind(deviceId, dayStartMillis, dayStartMillis + 86_400_000)
-        .all();
-
-      await env.DB.prepare(
-        `DELETE FROM uploaded_histories
          WHERE device_id = ?
            AND timestamp_millis >= ?
            AND timestamp_millis < ?`

@@ -241,23 +241,6 @@ export interface AnalysisPersistence {
   ): Promise<PersistAnalysisResult>;
 }
 
-export interface HistoryPersistence {
-  persistHistories(
-    deviceId: string,
-    appVersion: string,
-    histories: HistoryRecord[],
-    env: Env
-  ): Promise<PersistHistoriesResult>;
-
-  readHistories(deviceId: string, env: Env): Promise<HistoryRecord[]>;
-
-  readHistoriesByDay(
-    deviceId: string,
-    dayStartMillis: number,
-    env: Env
-  ): Promise<HistoryRecord[]>;
-}
-
 export interface ProcessedHistoryPersistence {
   persistHistories(
     deviceId: string,

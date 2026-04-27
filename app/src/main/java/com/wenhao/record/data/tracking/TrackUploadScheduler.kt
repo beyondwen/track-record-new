@@ -11,7 +11,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.wenhao.record.data.diagnostics.DiagnosticLogUploadWorker
-import com.wenhao.record.data.history.HistoryUploadWorker
 import com.wenhao.record.data.history.ProcessedHistorySyncWorker
 import com.wenhao.record.data.history.TrackMirrorRecoveryWorker
 import kotlin.reflect.KClass
@@ -23,24 +22,21 @@ object TrackUploadPipelinePlan {
         TodaySessionSyncWorker::class,
         ProcessedHistorySyncWorker::class,
         AnalysisUploadWorker::class,
-        HistoryUploadWorker::class,
     )
 
     val LOCAL_RESULT_CHAIN: List<KClass<out androidx.work.ListenableWorker>> = listOf(
         AnalysisUploadWorker::class,
-        HistoryUploadWorker::class,
     )
 }
 
 object TrackUploadScheduler {
     private const val RAW_PERIODIC_WORK = "raw-point-upload-periodic"
     private const val ANALYSIS_PERIODIC_WORK = "analysis-upload-periodic"
-    private const val HISTORY_PERIODIC_WORK = "history-upload-periodic"
+    private const val LEGACY_HISTORY_PERIODIC_WORK = "history-upload-periodic"
     private const val PROCESSED_HISTORY_SYNC_PERIODIC_WORK = "processed-history-sync-periodic"
     private const val DIAGNOSTIC_LOG_PERIODIC_WORK = "diagnostic-log-upload-periodic"
     private const val RAW_ONE_TIME_WORK = "raw-point-upload-once"
     private const val ANALYSIS_ONE_TIME_WORK = "analysis-upload-once"
-    private const val HISTORY_ONE_TIME_WORK = "history-upload-once"
     private const val PROCESSED_HISTORY_SYNC_ONE_TIME_WORK = "processed-history-sync-once"
     private const val TODAY_SESSION_SYNC_ONE_TIME_WORK = "today-session-sync-once"
     private const val FULL_PIPELINE_ONE_TIME_WORK = "track-upload-pipeline-once"
@@ -55,6 +51,8 @@ object TrackUploadScheduler {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
+        workManager.cancelUniqueWork(LEGACY_HISTORY_PERIODIC_WORK)
+
         workManager.enqueueUniquePeriodicWork(
             RAW_PERIODIC_WORK,
             ExistingPeriodicWorkPolicy.UPDATE,
@@ -66,13 +64,6 @@ object TrackUploadScheduler {
             ANALYSIS_PERIODIC_WORK,
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<AnalysisUploadWorker>(15, TimeUnit.MINUTES)
-                .setConstraints(constraints)
-                .build(),
-        )
-        workManager.enqueueUniquePeriodicWork(
-            HISTORY_PERIODIC_WORK,
-            ExistingPeriodicWorkPolicy.UPDATE,
-            PeriodicWorkRequestBuilder<HistoryUploadWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build(),
         )
@@ -155,14 +146,6 @@ object TrackUploadScheduler {
             ANALYSIS_ONE_TIME_WORK,
             ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<AnalysisUploadWorker>().build(),
-        )
-    }
-
-    fun kickHistorySync(context: Context) {
-        workManager(context.applicationContext).enqueueUniqueWork(
-            HISTORY_ONE_TIME_WORK,
-            ExistingWorkPolicy.KEEP,
-            OneTimeWorkRequestBuilder<HistoryUploadWorker>().build(),
         )
     }
 

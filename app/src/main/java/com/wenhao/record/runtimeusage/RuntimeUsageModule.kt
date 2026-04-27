@@ -10,7 +10,6 @@ enum class RuntimeUsageModule(val key: String) {
     SERVICE_BACKGROUND_TRACKING("service.background_tracking"),
     WORKER_RAW_POINT_UPLOAD("worker.raw_point_upload"),
     WORKER_ANALYSIS_UPLOAD("worker.analysis_upload"),
-    WORKER_HISTORY_UPLOAD("worker.history_upload"),
     WORKER_TODAY_SESSION_SYNC("worker.today_session_sync"),
     WORKER_TRACK_MIRROR_RECOVERY("worker.track_mirror_recovery"),
     WORKER_PROCESSED_HISTORY_SYNC("worker.processed_history_sync"),

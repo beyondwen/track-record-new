@@ -20,7 +20,6 @@ enum class RecordingHealthItemSeverity {
 enum class RecordingHealthItemKey {
     LOCATION,
     BACKGROUND_LOCATION,
-    ACTIVITY_RECOGNITION,
     NOTIFICATION,
     BATTERY_OPTIMIZATION,
     TRACKING_SERVICE,
@@ -28,11 +27,11 @@ enum class RecordingHealthItemKey {
 
 enum class RecordingHealthAction {
     REQUEST_LOCATION_PERMISSION,
-    REQUEST_ACTIVITY_RECOGNITION_PERMISSION,
     OPEN_APP_SETTINGS_FOR_BACKGROUND_LOCATION,
     REQUEST_NOTIFICATION_PERMISSION,
     OPEN_BATTERY_OPTIMIZATION_SETTINGS,
     START_BACKGROUND_TRACKING,
+    STOP_BACKGROUND_TRACKING,
     SHOW_DIAGNOSTICS,
     NO_OP,
 }
@@ -47,7 +46,7 @@ data class RecordingHealthItemUiState(
 )
 
 data class RecordingHealthDiagnosticSummary(
-    val phaseText: String,
+    val recordingStatusText: String,
     val latestPointText: String,
     val latestEventText: String,
     val serviceText: String,
@@ -71,7 +70,7 @@ data class RecordingHealthUiState(
             primaryAction = RecordingHealthAction.NO_OP,
             primaryActionText = "去修复",
             diagnosticSummary = RecordingHealthDiagnosticSummary(
-                phaseText = "待命",
+                recordingStatusText = "待命，未开始记录",
                 latestPointText = "暂无定位点",
                 latestEventText = "正在整理诊断状态…",
                 serviceText = "后台待命中",
@@ -82,7 +81,6 @@ data class RecordingHealthUiState(
 
 data class RecordingHealthInputs(
     val hasLocationPermission: Boolean,
-    val hasActivityRecognitionPermission: Boolean,
     val hasBackgroundLocationPermission: Boolean,
     val hasNotificationPermission: Boolean,
     val ignoresBatteryOptimizations: Boolean,
@@ -95,7 +93,6 @@ data class RecordingHealthInputs(
 
 fun buildRecordingHealthUiState(inputs: RecordingHealthInputs): RecordingHealthUiState {
     val baseReady = inputs.hasLocationPermission &&
-        inputs.hasActivityRecognitionPermission &&
         inputs.hasBackgroundLocationPermission
 
     val items = buildList {
@@ -113,23 +110,6 @@ fun buildRecordingHealthUiState(inputs: RecordingHealthInputs): RecordingHealthU
                     RecordingHealthAction.NO_OP
                 } else {
                     RecordingHealthAction.REQUEST_LOCATION_PERMISSION
-                },
-            )
-        )
-        add(
-            RecordingHealthItemUiState(
-                key = RecordingHealthItemKey.ACTIVITY_RECOGNITION,
-                title = "活动识别",
-                statusText = if (inputs.hasActivityRecognitionPermission) "已授权" else "未授权",
-                severity = if (inputs.hasActivityRecognitionPermission) {
-                    RecordingHealthItemSeverity.NORMAL
-                } else {
-                    RecordingHealthItemSeverity.ERROR
-                },
-                action = if (inputs.hasActivityRecognitionPermission) {
-                    RecordingHealthAction.NO_OP
-                } else {
-                    RecordingHealthAction.REQUEST_ACTIVITY_RECOGNITION_PERMISSION
                 },
             )
         )
@@ -193,23 +173,23 @@ fun buildRecordingHealthUiState(inputs: RecordingHealthInputs): RecordingHealthU
                 title = "后台记录服务",
                 statusText = when {
                     inputs.trackingActive -> "记录中"
-                    baseReady && inputs.trackingEnabled -> "等待恢复"
+                    baseReady && inputs.trackingEnabled -> "记录中"
                     baseReady -> "未启动"
                     else -> "条件不足"
                 },
                 riskText = when {
                     inputs.trackingActive -> null
-                    baseReady && inputs.trackingEnabled -> "后台链路正在恢复，可先查看诊断"
-                    baseReady -> "权限齐全后仍需启动后台记录"
+                    baseReady && inputs.trackingEnabled -> null
+                    baseReady -> "点击开始后才会记录轨迹"
                     else -> null
                 },
                 severity = when {
-                    inputs.trackingActive -> RecordingHealthItemSeverity.NORMAL
+                    inputs.trackingActive || inputs.trackingEnabled -> RecordingHealthItemSeverity.NORMAL
                     baseReady -> RecordingHealthItemSeverity.WARNING
                     else -> RecordingHealthItemSeverity.ERROR
                 },
                 action = when {
-                    inputs.trackingActive || inputs.trackingEnabled -> RecordingHealthAction.SHOW_DIAGNOSTICS
+                    inputs.trackingActive || inputs.trackingEnabled -> RecordingHealthAction.NO_OP
                     baseReady -> RecordingHealthAction.START_BACKGROUND_TRACKING
                     else -> RecordingHealthAction.NO_OP
                 },
@@ -226,7 +206,7 @@ fun buildRecordingHealthUiState(inputs: RecordingHealthInputs): RecordingHealthU
     }
     val primaryAction = when {
         blocked -> firstRepairAction(items)
-        inputs.trackingActive || inputs.trackingEnabled -> RecordingHealthAction.SHOW_DIAGNOSTICS
+        inputs.trackingActive || inputs.trackingEnabled -> RecordingHealthAction.STOP_BACKGROUND_TRACKING
         else -> RecordingHealthAction.START_BACKGROUND_TRACKING
     }
 
@@ -235,26 +215,21 @@ fun buildRecordingHealthUiState(inputs: RecordingHealthInputs): RecordingHealthU
         title = "记录状态",
         summaryText = when {
             blocked -> "请先完成必要授权后再开始记录"
-            inputs.trackingActive -> "后台记录正在运行，可继续观察诊断状态"
+            inputs.trackingActive || inputs.trackingEnabled -> "正在记录，结束时会整理并写入历史"
             degraded -> "当前可记录，但后台稳定性可能受系统限制"
-            else -> "当前适合开始稳定记录"
+            else -> "点击开始后才会记录轨迹"
         },
         items = items,
         primaryAction = primaryAction,
         primaryActionText = when (primaryAction) {
             RecordingHealthAction.SHOW_DIAGNOSTICS -> "查看诊断"
-            RecordingHealthAction.START_BACKGROUND_TRACKING -> {
-                if (degraded) "继续记录" else "开始稳定记录"
-            }
+            RecordingHealthAction.STOP_BACKGROUND_TRACKING -> "结束记录"
+            RecordingHealthAction.START_BACKGROUND_TRACKING -> "开始记录"
             RecordingHealthAction.NO_OP -> "查看诊断"
             else -> "去修复"
         },
         diagnosticSummary = RecordingHealthDiagnosticSummary(
-            phaseText = when {
-                inputs.trackingActive -> "记录中"
-                inputs.trackingEnabled -> "等待恢复"
-                else -> "待命"
-            },
+            recordingStatusText = recordingStatusText(inputs),
             latestPointText = formatLatestPointText(inputs.latestPointTimestampMillis),
             latestEventText = inputs.diagnosticsEvent,
             serviceText = inputs.diagnosticsStatus,
@@ -297,7 +272,6 @@ fun compactRecordingHealthHighlights(
 private fun firstRepairAction(items: List<RecordingHealthItemUiState>): RecordingHealthAction {
     val priority = listOf(
         RecordingHealthItemKey.LOCATION,
-        RecordingHealthItemKey.ACTIVITY_RECOGNITION,
         RecordingHealthItemKey.BACKGROUND_LOCATION,
         RecordingHealthItemKey.NOTIFICATION,
         RecordingHealthItemKey.BATTERY_OPTIMIZATION,
@@ -306,6 +280,14 @@ private fun firstRepairAction(items: List<RecordingHealthItemUiState>): Recordin
     return priority.firstNotNullOfOrNull { key ->
         items.firstOrNull { it.key == key && it.action != RecordingHealthAction.NO_OP }?.action
     } ?: RecordingHealthAction.NO_OP
+}
+
+private fun recordingStatusText(inputs: RecordingHealthInputs): String {
+    return when {
+        inputs.trackingActive -> "记录中，可手动结束"
+        inputs.trackingEnabled -> "记录恢复中，等待定位服务"
+        else -> "待命，未开始记录"
+    }
 }
 
 private fun formatLatestPointText(timestampMillis: Long?): String {
@@ -327,10 +309,9 @@ private fun severityPriority(severity: RecordingHealthItemSeverity): Int {
 private fun itemPriority(key: RecordingHealthItemKey): Int {
     return when (key) {
         RecordingHealthItemKey.LOCATION -> 0
-        RecordingHealthItemKey.ACTIVITY_RECOGNITION -> 1
-        RecordingHealthItemKey.BACKGROUND_LOCATION -> 2
-        RecordingHealthItemKey.TRACKING_SERVICE -> 3
-        RecordingHealthItemKey.NOTIFICATION -> 4
-        RecordingHealthItemKey.BATTERY_OPTIMIZATION -> 5
+        RecordingHealthItemKey.BACKGROUND_LOCATION -> 1
+        RecordingHealthItemKey.TRACKING_SERVICE -> 2
+        RecordingHealthItemKey.NOTIFICATION -> 3
+        RecordingHealthItemKey.BATTERY_OPTIMIZATION -> 4
     }
 }

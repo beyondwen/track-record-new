@@ -26,11 +26,11 @@ class SyncOutboxStorageTest {
         val dao = FakeSyncOutboxDao()
         val storage = SyncOutboxStorage(dao)
 
-        storage.enqueueMany(SyncOutboxType.HISTORY_UPLOAD, listOf("7"), nowMillis = 1_000L)
-        storage.markFailed(SyncOutboxType.HISTORY_UPLOAD, listOf("7"), error = "network", nowMillis = 2_000L)
-        storage.markFailed(SyncOutboxType.HISTORY_UPLOAD, listOf("7"), error = "timeout", nowMillis = 3_000L)
+        storage.enqueueMany(SyncOutboxType.ANALYSIS_UPLOAD, listOf("7"), nowMillis = 1_000L)
+        storage.markFailed(SyncOutboxType.ANALYSIS_UPLOAD, listOf("7"), error = "network", nowMillis = 2_000L)
+        storage.markFailed(SyncOutboxType.ANALYSIS_UPLOAD, listOf("7"), error = "timeout", nowMillis = 3_000L)
 
-        val row = dao.items.getValue("HISTORY_UPLOAD:7")
+        val row = dao.items.getValue("ANALYSIS_UPLOAD:7")
         assertEquals(SyncOutboxStatus.FAILED.name, row.status)
         assertEquals(2, row.retryCount)
         assertEquals("timeout", row.lastError)
