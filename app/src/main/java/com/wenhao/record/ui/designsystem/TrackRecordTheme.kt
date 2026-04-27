@@ -338,32 +338,3 @@ val ColorScheme.trackGlowSecondary: Color
 
 private fun ColorScheme.isLightTrackPalette(): Boolean =
     background == BackgroundLight || surface == SurfaceLight
-
-// ===== Legacy Style Object (deprecated, kept for compatibility) =====
-
-object TrackRecordStyle {
-    val PageBackgroundLight: Color = BackgroundLight
-    val PageBackgroundDark: Color = BackgroundDark
-    val SoftSurfaceLight: Color = SurfaceVariantLight
-    val SoftSurfaceDark: Color = SurfaceVariantDark
-    val SoftAccentLight: Color = PrimaryContainerLight
-    val SoftAccentDark: Color = PrimaryContainerDark
-    val SecondarySurfaceLight: Color = SurfaceVariantLight
-    val SecondarySurfaceDark: Color = SurfaceVariantDark
-    val SoftOutlineLight: Color = OutlineLight
-    val SoftOutlineDark: Color = OutlineDark
-    val GlassSurfaceLight: Color = SurfaceLight
-    val GlassSurfaceDark: Color = SurfaceDark
-    val GlassStrongSurfaceLight: Color = SurfaceLight
-    val GlassStrongSurfaceDark: Color = SurfaceDark
-    val GlassBorderLight: Color = OutlineLight
-    val GlassBorderDark: Color = OutlineDark
-    val InnerPanelSurfaceLight: Color = SurfaceVariantLight
-    val InnerPanelSurfaceDark: Color = SurfaceVariantDark
-    val InnerPanelBorderLight: Color = OutlineVariantLight
-    val InnerPanelBorderDark: Color = OutlineVariantDark
-    val GlowPrimaryLight: Color = PrimaryLight
-    val GlowPrimaryDark: Color = PrimaryDark
-    val GlowSecondaryLight: Color = TertiaryLight
-    val GlowSecondaryDark: Color = TertiaryDark
-}
