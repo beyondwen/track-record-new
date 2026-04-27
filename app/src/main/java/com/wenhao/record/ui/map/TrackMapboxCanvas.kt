@@ -1,5 +1,6 @@
 package com.wenhao.record.ui.map
 
+import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.foundation.BorderStroke
@@ -36,6 +37,7 @@ import com.mapbox.maps.MapView
 import com.mapbox.common.MapboxOptions
 import com.mapbox.maps.dsl.cameraOptions
 import com.mapbox.maps.extension.compose.MapboxMap
+import com.mapbox.maps.extension.compose.MapboxMapComposable
 import com.mapbox.maps.extension.compose.MapEffect
 import com.mapbox.maps.extension.compose.rememberMapState
 import com.mapbox.maps.extension.compose.animation.viewport.rememberMapViewportState
@@ -178,100 +180,27 @@ fun TrackMapboxCanvas(
             compass = {},
             scaleBar = {},
         ) {
-            MapEffect(state.polylines) { mapView ->
-                mapView.mapboxMap.style?.let { style ->
-                    TrackRouteStyleLayerManager.render(style, state.polylines)
-                }
-            }
-
-            MapEffect(state.heatPoints) { mapView ->
-                mapView.mapboxMap.style?.let { style ->
-                    TrackRawPointStyleLayerManager.render(style, state.heatPoints)
-                }
-            }
-
-            state.markers.forEach { marker ->
-                val icon = when (marker.kind) {
-                    TrackMapMarkerKind.HOME -> homeIcon
-                    TrackMapMarkerKind.START -> startIcon
-                    TrackMapMarkerKind.END -> endIcon
-                    TrackMapMarkerKind.CENTER -> centerIcon
-                }
-                key(marker.id) {
-                    PointAnnotation(point = marker.coordinate.toMapboxPoint()) {
-                        iconImage = icon
-                        iconAnchor = IconAnchor.CENTER
-                        iconSize = when (marker.kind) {
-                            TrackMapMarkerKind.HOME -> 1.0
-                            TrackMapMarkerKind.CENTER -> 0.92
-                            TrackMapMarkerKind.START,
-                            TrackMapMarkerKind.END,
-                            -> 0.92
-                        }
-                    }
-                }
-            }
-
-            if (shouldCaptureSnapshot && snapshotRequested) {
-                MapEffect(snapshotCacheKey, snapshotRequested) { mapView ->
-                    mapView.snapshot { bitmap ->
-                        if (bitmap != null && !snapshotCacheKey.isNullOrBlank()) {
-                            mainHandler.post {
-                                TrackMapSnapshotCache.put(snapshotCacheKey, bitmap)
-                                snapshotBitmap = bitmap
-                                onSnapshotCached?.invoke()
-                            }
-                        }
-                    }
-                }
-            }
-
-            MapEffect(state.viewportRequest?.sequence, resolvedPadding) { mapView ->
-                val request = state.viewportRequest
-                if (request is TrackMapViewportRequest.Center) {
-                    mapView.mapboxMap.setCamera(
-                        cameraOptions {
-                            center(request.coordinate.toMapboxPoint())
-                            zoom(request.zoom)
-                            padding(resolvedPadding)
-                        }
-                    )
-                }
-            }
-
-            MapEffect(Unit) { mapView ->
-                gestureHost = MapboxMoveGestureListenerHost(mapView)
-            }
-
-            MapEffect(interactive) { mapView ->
-                mapView.gestures.updateSettings {
-                    rotateEnabled = interactive
-                    pinchToZoomEnabled = interactive
-                    scrollEnabled = interactive
-                    simultaneousRotateAndPinchToZoomEnabled = interactive
-                    pitchEnabled = interactive
-                    doubleTapToZoomInEnabled = interactive
-                    doubleTouchToZoomOutEnabled = interactive
-                    quickZoomEnabled = interactive
-                    pinchToZoomDecelerationEnabled = interactive
-                    rotateDecelerationEnabled = interactive
-                    scrollDecelerationEnabled = interactive
-                    increaseRotateThresholdWhenPinchingToZoom = interactive
-                    increasePinchToZoomThresholdWhenRotating = interactive
-                    pinchScrollEnabled = interactive
-                }
-            }
-
-            MapEffect(showUserLocationPuck) { mapView ->
-                mapView.location.updateSettings {
-                    enabled = showUserLocationPuck
-                    locationPuck = createDefault2DPuck(withBearing = true)
-                    puckBearingEnabled = showUserLocationPuck
-                    puckBearing = PuckBearing.HEADING
-                    showAccuracyRing = false
-                    pulsingEnabled = false
-                }
-            }
+            TrackMapboxContent(
+                state = state,
+                resolvedPadding = resolvedPadding,
+                homeIcon = homeIcon,
+                startIcon = startIcon,
+                endIcon = endIcon,
+                centerIcon = centerIcon,
+                shouldCaptureSnapshot = shouldCaptureSnapshot,
+                snapshotRequested = snapshotRequested,
+                snapshotCacheKey = snapshotCacheKey,
+                mainHandler = mainHandler,
+                interactive = interactive,
+                showUserLocationPuck = showUserLocationPuck,
+                onSnapshotReady = { bitmap ->
+                    snapshotBitmap = bitmap
+                    onSnapshotCached?.invoke()
+                },
+                onGestureHostChanged = { host ->
+                    gestureHost = host
+                },
+            )
         }
 
         if (shouldDisplaySnapshot) {
@@ -346,6 +275,120 @@ fun TrackMapboxCanvas(
 }
 
 private const val USER_LOCATION_PUCK_HIT_RADIUS_METERS = 45f
+
+@Composable
+@MapboxMapComposable
+@Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
+private fun TrackMapboxContent(
+    state: TrackMapSceneState,
+    resolvedPadding: EdgeInsets,
+    homeIcon: IconImage,
+    startIcon: IconImage,
+    endIcon: IconImage,
+    centerIcon: IconImage,
+    shouldCaptureSnapshot: Boolean,
+    snapshotRequested: Boolean,
+    snapshotCacheKey: String?,
+    mainHandler: Handler,
+    interactive: Boolean,
+    showUserLocationPuck: Boolean,
+    onSnapshotReady: (Bitmap) -> Unit,
+    onGestureHostChanged: (MoveGestureListenerHost) -> Unit,
+) {
+    MapEffect(state.polylines) { mapView ->
+        mapView.mapboxMap.style?.let { style ->
+            TrackRouteStyleLayerManager.render(style, state.polylines)
+        }
+    }
+
+    MapEffect(state.heatPoints) { mapView ->
+        mapView.mapboxMap.style?.let { style ->
+            TrackRawPointStyleLayerManager.render(style, state.heatPoints)
+        }
+    }
+
+    state.markers.forEach { marker ->
+        val icon = when (marker.kind) {
+            TrackMapMarkerKind.HOME -> homeIcon
+            TrackMapMarkerKind.START -> startIcon
+            TrackMapMarkerKind.END -> endIcon
+            TrackMapMarkerKind.CENTER -> centerIcon
+        }
+        key(marker.id) {
+            PointAnnotation(point = marker.coordinate.toMapboxPoint()) {
+                iconImage = icon
+                iconAnchor = IconAnchor.CENTER
+                iconSize = when (marker.kind) {
+                    TrackMapMarkerKind.HOME -> 1.0
+                    TrackMapMarkerKind.CENTER -> 0.92
+                    TrackMapMarkerKind.START,
+                    TrackMapMarkerKind.END,
+                    -> 0.92
+                }
+            }
+        }
+    }
+
+    if (shouldCaptureSnapshot && snapshotRequested) {
+        MapEffect(snapshotCacheKey, snapshotRequested) { mapView ->
+            mapView.snapshot { bitmap ->
+                if (bitmap != null && !snapshotCacheKey.isNullOrBlank()) {
+                    mainHandler.post {
+                        TrackMapSnapshotCache.put(snapshotCacheKey, bitmap)
+                        onSnapshotReady(bitmap)
+                    }
+                }
+            }
+        }
+    }
+
+    MapEffect(state.viewportRequest?.sequence, resolvedPadding) { mapView ->
+        val request = state.viewportRequest
+        if (request is TrackMapViewportRequest.Center) {
+            mapView.mapboxMap.setCamera(
+                cameraOptions {
+                    center(request.coordinate.toMapboxPoint())
+                    zoom(request.zoom)
+                    padding(resolvedPadding)
+                }
+            )
+        }
+    }
+
+    MapEffect(Unit) { mapView ->
+        onGestureHostChanged(MapboxMoveGestureListenerHost(mapView))
+    }
+
+    MapEffect(interactive) { mapView ->
+        mapView.gestures.updateSettings {
+            rotateEnabled = interactive
+            pinchToZoomEnabled = interactive
+            scrollEnabled = interactive
+            simultaneousRotateAndPinchToZoomEnabled = interactive
+            pitchEnabled = interactive
+            doubleTapToZoomInEnabled = interactive
+            doubleTouchToZoomOutEnabled = interactive
+            quickZoomEnabled = interactive
+            pinchToZoomDecelerationEnabled = interactive
+            rotateDecelerationEnabled = interactive
+            scrollDecelerationEnabled = interactive
+            increaseRotateThresholdWhenPinchingToZoom = interactive
+            increasePinchToZoomThresholdWhenRotating = interactive
+            pinchScrollEnabled = interactive
+        }
+    }
+
+    MapEffect(showUserLocationPuck) { mapView ->
+        mapView.location.updateSettings {
+            enabled = showUserLocationPuck
+            locationPuck = createDefault2DPuck(withBearing = true)
+            puckBearingEnabled = showUserLocationPuck
+            puckBearing = PuckBearing.HEADING
+            showAccuracyRing = false
+            pulsingEnabled = false
+        }
+    }
+}
 
 @Composable
 private fun MapboxUnavailablePlaceholder(modifier: Modifier = Modifier) {

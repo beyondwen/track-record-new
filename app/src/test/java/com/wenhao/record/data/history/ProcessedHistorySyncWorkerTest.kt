@@ -79,15 +79,16 @@ class ProcessedHistorySyncWorkerTest {
                     val payload = JSONObject(request.body.orEmpty())
                     val histories = payload.getJSONArray("histories")
                     uploadedRows += List(histories.length()) { index ->
+                        val item = histories.getJSONObject(index)
                         HistoryUploadRow(
-                            historyId = histories.getJSONObject(index).getLong("historyId"),
-                            timestampMillis = histories.getJSONObject(index).getLong("timestampMillis"),
-                            distanceKm = histories.getJSONObject(index).getDouble("distanceKm"),
-                            durationSeconds = histories.getJSONObject(index).getInt("durationSeconds"),
-                            averageSpeedKmh = histories.getJSONObject(index).getDouble("averageSpeedKmh"),
-                            title = histories.getJSONObject(index).optString("title", null),
-                            startSource = histories.getJSONObject(index).optString("startSource", null),
-                            stopSource = histories.getJSONObject(index).optString("stopSource", null),
+                            historyId = item.getLong("historyId"),
+                            timestampMillis = item.getLong("timestampMillis"),
+                            distanceKm = item.getDouble("distanceKm"),
+                            durationSeconds = item.getInt("durationSeconds"),
+                            averageSpeedKmh = item.getDouble("averageSpeedKmh"),
+                            title = item.optionalString("title"),
+                            startSource = item.optionalString("startSource"),
+                            stopSource = item.optionalString("stopSource"),
                             manualStartAt = null,
                             manualStopAt = null,
                             points = emptyList(),
@@ -233,5 +234,10 @@ class ProcessedHistorySyncWorkerTest {
             activityConfidence = 0.9f,
             samplingTier = SamplingTier.ACTIVE,
         )
+    }
+
+    private fun JSONObject.optionalString(key: String): String? {
+        if (!has(key) || isNull(key)) return null
+        return optString(key).trim().takeIf { it.isNotEmpty() }
     }
 }

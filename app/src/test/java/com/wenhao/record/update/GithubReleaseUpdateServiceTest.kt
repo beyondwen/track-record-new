@@ -34,7 +34,6 @@ class GithubReleaseUpdateServiceTest {
         val result = service.checkForUpdate(currentVersionCode = 15)
 
         assertTrue(result is UpdateCheckResult.UpdateAvailable)
-        result as UpdateCheckResult.UpdateAvailable
         assertEquals(16, result.info.versionCode)
         assertEquals("https://example.com/app-debug.apk", result.info.apkUrl)
     }
@@ -82,7 +81,6 @@ class GithubReleaseUpdateServiceTest {
         val result = service.checkForUpdate(currentVersionCode = 15)
 
         assertTrue(result is UpdateCheckResult.Failure)
-        result as UpdateCheckResult.Failure
         assertEquals("更新信息不完整", result.message)
     }
 
@@ -116,7 +114,6 @@ class GithubReleaseUpdateServiceTest {
         val result = service.checkForUpdate(currentVersionCode = 15)
 
         assertTrue(result is UpdateCheckResult.UpdateAvailable)
-        result as UpdateCheckResult.UpdateAvailable
         assertEquals("https://example.com/app-debug.apk", result.info.apkUrl)
     }
 }

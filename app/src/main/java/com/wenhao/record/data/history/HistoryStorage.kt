@@ -23,6 +23,7 @@ object HistoryStorage {
     private const val SNAPSHOT_FILE_NAME = "history_snapshot.json"
 
     private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     private val cacheLock = java.lang.Object()
 
     @Volatile

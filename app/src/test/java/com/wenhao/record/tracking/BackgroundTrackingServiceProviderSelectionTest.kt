@@ -44,6 +44,7 @@ class BackgroundTrackingServiceProviderSelectionTest {
             TrackingPhase::class.java,
         )
         method.isAccessible = true
-        return method.invoke(BackgroundTrackingService(), phase) as List<String>
+        val result = method.invoke(BackgroundTrackingService(), phase) as List<*>
+        return result.map { it as String }
     }
 }

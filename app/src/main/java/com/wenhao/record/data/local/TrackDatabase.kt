@@ -55,31 +55,31 @@ abstract class TrackDatabase : RoomDatabase() {
     companion object {
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // Schema unchanged; this migration formalizes versioned upgrades so history is preserved.
             }
         }
 
         val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(database: SupportSQLiteDatabase) {
+            override fun migrate(db: SupportSQLiteDatabase) {
                 // Add WGS-84 coordinate columns for accurate distance calculation
-                database.execSQL("ALTER TABLE auto_track_point ADD COLUMN wgs84Latitude REAL")
-                database.execSQL("ALTER TABLE auto_track_point ADD COLUMN wgs84Longitude REAL")
-                database.execSQL("ALTER TABLE history_point ADD COLUMN wgs84Latitude REAL")
-                database.execSQL("ALTER TABLE history_point ADD COLUMN wgs84Longitude REAL")
+                db.execSQL("ALTER TABLE auto_track_point ADD COLUMN wgs84Latitude REAL")
+                db.execSQL("ALTER TABLE auto_track_point ADD COLUMN wgs84Longitude REAL")
+                db.execSQL("ALTER TABLE history_point ADD COLUMN wgs84Latitude REAL")
+                db.execSQL("ALTER TABLE history_point ADD COLUMN wgs84Longitude REAL")
             }
         }
 
         val MIGRATION_3_4 = object : Migration(3, 4) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE auto_track_point ADD COLUMN altitudeMeters REAL")
-                database.execSQL("ALTER TABLE history_point ADD COLUMN altitudeMeters REAL")
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE auto_track_point ADD COLUMN altitudeMeters REAL")
+                db.execSQL("ALTER TABLE history_point ADD COLUMN altitudeMeters REAL")
             }
         }
 
         val MIGRATION_4_5 = object : Migration(4, 5) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `decision_event` (
                         `eventId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -98,7 +98,7 @@ abstract class TrackDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                database.execSQL(
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `decision_feedback` (
                         `feedbackId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -112,45 +112,45 @@ abstract class TrackDatabase : RoomDatabase() {
         }
 
         val MIGRATION_5_6 = object : Migration(5, 6) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     "ALTER TABLE decision_event ADD COLUMN gpsQualityPass INTEGER NOT NULL DEFAULT 0"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE decision_event ADD COLUMN motionEvidencePass INTEGER NOT NULL DEFAULT 0"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE decision_event ADD COLUMN frequentPlaceClearPass INTEGER NOT NULL DEFAULT 0"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE decision_event ADD COLUMN feedbackEligible INTEGER NOT NULL DEFAULT 0"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE decision_event ADD COLUMN feedbackBlockedReason TEXT"
                 )
             }
         }
 
         val MIGRATION_6_7 = object : Migration(6, 7) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     "ALTER TABLE history_record ADD COLUMN startSource TEXT NOT NULL DEFAULT 'UNKNOWN'"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE history_record ADD COLUMN stopSource TEXT NOT NULL DEFAULT 'UNKNOWN'"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE history_record ADD COLUMN manualStartAt INTEGER"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE history_record ADD COLUMN manualStopAt INTEGER"
                 )
             }
         }
 
         val MIGRATION_7_8 = object : Migration(7, 8) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `raw_location_point` (
                         `pointId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -171,7 +171,7 @@ abstract class TrackDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                database.execSQL(
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `analysis_segment` (
                         `segmentId` INTEGER NOT NULL,
@@ -190,7 +190,7 @@ abstract class TrackDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                database.execSQL(
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `stay_cluster` (
                         `stayId` INTEGER NOT NULL,
@@ -206,7 +206,7 @@ abstract class TrackDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                database.execSQL(
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `analysis_cursor` (
                         `cursorId` INTEGER NOT NULL,
@@ -220,15 +220,15 @@ abstract class TrackDatabase : RoomDatabase() {
         }
 
         val MIGRATION_8_9 = object : Migration(8, 9) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("DROP TABLE IF EXISTS `auto_track_point`")
-                database.execSQL("DROP TABLE IF EXISTS `auto_track_session`")
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `auto_track_point`")
+                db.execSQL("DROP TABLE IF EXISTS `auto_track_session`")
             }
         }
 
         val MIGRATION_9_10 = object : Migration(9, 10) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `upload_cursor` (
                         `cursorType` TEXT NOT NULL,
@@ -242,15 +242,15 @@ abstract class TrackDatabase : RoomDatabase() {
         }
 
         val MIGRATION_10_11 = object : Migration(10, 11) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("DROP TABLE IF EXISTS `decision_event`")
-                database.execSQL("DROP TABLE IF EXISTS `decision_feedback`")
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("DROP TABLE IF EXISTS `decision_event`")
+                db.execSQL("DROP TABLE IF EXISTS `decision_feedback`")
             }
         }
 
         val MIGRATION_11_12 = object : Migration(11, 12) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `today_display_point` (
                         `timestampMillis` INTEGER NOT NULL,
@@ -267,19 +267,19 @@ abstract class TrackDatabase : RoomDatabase() {
         }
 
         val MIGRATION_12_13 = object : Migration(12, 13) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_raw_location_point_timestampMillis` ON `raw_location_point` (`timestampMillis`)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_raw_location_point_pointId_timestampMillis` ON `raw_location_point` (`pointId`, `timestampMillis`)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_analysis_segment_startTimestamp` ON `analysis_segment` (`startTimestamp`)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_analysis_segment_endTimestamp` ON `analysis_segment` (`endTimestamp`)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_stay_cluster_segmentId` ON `stay_cluster` (`segmentId`)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_display_point_dayStartMillis_timestampMillis` ON `today_display_point` (`dayStartMillis`, `timestampMillis`)")
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_raw_location_point_timestampMillis` ON `raw_location_point` (`timestampMillis`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_raw_location_point_pointId_timestampMillis` ON `raw_location_point` (`pointId`, `timestampMillis`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_analysis_segment_startTimestamp` ON `analysis_segment` (`startTimestamp`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_analysis_segment_endTimestamp` ON `analysis_segment` (`endTimestamp`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_stay_cluster_segmentId` ON `stay_cluster` (`segmentId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_today_display_point_dayStartMillis_timestampMillis` ON `today_display_point` (`dayStartMillis`, `timestampMillis`)")
             }
         }
 
         val MIGRATION_13_14 = object : Migration(13, 14) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `sync_outbox` (
                         `outboxId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
@@ -293,14 +293,14 @@ abstract class TrackDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                database.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_outbox_itemType_itemKey` ON `sync_outbox` (`itemType`, `itemKey`)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_sync_outbox_status_updatedAt` ON `sync_outbox` (`status`, `updatedAt`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_outbox_itemType_itemKey` ON `sync_outbox` (`itemType`, `itemKey`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_sync_outbox_status_updatedAt` ON `sync_outbox` (`status`, `updatedAt`)")
             }
         }
 
         val MIGRATION_14_15 = object : Migration(14, 15) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `today_session` (
                         `sessionId` TEXT NOT NULL,
@@ -319,9 +319,9 @@ abstract class TrackDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_dayStartMillis_status_startedAt` ON `today_session` (`dayStartMillis`, `status`, `startedAt`)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_status_dayStartMillis` ON `today_session` (`status`, `dayStartMillis`)")
-                database.execSQL(
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_dayStartMillis_status_startedAt` ON `today_session` (`dayStartMillis`, `status`, `startedAt`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_status_dayStartMillis` ON `today_session` (`status`, `dayStartMillis`)")
+                db.execSQL(
                     """
                     CREATE TABLE IF NOT EXISTS `today_session_point` (
                         `sessionId` TEXT NOT NULL,
@@ -347,29 +347,29 @@ abstract class TrackDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_point_sessionId_timestampMillis` ON `today_session_point` (`sessionId`, `timestampMillis`)")
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_point_sessionId_syncState_timestampMillis` ON `today_session_point` (`sessionId`, `syncState`, `timestampMillis`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_point_sessionId_timestampMillis` ON `today_session_point` (`sessionId`, `timestampMillis`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_today_session_point_sessionId_syncState_timestampMillis` ON `today_session_point` (`sessionId`, `syncState`, `timestampMillis`)")
             }
         }
 
         val MIGRATION_15_16 = object : Migration(15, 16) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL(
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
                     "ALTER TABLE history_record ADD COLUMN sourceSessionId TEXT"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE history_record ADD COLUMN dateKey INTEGER NOT NULL DEFAULT 0"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE history_record ADD COLUMN syncState TEXT NOT NULL DEFAULT 'SYNCED'"
                 )
-                database.execSQL(
+                db.execSQL(
                     "ALTER TABLE history_record ADD COLUMN version INTEGER NOT NULL DEFAULT 1"
                 )
-                database.execSQL(
+                db.execSQL(
                     "UPDATE history_record SET dateKey = timestamp - (timestamp % 86400000) WHERE dateKey = 0"
                 )
-                database.execSQL("CREATE INDEX IF NOT EXISTS `index_history_record_dateKey_timestamp` ON `history_record` (`dateKey`, `timestamp`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_history_record_dateKey_timestamp` ON `history_record` (`dateKey`, `timestamp`)")
             }
         }
 

@@ -16,6 +16,7 @@ import org.robolectric.Shadows.shadowOf
 class LocationSelectionUtilsTest {
 
     @Test
+    @Suppress("DEPRECATION")
     fun `prefers fresher gps fix over stale coarse cache`() {
         val context = RuntimeEnvironment.getApplication()
         val locationManager = context.getSystemService(LocationManager::class.java)

@@ -31,9 +31,8 @@ class DiagnosticLogUploadServiceTest {
         )
 
         assertTrue(result is DiagnosticLogUploadResult.Success)
-        val success = result as DiagnosticLogUploadResult.Success
-        assertEquals(1, success.insertedCount)
-        assertEquals(0, success.dedupedCount)
+        assertEquals(1, result.insertedCount)
+        assertEquals(0, result.dedupedCount)
     }
 
     private fun logEntry(): DiagnosticLogEntry {

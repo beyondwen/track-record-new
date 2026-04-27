@@ -803,7 +803,7 @@ class BackgroundTrackingService : Service() {
                             endTimestamp = segment.endTimestamp,
                             segmentType = segment.kind.name,
                             confidence = defaultSegmentConfidence(segment.kind),
-                            distanceMeters = distanceMeters.toFloat(),
+                            distanceMeters = distanceMeters,
                             durationMillis = durationMillis,
                             avgSpeedMetersPerSecond = avgSpeedMetersPerSecond.toFloat(),
                             maxSpeedMetersPerSecond = maxSpeedMetersPerSecond.toFloat(),
