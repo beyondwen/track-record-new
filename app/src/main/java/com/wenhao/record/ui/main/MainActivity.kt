@@ -269,16 +269,14 @@ class MainActivity : AppCompatActivity() {
         }
         val runtimeSnapshot = TrackingRuntimeSnapshotStorage.peek(this)
         val previewLocation = loadPreviewLocation()
-        val todayHistoryItems = HistoryStorage.peek(this)
         val previousTrackingEnabled = lastDashboardTrackingEnabled
         lastDashboardTrackingEnabled = runtimeSnapshot.isEnabled
         val dashboardState = currentDashboardState(runtimeSnapshot)
 
-        dashboardViewModel?.render(runtimeSnapshot, dashboardState, todayHistoryItems)
+        dashboardViewModel?.render(runtimeSnapshot, dashboardState, activeSessionPoints)
         mapViewModel?.render(
             runtimeSnapshot = runtimeSnapshot,
             previewLocation = previewLocation,
-            todayHistoryItems = todayHistoryItems,
             activeSessionPoints = activeSessionPoints,
         )
         refreshRecordingHealthState(runtimeSnapshot)
@@ -286,7 +284,6 @@ class MainActivity : AppCompatActivity() {
         refreshActiveSessionTrack(
             runtimeSnapshot = runtimeSnapshot,
             previewLocation = previewLocation,
-            todayHistoryItems = todayHistoryItems,
         )
 
         if (previousTrackingEnabled && !runtimeSnapshot.isEnabled) {
@@ -359,7 +356,6 @@ class MainActivity : AppCompatActivity() {
         mapViewModel?.render(
             runtimeSnapshot = runtimeSnapshot,
             previewLocation = loadPreviewLocation(),
-            todayHistoryItems = HistoryStorage.peek(this),
             activeSessionPoints = nextPoints,
         )
     }
@@ -367,7 +363,6 @@ class MainActivity : AppCompatActivity() {
     private fun refreshActiveSessionTrack(
         runtimeSnapshot: TrackingRuntimeSnapshot,
         previewLocation: GeoCoordinate?,
-        todayHistoryItems: List<com.wenhao.record.data.history.HistoryItem>,
     ) {
         val shouldLoad = runtimeSnapshot.isEnabled && runtimeSnapshot.phase != TrackingPhase.IDLE
         if (!shouldLoad) {
@@ -376,7 +371,6 @@ class MainActivity : AppCompatActivity() {
             mapViewModel?.render(
                 runtimeSnapshot = runtimeSnapshot,
                 previewLocation = previewLocation,
-                todayHistoryItems = todayHistoryItems,
                 activeSessionPoints = emptyList(),
             )
             return
@@ -397,7 +391,6 @@ class MainActivity : AppCompatActivity() {
                 mapViewModel?.render(
                     runtimeSnapshot = runtimeSnapshot,
                     previewLocation = previewLocation,
-                    todayHistoryItems = todayHistoryItems,
                     activeSessionPoints = loadedPoints,
                 )
             }

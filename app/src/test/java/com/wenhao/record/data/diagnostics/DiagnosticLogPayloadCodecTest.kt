@@ -18,9 +18,9 @@ class DiagnosticLogPayloadCodecTest {
                     occurredAt = 1_700_000_000_000L,
                     type = DiagnosticLogType.ERROR,
                     severity = DiagnosticLogSeverity.ERROR,
-                    source = "TrackAnalysisRunner",
-                    message = "analysis failed",
-                    fingerprint = "analysis-failed",
+                    source = "RawPointUploadWorker",
+                    message = "raw upload failed",
+                    fingerprint = "raw-upload-failed",
                     payloadJson = """{"pointId":18,"latitude":30.1,"longitude":120.1,"durationMs":2800}""",
                 )
             )

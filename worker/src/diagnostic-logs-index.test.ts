@@ -140,9 +140,9 @@ describe("diagnostic log routes", () => {
         occurredAt: 1700000000000,
         type: "PERF_WARN",
         severity: "WARN",
-        source: "TrackAnalysisRunner",
-        message: "analysis took 2800ms",
-        fingerprint: "analysis-slow",
+        source: "RawPointUploadWorker",
+        message: "raw upload took 2800ms",
+        fingerprint: "raw-upload-slow",
         payload: { durationMs: 2800 },
         status: "open",
         occurrenceCount: 1,
@@ -164,7 +164,7 @@ describe("diagnostic log routes", () => {
     const body = await response.json() as { ok: true; logs: DiagnosticLog[] };
     expect(body.ok).toBe(true);
     expect(body.logs).toHaveLength(1);
-    expect(body.logs[0].fingerprint).toBe("analysis-slow");
+    expect(body.logs[0].fingerprint).toBe("raw-upload-slow");
   });
 
   it("resolves logs by fingerprint", async () => {

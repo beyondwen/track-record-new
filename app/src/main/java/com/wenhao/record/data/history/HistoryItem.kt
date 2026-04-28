@@ -20,7 +20,11 @@ data class HistoryItem(
     val manualStopAt: Long? = null,
 ) {
     val quality: TrackQuality by lazy(LazyThreadSafetyMode.NONE) {
-        TrackQualityEvaluator.evaluate(this)
+        TrackQualityEvaluator.evaluateSegments(
+            segments = listOf(points),
+            totalDistanceKm = distanceKm,
+            totalDurationSeconds = durationSeconds,
+        )
     }
 
     val displayTitle: String

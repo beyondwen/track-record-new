@@ -41,9 +41,9 @@ class DiagnosticLogUploadServiceTest {
             occurredAt = 1_700_000_000_000L,
             type = DiagnosticLogType.PERF_WARN,
             severity = DiagnosticLogSeverity.WARN,
-            source = "TrackAnalysisRunner",
-            message = "analysis slow",
-            fingerprint = "analysis-slow",
+            source = "RawPointUploadWorker",
+            message = "raw upload slow",
+            fingerprint = "raw-upload-slow",
             payloadJson = """{"durationMs":2800}""",
         )
     }

@@ -4,9 +4,11 @@ import android.app.Application
 import android.os.Looper
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
-import com.wenhao.record.data.history.HistoryItem
+import com.wenhao.record.data.tracking.SamplingTier
 import com.wenhao.record.data.tracking.TrackPoint
+import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.map.GeoCoordinate
+import com.wenhao.record.tracking.TrackingPhase
 import com.wenhao.record.ui.map.TrackMapViewportRequest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,16 +25,16 @@ class MapViewModelCoordinateTest {
     private val application = ApplicationProvider.getApplicationContext<Application>()
 
     @Test
-    fun `render fits today tracks using normalized map coordinates`() {
+    fun `render centers active track using normalized latest coordinate`() {
         val viewModel = MapViewModel(application, SavedStateHandle())
-        val historyPointA = TrackPoint(
+        val activePointA = TrackPoint(
             latitude = 30.635995,
             longitude = 104.0260895,
             timestampMillis = 1_000L,
             wgs84Latitude = 30.63851753684334,
             wgs84Longitude = 104.02369844431439,
         )
-        val historyPointB = TrackPoint(
+        val activePointB = TrackPoint(
             latitude = 30.636595,
             longitude = 104.0266895,
             timestampMillis = 2_000L,
@@ -41,69 +43,44 @@ class MapViewModelCoordinateTest {
         )
 
         viewModel.render(
-            runtimeSnapshot = null,
+            runtimeSnapshot = activeSnapshot(activePointB),
             previewLocation = null,
-            todayHistoryItems = listOf(
-                HistoryItem(
-                    id = 1L,
-                    timestamp = System.currentTimeMillis(),
-                    distanceKm = 0.5,
-                    durationSeconds = 60,
-                    averageSpeedKmh = 30.0,
-                    points = listOf(historyPointA, historyPointB),
-                )
-            ),
-            activeSessionPoints = emptyList(),
+            activeSessionPoints = listOf(activePointA, activePointB),
         )
 
         waitUntil(timeoutMs = 2_000L) {
-            viewModel.renderState.value.viewportRequest is TrackMapViewportRequest.Fit
+            viewModel.renderState.value.viewportRequest is TrackMapViewportRequest.Center
         }
 
         val viewportRequest = viewModel.renderState.value.viewportRequest
-        assertTrue(viewportRequest is TrackMapViewportRequest.Fit)
-        assertEquals(historyPointA.wgs84Latitude ?: Double.NaN, viewportRequest.coordinates.first().latitude, 1e-6)
-        assertEquals(historyPointA.wgs84Longitude ?: Double.NaN, viewportRequest.coordinates.first().longitude, 1e-6)
+        assertTrue(viewportRequest is TrackMapViewportRequest.Center)
+        assertEquals(activePointB.wgs84Latitude ?: Double.NaN, viewportRequest.coordinate.latitude, 1e-6)
+        assertEquals(activePointB.wgs84Longitude ?: Double.NaN, viewportRequest.coordinate.longitude, 1e-6)
     }
 
     @Test
-    fun `render limits today route overlays to keep map tab responsive`() {
+    fun `render compacts active route overlays to keep map tab responsive`() {
         val viewModel = MapViewModel(application, SavedStateHandle())
         val now = System.currentTimeMillis()
-        val historyItems = List(80) { index ->
-            HistoryItem(
-                id = index.toLong(),
-                timestamp = now - index * 1_000L,
-                distanceKm = 0.1,
-                durationSeconds = 60,
-                averageSpeedKmh = 6.0,
-                points = listOf(
-                    TrackPoint(
-                        latitude = 30.0 + index * 0.0001,
-                        longitude = 104.0,
-                        timestampMillis = now + index * 10_000L,
-                    ),
-                    TrackPoint(
-                        latitude = 30.0005 + index * 0.0001,
-                        longitude = 104.0005,
-                        timestampMillis = now + index * 10_000L + 5_000L,
-                    ),
-                ),
+        val points = List(600) { index ->
+            TrackPoint(
+                latitude = 30.0 + index * 0.00001,
+                longitude = 104.0 + index * 0.00001,
+                timestampMillis = now + index * 1_000L,
             )
         }
 
         viewModel.render(
-            runtimeSnapshot = null,
+            runtimeSnapshot = activeSnapshot(points.last()),
             previewLocation = null,
-            todayHistoryItems = historyItems,
-            activeSessionPoints = emptyList(),
+            activeSessionPoints = points,
         )
 
         waitUntil(timeoutMs = 2_000L) {
             viewModel.renderState.value.polylines.isNotEmpty()
         }
 
-        assertTrue(viewModel.renderState.value.polylines.size <= 36)
+        assertTrue(viewModel.renderState.value.polylines.sumOf { it.points.size } <= 240)
     }
 
     @Test
@@ -131,5 +108,15 @@ class MapViewModelCoordinateTest {
         }
         shadowOf(Looper.getMainLooper()).idle()
         check(condition()) { "Condition was not met within ${timeoutMs}ms" }
+    }
+
+    private fun activeSnapshot(latestPoint: TrackPoint): TrackingRuntimeSnapshot {
+        return TrackingRuntimeSnapshot(
+            isEnabled = true,
+            phase = TrackingPhase.ACTIVE,
+            samplingTier = SamplingTier.ACTIVE,
+            latestPoint = latestPoint,
+            lastAnalysisAt = null,
+        )
     }
 }

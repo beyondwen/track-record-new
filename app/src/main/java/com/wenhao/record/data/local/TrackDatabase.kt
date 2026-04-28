@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import com.wenhao.record.data.local.history.HistoryDao
+import com.wenhao.record.data.local.history.HistoryPointEntity
+import com.wenhao.record.data.local.history.HistoryRecordEntity
 import com.wenhao.record.data.local.stream.ContinuousTrackDao
 import com.wenhao.record.data.local.stream.RawLocationPointEntity
 import com.wenhao.record.data.local.stream.SyncOutboxDao
@@ -23,6 +26,8 @@ import com.wenhao.record.data.local.stream.UploadCursorEntity
         TodaySessionEntity::class,
         TodaySessionPointEntity::class,
         SyncOutboxEntity::class,
+        HistoryRecordEntity::class,
+        HistoryPointEntity::class,
     ],
     version = 17,
     exportSchema = true,
@@ -36,6 +41,8 @@ abstract class TrackDatabase : RoomDatabase() {
     abstract fun todaySessionDao(): TodaySessionDao
 
     abstract fun syncOutboxDao(): SyncOutboxDao
+
+    abstract fun historyDao(): HistoryDao
 
     companion object {
         @Volatile
