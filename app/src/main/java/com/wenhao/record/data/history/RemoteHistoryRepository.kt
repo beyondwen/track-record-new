@@ -1,7 +1,6 @@
 package com.wenhao.record.data.history
 
 import android.content.Context
-import com.wenhao.record.data.local.TrackDatabase
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
 import com.wenhao.record.data.tracking.TrainingSampleUploadConfigStorage
 import com.wenhao.record.data.tracking.uploadDeviceId
@@ -10,15 +9,10 @@ class RemoteHistoryRepository(
     private val localDailyLoader: suspend (Context) -> List<HistoryDayItem> = { context ->
         HistoryStorage.loadDaily(context)
     },
-    private val localSegmentCountLoader: suspend (Context) -> Map<Long, Int> = { context ->
-        HistoryLocalSegmentCounter(
-            TrackDatabase.getInstance(context).continuousTrackDao(),
-        ).countByDay()
-    },
     private val localRouteTitleLoader: suspend (Context) -> Map<Long, String> = { context ->
         HistoryLocalRouteTitleResolver(
             context = context,
-            dao = TrackDatabase.getInstance(context).continuousTrackDao(),
+            dao = com.wenhao.record.data.local.TrackDatabase.getInstance(context).continuousTrackDao(),
         ).resolveByDay()
     },
     private val localDayLoader: suspend (Context, Long) -> HistoryDayItem? = { context, dayStartMillis ->
@@ -53,17 +47,13 @@ class RemoteHistoryRepository(
     }
 
     suspend fun loadDailySummaryState(context: Context): DailySummaryLoadResult {
-        val localSegmentCounts = runCatching {
-            localSegmentCountLoader(context)
-        }.getOrDefault(emptyMap())
         val localRouteTitles = runCatching {
             localRouteTitleLoader(context)
         }.getOrDefault(emptyMap())
         val localItems = localDailyLoader(context).map { item ->
             item.toSummaryItem(
                 routeTitleOverride = HistoryRouteTitleResolver.resolve(context, item),
-            ).withLocalSegmentCount(localSegmentCounts)
-                .withLocalRouteTitle(localRouteTitles)
+            ).withLocalRouteTitle(localRouteTitles)
         }
         val config = configLoader(context)
         if (!config.isConfigured()) {
@@ -78,7 +68,6 @@ class RemoteHistoryRepository(
                 items = mergeDailySummaries(
                     localItems = localItems,
                     remoteItems = result.items,
-                    localSegmentCounts = localSegmentCounts,
                     localRouteTitles = localRouteTitles,
                 ),
                 remoteStatus = RemoteStatus.SUCCESS,
@@ -136,14 +125,11 @@ class RemoteHistoryRepository(
     private fun mergeDailySummaries(
         localItems: List<HistoryDaySummaryItem>,
         remoteItems: List<HistoryDaySummaryItem>,
-        localSegmentCounts: Map<Long, Int>,
         localRouteTitles: Map<Long, String>,
     ): List<HistoryDaySummaryItem> {
         val mergedByDay = localItems.associateBy { item -> item.dayStartMillis }.toMutableMap()
         remoteItems.forEach { item ->
-            val itemWithLocalSegments = item
-                .withLocalSegmentCount(localSegmentCounts)
-                .withLocalRouteTitle(localRouteTitles)
+            val itemWithLocalSegments = item.withLocalRouteTitle(localRouteTitles)
             val localItem = mergedByDay[item.dayStartMillis]
             mergedByDay[item.dayStartMillis] = if (localItem == null) {
                 itemWithLocalSegments
@@ -156,17 +142,6 @@ class RemoteHistoryRepository(
             }
         }
         return mergedByDay.values.sortedByDescending { it.dayStartMillis }
-    }
-
-    private fun HistoryDaySummaryItem.withLocalSegmentCount(
-        localSegmentCounts: Map<Long, Int>,
-    ): HistoryDaySummaryItem {
-        val localSegmentCount = localSegmentCounts[dayStartMillis] ?: return this
-        return if (localSegmentCount > sessionCount) {
-            copy(sessionCount = localSegmentCount)
-        } else {
-            this
-        }
     }
 
     private fun HistoryDaySummaryItem.withLocalRouteTitle(

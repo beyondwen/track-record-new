@@ -263,7 +263,6 @@ class MainViewModel(
         return SyncDiagnosticsUiState(
             rawPointCount = rawPointCount,
             todayDisplayPointCount = todayDisplayPointCount,
-            analysisSegmentCount = analysisSegmentCount,
             outboxPendingCount = outboxPendingCount,
             outboxInProgressCount = outboxInProgressCount,
             outboxFailedCount = outboxFailedCount,

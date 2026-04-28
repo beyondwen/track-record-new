@@ -11,7 +11,6 @@ class SyncDiagnosticsUiStateTest {
             SyncDiagnosticsUiState(
                 rawPointCount = 12,
                 todayDisplayPointCount = 8,
-                analysisSegmentCount = 3,
                 outboxPendingCount = 2,
                 outboxInProgressCount = 1,
                 outboxFailedCount = 4,
@@ -21,6 +20,7 @@ class SyncDiagnosticsUiStateTest {
 
         assertEquals("原始采集队列", rows[0].title)
         assertEquals("12 个点", rows[0].value)
+        assertEquals("待上传", rows[2].title)
         assertEquals("失败", rows.last().title)
         assertEquals("timeout", rows.last().value)
     }

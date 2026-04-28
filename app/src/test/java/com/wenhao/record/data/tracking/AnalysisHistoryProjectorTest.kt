@@ -56,6 +56,27 @@ class AnalysisHistoryProjectorTest {
         assertEquals(rawPoints.first().longitude, projectedPoint.wgs84Longitude ?: Double.NaN, 1e-6)
     }
 
+    @Test
+    fun `project keeps full raw session even when segment only covers prefix`() {
+        val projector = AnalysisHistoryProjector()
+        val rawPoints = demoSegmentPoints()
+        val prefixOnlySegment = SegmentCandidate(
+            kind = SegmentKind.DYNAMIC,
+            startTimestamp = rawPoints.first().timestampMillis,
+            endTimestamp = rawPoints[1].timestampMillis,
+            pointCount = 2,
+        )
+
+        val projected = projector.project(
+            segments = listOf(prefixOnlySegment),
+            rawPoints = rawPoints,
+        )
+
+        assertEquals(1, projected.size)
+        assertEquals(rawPoints.size, projected.single().points.size)
+        assertTrue(projected.single().distanceKm > 1.24)
+    }
+
     private fun demoSegmentPoints(): List<RawTrackPoint> {
         return listOf(
             rawPoint(pointId = 101L, timestampMillis = 1_000L, latitude = 30.00000, longitude = 120.00000),

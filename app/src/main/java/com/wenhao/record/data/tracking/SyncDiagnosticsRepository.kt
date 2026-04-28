@@ -6,7 +6,6 @@ import java.util.Calendar
 data class SyncDiagnosticsSnapshot(
     val rawPointCount: Int,
     val todayDisplayPointCount: Int,
-    val analysisSegmentCount: Int,
     val outboxPendingCount: Int,
     val outboxInProgressCount: Int,
     val outboxFailedCount: Int,
@@ -25,7 +24,6 @@ class SyncDiagnosticsRepository(
         return SyncDiagnosticsSnapshot(
             rawPointCount = continuousDao.countRawPoints(),
             todayDisplayPointCount = todayDao.countPointsForDay(todayStart),
-            analysisSegmentCount = continuousDao.countAnalysisSegments(),
             outboxPendingCount = outboxDao.countByStatus(SyncOutboxStatus.PENDING.name),
             outboxInProgressCount = outboxDao.countByStatus(SyncOutboxStatus.IN_PROGRESS.name),
             outboxFailedCount = outboxDao.countByStatus(SyncOutboxStatus.FAILED.name),

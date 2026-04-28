@@ -2,9 +2,6 @@ package com.wenhao.record.data.history
 
 import com.wenhao.record.data.tracking.RawTrackPoint
 import com.wenhao.record.data.tracking.SamplingTier
-import com.wenhao.record.tracking.analysis.SegmentCandidate
-import com.wenhao.record.tracking.analysis.SegmentKind
-import com.wenhao.record.tracking.analysis.TrackAnalysisResult
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -13,11 +10,7 @@ class HistoryProjectionRecoveryTest {
 
     @Test
     fun `rebuild projected items skips recovery when local history already exists`() {
-        val recovery = HistoryProjectionRecovery(
-            analysisRunner = {
-                error("analysis should not run when history already exists")
-            },
-        )
+        val recovery = HistoryProjectionRecovery()
 
         val rebuilt = recovery.rebuildProjectedItems(
             existingHistories = listOf(
@@ -37,23 +30,8 @@ class HistoryProjectionRecoveryTest {
     }
 
     @Test
-    fun `rebuild projected items projects dynamic movement from raw points`() {
-        val recovery = HistoryProjectionRecovery(
-            analysisRunner = { points ->
-                TrackAnalysisResult(
-                    scoredPoints = emptyList(),
-                    segments = listOf(
-                        SegmentCandidate(
-                            kind = SegmentKind.DYNAMIC,
-                            startTimestamp = points.first().timestampMillis,
-                            endTimestamp = points.last().timestampMillis,
-                            pointCount = points.size,
-                        )
-                    ),
-                    stayClusters = emptyList(),
-                )
-            },
-        )
+    fun `rebuild projected items projects whole raw track without analysis step`() {
+        val recovery = HistoryProjectionRecovery()
 
         val rebuilt = recovery.rebuildProjectedItems(
             existingHistories = emptyList(),

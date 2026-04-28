@@ -1,8 +1,12 @@
 package com.wenhao.record.data.history
 
+import com.wenhao.record.data.tracking.TrainingSampleUploadConfig
+import com.wenhao.record.data.tracking.UploadHttpRequest
+import com.wenhao.record.data.tracking.UploadHttpRequestExecutor
 import com.wenhao.record.data.tracking.UploadHttpResponse
-import org.json.JSONArray
 import org.json.JSONObject
+import java.io.IOException
+import java.util.TimeZone
 
 sealed interface HistoryUploadResult {
     data class Success(
@@ -16,69 +20,99 @@ sealed interface HistoryUploadResult {
     ) : HistoryUploadResult
 }
 
-internal fun parseHistoryUploadResponse(response: UploadHttpResponse): HistoryUploadResult {
-    if (response.statusCode == 401 || response.statusCode == 403) {
-        return HistoryUploadResult.Failure(HISTORY_AUTH_FAILURE_MESSAGE)
+class HistoryUploadService(
+    private val requestExecutor: UploadHttpRequestExecutor,
+) {
+    constructor() : this(::executeWithHttpUrlConnection)
+
+    fun upload(
+        config: TrainingSampleUploadConfig,
+        appVersion: String,
+        deviceId: String,
+        rows: List<HistoryUploadRow>,
+    ): HistoryUploadResult {
+        return try {
+            val utcOffsetMinutes = TimeZone.getDefault().getOffset(System.currentTimeMillis()).div(60_000)
+            val request = UploadHttpRequest(
+                url = "${config.workerBaseUrl.trim().trimEnd('/')}/processed-histories/batch",
+                method = "POST",
+                headers = mapOf(
+                    "Authorization" to "Bearer ${config.uploadToken}",
+                    "Content-Type" to "application/json",
+                ),
+                body = HistoryUploadPayloadCodec.encode(
+                    deviceId = deviceId,
+                    appVersion = appVersion,
+                    utcOffsetMinutes = utcOffsetMinutes,
+                    rows = rows,
+                ),
+            )
+
+            parseResponse(requestExecutor.invoke(request))
+        } catch (_: IOException) {
+            HistoryUploadResult.Failure("上传失败，请检查网络后重试")
+        } catch (_: Exception) {
+            HistoryUploadResult.Failure("上传失败，请稍后重试")
+        }
     }
 
-    if (response.statusCode !in 200..299) {
-        val errorMessage = parseHistoryUploadMessage(response.body)
-        return HistoryUploadResult.Failure(errorMessage ?: HISTORY_GENERIC_FAILURE_MESSAGE)
-    }
+    private fun parseResponse(response: UploadHttpResponse): HistoryUploadResult {
+        if (response.statusCode == 401 || response.statusCode == 403) {
+            return HistoryUploadResult.Failure(HISTORY_AUTH_FAILURE_MESSAGE)
+        }
 
-    val json = parseHistoryUploadJson(response.body)
-        ?: return HistoryUploadResult.Failure(HISTORY_GENERIC_FAILURE_MESSAGE)
-    if (!json.optBoolean("ok", false)) {
-        return HistoryUploadResult.Failure(
-            parseHistoryUploadMessage(json) ?: HISTORY_GENERIC_FAILURE_MESSAGE
+        if (response.statusCode !in 200..299) {
+            return HistoryUploadResult.Failure(parseMessage(response.body) ?: HISTORY_GENERIC_FAILURE_MESSAGE)
+        }
+
+        val json = parseJson(response.body) ?: return HistoryUploadResult.Failure(HISTORY_GENERIC_FAILURE_MESSAGE)
+        if (!json.optBoolean("ok", false)) {
+            return HistoryUploadResult.Failure(parseMessage(json) ?: HISTORY_GENERIC_FAILURE_MESSAGE)
+        }
+
+        val acceptedHistoryIds = json.optJSONArray("acceptedHistoryIds")
+            ?.let { ids ->
+                buildList {
+                    for (index in 0 until ids.length()) {
+                        val value = ids.opt(index)
+                        when (value) {
+                            is Number -> add(value.toLong())
+                            is String -> value.toLongOrNull()?.let(::add)
+                        }
+                    }
+                }
+            }
+            .orEmpty()
+
+        return HistoryUploadResult.Success(
+            acceptedHistoryIds = acceptedHistoryIds,
+            insertedCount = json.optInt("insertedCount", 0),
+            dedupedCount = json.optInt("dedupedCount", 0),
         )
     }
 
-    return HistoryUploadResult.Success(
-        acceptedHistoryIds = parseAcceptedHistoryIds(json.optJSONArray("acceptedHistoryIds")),
-        insertedCount = json.optInt("insertedCount", 0),
-        dedupedCount = json.optInt("dedupedCount", 0),
-    )
-}
-
-private fun parseHistoryUploadMessage(body: String): String? {
-    return try {
-        parseHistoryUploadJson(body)?.let(::parseHistoryUploadMessage)
-    } catch (_: Exception) {
-        null
+    private fun parseMessage(body: String): String? {
+        return try {
+            parseJson(body)?.let(::parseMessage)
+        } catch (_: Exception) {
+            null
+        }
     }
-}
 
-private fun parseHistoryUploadMessage(json: JSONObject): String? {
-    val value = json.opt("message")
-    return (value as? String)?.trim()?.takeIf { it.isNotEmpty() }
-}
-
-private fun parseHistoryUploadJson(body: String): JSONObject? {
-    if (body.isBlank()) return null
-    return try {
-        JSONObject(body)
-    } catch (_: Exception) {
-        null
+    private fun parseMessage(json: JSONObject): String? {
+        val value = json.opt("message")
+        return (value as? String)?.trim()?.takeIf { it.isNotEmpty() }
     }
-}
 
-private fun parseAcceptedHistoryIds(ids: JSONArray?): List<Long> {
-    if (ids == null) return emptyList()
-    return buildList {
-        for (index in 0 until ids.length()) {
-            val parsedId = when (val raw = ids.opt(index)) {
-                is Number -> raw.toLong()
-                is String -> raw.toLongOrNull()
-                else -> null
-            }
-            if (parsedId != null && parsedId > 0L) {
-                add(parsedId)
-            }
+    private fun parseJson(body: String): JSONObject? {
+        if (body.isBlank()) return null
+        return try {
+            JSONObject(body)
+        } catch (_: Exception) {
+            null
         }
     }
 }
 
 private const val HISTORY_AUTH_FAILURE_MESSAGE = "鉴权失败，请检查上传令牌"
-private const val HISTORY_NETWORK_FAILURE_MESSAGE = "上传失败，请检查网络后重试"
 private const val HISTORY_GENERIC_FAILURE_MESSAGE = "上传失败，请稍后重试"

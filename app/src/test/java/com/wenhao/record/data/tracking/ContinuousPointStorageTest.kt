@@ -81,24 +81,6 @@ class ContinuousPointStorageTest {
         assertEquals(500, dao.lastRawPointsBetweenLimit)
     }
 
-    @Test
-    fun `save analysis result persists segments stay clusters and analysis cursor`() = runBlocking {
-        val dao = FakeContinuousTrackDao()
-        val storage = ContinuousPointStorage(dao)
-
-        storage.saveAnalysisResult(
-            analyzedUpToPointId = 42L,
-            segments = listOf(segmentEntity(segmentId = 100L)),
-            stayClusters = listOf(stayEntity(stayId = 200L, segmentId = 100L)),
-        )
-
-        assertEquals(42L, storage.loadAnalysisCursor()?.lastAnalyzedPointId)
-        assertEquals(listOf(100L), storage.loadPendingAnalysisUploadRows(afterSegmentId = 0L, limit = 10).map { it.segmentId })
-        assertEquals(listOf(200L), storage.loadPendingAnalysisUploadRows(afterSegmentId = 0L, limit = 10).flatMap { row ->
-            row.stayClusters.map { it.stayId }
-        })
-    }
-
     private fun samplePoint(timestampMillis: Long, samplingTier: SamplingTier): RawTrackPoint {
         return RawTrackPoint(
             timestampMillis = timestampMillis,
@@ -115,37 +97,6 @@ class ContinuousPointStorageTest {
             activityType = "WALKING",
             activityConfidence = 0.8f,
             samplingTier = samplingTier,
-        )
-    }
-
-    private fun segmentEntity(segmentId: Long): AnalysisSegmentEntity {
-        return AnalysisSegmentEntity(
-            segmentId = segmentId,
-            startPointId = 11L,
-            endPointId = 19L,
-            startTimestamp = 100_000L,
-            endTimestamp = 160_000L,
-            segmentType = "STATIC",
-            confidence = 0.95f,
-            distanceMeters = 18f,
-            durationMillis = 60_000L,
-            avgSpeedMetersPerSecond = 0.2f,
-            maxSpeedMetersPerSecond = 0.4f,
-            analysisVersion = 1,
-        )
-    }
-
-    private fun stayEntity(stayId: Long, segmentId: Long): StayClusterEntity {
-        return StayClusterEntity(
-            stayId = stayId,
-            segmentId = segmentId,
-            centerLat = 30.1,
-            centerLng = 120.1,
-            radiusMeters = 25f,
-            arrivalTime = 100_000L,
-            departureTime = 160_000L,
-            confidence = 0.91f,
-            analysisVersion = 1,
         )
     }
 

@@ -6,11 +6,11 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ProcessedHistoryUploadServiceTest {
+class HistoryUploadServiceTest {
 
     @Test
-    fun `upload posts processed histories to worker and parses accepted ids`() {
-        val service = ProcessedHistoryUploadService(
+    fun `upload posts local histories to worker and parses accepted ids`() {
+        val service = HistoryUploadService(
             requestExecutor = { request ->
                 assertEquals("POST", request.method)
                 assertEquals(
@@ -40,7 +40,7 @@ class ProcessedHistoryUploadServiceTest {
                     distanceKm = 1.23,
                     durationSeconds = 456,
                     averageSpeedKmh = 9.7,
-                    title = "云端重算",
+                    title = "本地完整轨迹",
                     startSource = "AUTO",
                     stopSource = "AUTO",
                     manualStartAt = null,

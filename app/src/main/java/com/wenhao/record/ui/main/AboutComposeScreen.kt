@@ -278,7 +278,7 @@ private fun WorkerConfigSection(
         SettingsHintCard(
             title = if (state.hasConfiguredSampleUpload) "Worker 已保存" else "配置 Worker 后启用同步",
             body = if (state.hasConfiguredSampleUpload) {
-                "原始点位、历史摘要和分析结果都会走这组 Worker 配置。"
+                "原始点位、今日会话和历史摘要都会走这组 Worker 配置。"
             } else {
                 "这里集中配置 URL 和 Token，保存后可测试连通性。"
             },

@@ -64,6 +64,36 @@ class TodaySessionStorage(
         )
     }
 
+    suspend fun loadSession(sessionId: String): TodaySessionEntity? {
+        return dao.loadSession(sessionId)
+    }
+
+    suspend fun loadRawPoints(sessionId: String): List<RawTrackPoint> {
+        return dao.loadPoints(sessionId)
+            .sortedBy { it.timestampMillis }
+            .map { point ->
+                RawTrackPoint(
+                    pointId = point.pointId,
+                    timestampMillis = point.timestampMillis,
+                    latitude = point.latitude,
+                    longitude = point.longitude,
+                    accuracyMeters = point.accuracyMeters,
+                    altitudeMeters = point.altitudeMeters,
+                    speedMetersPerSecond = point.speedMetersPerSecond,
+                    bearingDegrees = point.bearingDegrees,
+                    provider = point.provider,
+                    sourceType = point.sourceType,
+                    isMock = point.isMock,
+                    wifiFingerprintDigest = point.wifiFingerprintDigest,
+                    activityType = point.activityType,
+                    activityConfidence = point.activityConfidence,
+                    samplingTier = runCatching {
+                        SamplingTier.valueOf(point.samplingTier)
+                    }.getOrDefault(SamplingTier.IDLE),
+                )
+            }
+    }
+
     suspend fun appendPoint(
         sessionId: String,
         pointId: Long,

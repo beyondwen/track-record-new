@@ -11,8 +11,7 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.wenhao.record.data.diagnostics.DiagnosticLogUploadWorker
-import com.wenhao.record.data.history.ProcessedHistorySyncWorker
-import com.wenhao.record.data.history.TrackMirrorRecoveryWorker
+import com.wenhao.record.data.history.HistoryUploadWorker
 import kotlin.reflect.KClass
 import java.util.concurrent.TimeUnit
 
@@ -20,29 +19,25 @@ object TrackUploadPipelinePlan {
     val ONE_TIME_CHAIN: List<KClass<out androidx.work.ListenableWorker>> = listOf(
         RawPointUploadWorker::class,
         TodaySessionSyncWorker::class,
-        ProcessedHistorySyncWorker::class,
-        AnalysisUploadWorker::class,
     )
 
-    val LOCAL_RESULT_CHAIN: List<KClass<out androidx.work.ListenableWorker>> = listOf(
-        AnalysisUploadWorker::class,
-    )
+    val LOCAL_RESULT_CHAIN: List<KClass<out androidx.work.ListenableWorker>> = emptyList()
 }
 
 object TrackUploadScheduler {
     private const val RAW_PERIODIC_WORK = "raw-point-upload-periodic"
-    private const val ANALYSIS_PERIODIC_WORK = "analysis-upload-periodic"
     private const val LEGACY_HISTORY_PERIODIC_WORK = "history-upload-periodic"
-    private const val PROCESSED_HISTORY_SYNC_PERIODIC_WORK = "processed-history-sync-periodic"
+    private const val LEGACY_PROCESSED_HISTORY_SYNC_PERIODIC_WORK = "processed-history-sync-periodic"
+    private const val HISTORY_UPLOAD_PERIODIC_WORK = "history-upload-periodic-v2"
     private const val DIAGNOSTIC_LOG_PERIODIC_WORK = "diagnostic-log-upload-periodic"
     private const val RAW_ONE_TIME_WORK = "raw-point-upload-once"
-    private const val ANALYSIS_ONE_TIME_WORK = "analysis-upload-once"
-    private const val PROCESSED_HISTORY_SYNC_ONE_TIME_WORK = "processed-history-sync-once"
+    private const val LEGACY_ANALYSIS_ONE_TIME_WORK = "analysis-upload-once"
+    private const val HISTORY_UPLOAD_ONE_TIME_WORK = "history-upload-once"
     private const val TODAY_SESSION_SYNC_ONE_TIME_WORK = "today-session-sync-once"
     private const val FULL_PIPELINE_ONE_TIME_WORK = "track-upload-pipeline-once"
     private const val LOCAL_RESULT_PIPELINE_ONE_TIME_WORK = "track-local-result-upload-pipeline-once"
     private const val DIAGNOSTIC_LOG_ONE_TIME_WORK = "diagnostic-log-upload-once"
-    private const val MIRROR_RECOVERY_ONE_TIME_WORK = "track-mirror-recovery-once"
+    private const val LEGACY_MIRROR_RECOVERY_ONE_TIME_WORK = "track-mirror-recovery-once"
 
     fun ensureScheduled(context: Context) {
         val appContext = context.applicationContext
@@ -52,6 +47,10 @@ object TrackUploadScheduler {
             .build()
 
         workManager.cancelUniqueWork(LEGACY_HISTORY_PERIODIC_WORK)
+        workManager.cancelUniqueWork(LEGACY_PROCESSED_HISTORY_SYNC_PERIODIC_WORK)
+        workManager.cancelUniqueWork(LEGACY_ANALYSIS_ONE_TIME_WORK)
+        workManager.cancelUniqueWork(LOCAL_RESULT_PIPELINE_ONE_TIME_WORK)
+        workManager.cancelUniqueWork(LEGACY_MIRROR_RECOVERY_ONE_TIME_WORK)
 
         workManager.enqueueUniquePeriodicWork(
             RAW_PERIODIC_WORK,
@@ -61,16 +60,9 @@ object TrackUploadScheduler {
                 .build(),
         )
         workManager.enqueueUniquePeriodicWork(
-            ANALYSIS_PERIODIC_WORK,
+            HISTORY_UPLOAD_PERIODIC_WORK,
             ExistingPeriodicWorkPolicy.UPDATE,
-            PeriodicWorkRequestBuilder<AnalysisUploadWorker>(15, TimeUnit.MINUTES)
-                .setConstraints(constraints)
-                .build(),
-        )
-        workManager.enqueueUniquePeriodicWork(
-            PROCESSED_HISTORY_SYNC_PERIODIC_WORK,
-            ExistingPeriodicWorkPolicy.UPDATE,
-            PeriodicWorkRequestBuilder<ProcessedHistorySyncWorker>(15, TimeUnit.MINUTES)
+            PeriodicWorkRequestBuilder<HistoryUploadWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build(),
         )
@@ -92,22 +84,8 @@ object TrackUploadScheduler {
         )
     }
 
-    fun kickLocalResultSyncPipeline(context: Context) {
-        enqueueOneTimePipeline(
-            context = context,
-            uniqueWorkName = LOCAL_RESULT_PIPELINE_ONE_TIME_WORK,
-            requests = buildLocalResultPipelineRequests(),
-        )
-    }
-
     fun buildOneTimePipelineRequests(): List<OneTimeWorkRequest> {
         return TrackUploadPipelinePlan.ONE_TIME_CHAIN.map { workerClass ->
-            OneTimeWorkRequest.Builder(workerClass.java).build()
-        }
-    }
-
-    fun buildLocalResultPipelineRequests(): List<OneTimeWorkRequest> {
-        return TrackUploadPipelinePlan.LOCAL_RESULT_CHAIN.map { workerClass ->
             OneTimeWorkRequest.Builder(workerClass.java).build()
         }
     }
@@ -141,19 +119,11 @@ object TrackUploadScheduler {
         )
     }
 
-    fun kickAnalysisSync(context: Context) {
+    fun kickHistorySync(context: Context) {
         workManager(context.applicationContext).enqueueUniqueWork(
-            ANALYSIS_ONE_TIME_WORK,
+            HISTORY_UPLOAD_ONE_TIME_WORK,
             ExistingWorkPolicy.KEEP,
-            OneTimeWorkRequestBuilder<AnalysisUploadWorker>().build(),
-        )
-    }
-
-    fun kickProcessedHistorySync(context: Context) {
-        workManager(context.applicationContext).enqueueUniqueWork(
-            PROCESSED_HISTORY_SYNC_ONE_TIME_WORK,
-            ExistingWorkPolicy.KEEP,
-            OneTimeWorkRequestBuilder<ProcessedHistorySyncWorker>().build(),
+            OneTimeWorkRequestBuilder<HistoryUploadWorker>().build(),
         )
     }
 
@@ -170,14 +140,6 @@ object TrackUploadScheduler {
             DIAGNOSTIC_LOG_ONE_TIME_WORK,
             ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<DiagnosticLogUploadWorker>().build(),
-        )
-    }
-
-    fun kickMirrorRecovery(context: Context) {
-        workManager(context.applicationContext).enqueueUniqueWork(
-            MIRROR_RECOVERY_ONE_TIME_WORK,
-            ExistingWorkPolicy.KEEP,
-            OneTimeWorkRequestBuilder<TrackMirrorRecoveryWorker>().build(),
         )
     }
 

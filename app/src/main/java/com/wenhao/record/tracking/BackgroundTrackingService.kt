@@ -24,13 +24,10 @@ import androidx.core.content.ContextCompat
 import com.wenhao.record.R
 import com.wenhao.record.data.diagnostics.DiagnosticLogger
 import com.wenhao.record.data.local.TrackDatabase
-import com.wenhao.record.data.local.stream.AnalysisSegmentEntity
-import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.history.HistoryStorage
 import com.wenhao.record.data.tracking.AnalysisHistoryProjector
 import com.wenhao.record.data.tracking.AutoTrackDiagnosticsStorage
 import com.wenhao.record.data.tracking.ContinuousPointStorage
-import com.wenhao.record.data.tracking.RawPointRetentionPolicy
 import com.wenhao.record.data.tracking.RawTrackPoint
 import com.wenhao.record.data.tracking.SamplingTier
 import com.wenhao.record.data.tracking.TodaySessionStorage
@@ -39,17 +36,11 @@ import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrackUploadScheduler
 import com.wenhao.record.data.tracking.TodayTrackDisplayCache
-import com.wenhao.record.data.tracking.WorkerSafeIntegerIds
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshotStorage
-import com.wenhao.record.data.tracking.UploadCursorStorage
-import com.wenhao.record.data.tracking.UploadCursorType
 import com.wenhao.record.map.GeoMath
 import com.wenhao.record.runtimeusage.RuntimeUsageModule
 import com.wenhao.record.runtimeusage.RuntimeUsageRecorder
-import com.wenhao.record.tracking.analysis.AnalyzedPoint
-import com.wenhao.record.tracking.analysis.SegmentKind
-import com.wenhao.record.tracking.analysis.TrackAnalysisRunner
 import com.wenhao.record.ui.main.MainActivity
 import com.wenhao.record.util.AppTaskExecutor
 import kotlinx.coroutines.runBlocking
@@ -64,10 +55,9 @@ class BackgroundTrackingService : Service() {
 
         private const val CHANNEL_ID = "manual_tracking"
         private const val NOTIFICATION_ID = 1107
-        private const val ANALYSIS_VERSION = 1
         private const val MAX_ACTIVE_ACCURACY_METERS = 35f
         private const val MAX_ACTIVE_SPEED_METERS_PER_SECOND = 45f
-        private const val PERF_WARN_REALTIME_ANALYSIS_MS = 2_500L
+        private const val PERF_WARN_HISTORY_REFRESH_MS = 2_500L
 
         fun start(context: Context) {
             val intent = Intent(context, BackgroundTrackingService::class.java).apply {
@@ -90,13 +80,11 @@ class BackgroundTrackingService : Service() {
         val minDistanceMeters: Float,
     )
 
-    private val analysisRunner = TrackAnalysisRunner()
     private val analysisHistoryProjector = AnalysisHistoryProjector()
     private lateinit var locationManager: LocationManager
     private lateinit var trackingThread: HandlerThread
     private lateinit var trackingHandler: Handler
     private lateinit var pointStorage: ContinuousPointStorage
-    private lateinit var uploadCursorStorage: UploadCursorStorage
     private lateinit var todaySessionStorage: TodaySessionStorage
     private lateinit var todaySessionSyncCoordinator: TodaySessionSyncCoordinator
 
@@ -136,7 +124,6 @@ class BackgroundTrackingService : Service() {
         val database = TrackDatabase.getInstance(this)
         val continuousTrackDao = database.continuousTrackDao()
         pointStorage = ContinuousPointStorage(continuousTrackDao)
-        uploadCursorStorage = UploadCursorStorage(continuousTrackDao)
         todaySessionStorage = TodaySessionStorage(database.todaySessionDao())
         todaySessionSyncCoordinator = TodaySessionSyncCoordinator.create(this)
         val snapshot = TrackingRuntimeSnapshotStorage.peek(this)
@@ -215,18 +202,24 @@ class BackgroundTrackingService : Service() {
             return
         }
         enabled = false
-        if (currentSessionId != null) {
-            triggerAnalysis(reason = "手动结束记录")
+        val stoppedAt = System.currentTimeMillis()
+        val sessionIdAtStop = currentSessionId
+        if (sessionIdAtStop != null) {
+            triggerAnalysis(
+                reason = "手动结束记录",
+                historySessionId = sessionIdAtStop,
+                manualStopAt = stoppedAt,
+            )
         }
         currentSessionId?.let { sessionId ->
             runBlocking {
                 todaySessionStorage.markPaused(
                     sessionId = sessionId,
                     phase = currentPhase.name,
-                    nowMillis = System.currentTimeMillis(),
+                    nowMillis = stoppedAt,
                 )
             }
-            triggerTodaySessionSync(nowMillis = System.currentTimeMillis(), sessionId = sessionId, force = true)
+            triggerTodaySessionSync(nowMillis = stoppedAt, sessionId = sessionId, force = true)
         }
         currentSessionId = null
         stopLocationUpdates()
@@ -349,7 +342,7 @@ class BackgroundTrackingService : Service() {
     private fun samplingConfigFor(phase: TrackingPhase): SamplingConfig {
         return when (samplingTierFor(phase)) {
             SamplingTier.IDLE -> SamplingConfig(intervalMillis = 30_000L, minDistanceMeters = 30f)
-            SamplingTier.ACTIVE -> SamplingConfig(intervalMillis = 3_000L, minDistanceMeters = 4f)
+            SamplingTier.ACTIVE -> SamplingConfig(intervalMillis = 2_000L, minDistanceMeters = 2f)
         }
     }
 
@@ -565,26 +558,25 @@ class BackgroundTrackingService : Service() {
         todaySessionSyncCoordinator.markTriggered(nowMillis)
     }
 
-    private fun triggerAnalysis(reason: String) {
+    private fun triggerAnalysis(
+        reason: String,
+        historySessionId: String? = currentSessionId,
+        manualStopAt: Long? = null,
+    ) {
         if (analysisInFlight) return
         analysisInFlight = true
         AppTaskExecutor.runOnIo {
-            val analysisStartedAt = System.currentTimeMillis()
-            var windowSize = 0
-            var afterPointIdForLog = 0L
+            val refreshStartedAt = System.currentTimeMillis()
+            var sessionPointCount = 0
             try {
                 runBlocking {
-                    val cursor = pointStorage.loadAnalysisCursor()
-                    val afterPointId = cursor?.lastAnalyzedPointId ?: 0L
-                    afterPointIdForLog = afterPointId
-                    val window = pointStorage.loadPendingWindow(afterPointId = afterPointId, limit = 2048)
-                    windowSize = window.size
-                    if (window.size < 3) {
+                    val sessionId = historySessionId
+                    if (sessionId == null) {
                         runOnTrackingThread {
                             analysisInFlight = false
                             AutoTrackDiagnosticsStorage.markEvent(
                                 applicationContext,
-                                "分析跳过：有效点不足 3 个（当前 ${window.size}）"
+                                "历史刷新跳过：当前没有有效会话"
                             )
                             updateNotification(reason)
                             saveSnapshot()
@@ -592,120 +584,37 @@ class BackgroundTrackingService : Service() {
                         return@runBlocking
                     }
 
-                    val analysisResult = analysisRunner.analyze(
-                        points = window.map { rawPoint ->
-                            AnalyzedPoint(
-                                timestampMillis = rawPoint.timestampMillis,
-                                latitude = rawPoint.latitude,
-                                longitude = rawPoint.longitude,
-                                accuracyMeters = rawPoint.accuracyMeters,
-                                speedMetersPerSecond = rawPoint.speedMetersPerSecond,
-                                activityType = rawPoint.activityType,
-                                activityConfidence = rawPoint.activityConfidence,
-                                wifiFingerprintDigest = rawPoint.wifiFingerprintDigest,
+                    val session = todaySessionStorage.loadSession(sessionId)
+                    val sessionPoints = todaySessionStorage.loadRawPoints(sessionId)
+                    sessionPointCount = sessionPoints.size
+                    if (sessionPoints.size < 2) {
+                        runOnTrackingThread {
+                            analysisInFlight = false
+                            AutoTrackDiagnosticsStorage.markEvent(
+                                applicationContext,
+                                "历史刷新跳过：有效点不足 2 个（当前 ${sessionPoints.size}）"
                             )
-                        },
+                            updateNotification(reason)
+                            saveSnapshot()
+                        }
+                        return@runBlocking
+                    }
+                    val projectedItems = analysisHistoryProjector.projectSession(
+                        sessionId = sessionId,
+                        rawPoints = sessionPoints,
+                        manualStartAt = session?.startedAt,
+                        manualStopAt = manualStopAt,
                     )
-                    val persistedSegments = analysisResult.segments.mapNotNull { segment ->
-                        if (segment.kind == SegmentKind.UNCERTAIN) {
-                            return@mapNotNull null
-                        }
-
-                        val segmentPoints = window.filter { point ->
-                            point.timestampMillis in segment.startTimestamp..segment.endTimestamp
-                        }
-                        if (segmentPoints.isEmpty()) {
-                            return@mapNotNull null
-                        }
-
-                        val distanceMeters = segmentPoints.zipWithNext { first, second ->
-                            GeoMath.distanceMeters(
-                                first.latitude,
-                                first.longitude,
-                                second.latitude,
-                                second.longitude,
-                            )
-                        }.sum()
-                        val durationMillis = (segment.endTimestamp - segment.startTimestamp).coerceAtLeast(0L)
-                        val speedSamples = segmentPoints.mapNotNull { it.speedMetersPerSecond?.toDouble() }
-                        val avgSpeedMetersPerSecond = when {
-                            speedSamples.isNotEmpty() -> speedSamples.average()
-                            durationMillis <= 0L -> 0.0
-                            else -> distanceMeters / (durationMillis / 1_000.0)
-                        }
-                        val maxSpeedMetersPerSecond = speedSamples.maxOrNull() ?: avgSpeedMetersPerSecond
-
-                        AnalysisSegmentEntity(
-                            segmentId = stableSegmentId(
-                                startPointId = segmentPoints.first().pointId,
-                                endPointId = segmentPoints.last().pointId,
-                            ),
-                            startPointId = segmentPoints.first().pointId,
-                            endPointId = segmentPoints.last().pointId,
-                            startTimestamp = segment.startTimestamp,
-                            endTimestamp = segment.endTimestamp,
-                            segmentType = segment.kind.name,
-                            confidence = defaultSegmentConfidence(segment.kind),
-                            distanceMeters = distanceMeters,
-                            durationMillis = durationMillis,
-                            avgSpeedMetersPerSecond = avgSpeedMetersPerSecond.toFloat(),
-                            maxSpeedMetersPerSecond = maxSpeedMetersPerSecond.toFloat(),
-                            analysisVersion = ANALYSIS_VERSION,
-                        )
-                    }
-                    val persistedStayClusters = analysisResult.stayClusters.mapNotNull { stay ->
-                        val ownerSegment = persistedSegments.firstOrNull { segment ->
-                            segment.segmentType == SegmentKind.STATIC.name &&
-                                stay.arrivalTime <= segment.endTimestamp &&
-                                stay.departureTime >= segment.startTimestamp
-                        } ?: return@mapNotNull null
-
-                        StayClusterEntity(
-                            stayId = stableStayId(
-                                segmentId = ownerSegment.segmentId,
-                                arrivalTime = stay.arrivalTime,
-                                departureTime = stay.departureTime,
-                            ),
-                            segmentId = ownerSegment.segmentId,
-                            centerLat = stay.centerLat,
-                            centerLng = stay.centerLng,
-                            radiusMeters = stay.radiusMeters,
-                            arrivalTime = stay.arrivalTime,
-                            departureTime = stay.departureTime,
-                            confidence = stay.confidence,
-                            analysisVersion = ANALYSIS_VERSION,
-                        )
-                    }
-                    pointStorage.saveAnalysisResult(
-                        analyzedUpToPointId = window.maxOf { it.pointId },
-                        segments = persistedSegments,
-                        stayClusters = persistedStayClusters,
-                    )
-
-                    val analyzedUpToPointId = window.maxOf { it.pointId }
-                    val rawUploadedUpToPointId = uploadCursorStorage.load(UploadCursorType.RAW_POINT).lastUploadedId
-                    if (persistedSegments.isNotEmpty() &&
-                        RawPointRetentionPolicy.canDeleteAnalyzedRawPoints(
-                            rawUploadedUpToPointId = rawUploadedUpToPointId,
-                            analyzedUpToPointId = analyzedUpToPointId,
-                        )
-                    ) {
-                        pointStorage.deleteRawPointsUpTo(analyzedUpToPointId)
-                    }
                     HistoryStorage.upsertProjectedItems(
                         context = applicationContext,
-                        projectedItems = analysisHistoryProjector.project(
-                            segments = analysisResult.segments,
-                            rawPoints = window,
-                        ),
+                        projectedItems = projectedItems,
                     )
-                    TrackUploadScheduler.kickLocalResultSyncPipeline(applicationContext)
+                    TrackUploadScheduler.kickHistorySync(applicationContext)
 
-                    val durationMs = System.currentTimeMillis() - analysisStartedAt
-                    reportSlowRealtimeAnalysisIfNeeded(
+                    val durationMs = System.currentTimeMillis() - refreshStartedAt
+                    reportSlowHistoryRefreshIfNeeded(
                         durationMs = durationMs,
-                        pointCount = window.size,
-                        segmentCount = persistedSegments.size,
+                        pointCount = sessionPoints.size,
                         reason = reason,
                     )
 
@@ -714,7 +623,7 @@ class BackgroundTrackingService : Service() {
                         lastAnalysisAt = System.currentTimeMillis()
                         AutoTrackDiagnosticsStorage.markSessionSaved(
                             applicationContext,
-                            "已分析 ${persistedSegments.size} 段，使用 ${window.size} 个点"
+                            "已刷新历史，使用 ${sessionPoints.size} 个点"
                         )
                         updateNotification(reason)
                         saveSnapshot()
@@ -722,23 +631,23 @@ class BackgroundTrackingService : Service() {
                     }
                 }
             } catch (error: Exception) {
-                val durationMs = System.currentTimeMillis() - analysisStartedAt
-                Log.e(TAG, "Realtime analysis failed", error)
+                val durationMs = System.currentTimeMillis() - refreshStartedAt
+                Log.e(TAG, "History refresh failed", error)
                 DiagnosticLogger.error(
                     context = applicationContext,
                     source = "BackgroundTrackingService",
-                    message = error.message?.takeIf { it.isNotBlank() } ?: "realtime analysis failed",
-                    fingerprint = "realtime-analysis-failed",
+                    message = error.message?.takeIf { it.isNotBlank() } ?: "history refresh failed",
+                    fingerprint = "local-history-refresh-failed",
                     payloadJson = JSONObject().apply {
                         put("durationMs", durationMs)
-                        put("pointCount", windowSize)
-                        put("afterPointId", afterPointIdForLog)
+                        put("pointCount", sessionPointCount)
+                        put("sessionId", historySessionId)
                         put("reason", reason)
                     }.toString(),
                 )
                 runOnTrackingThread {
                     analysisInFlight = false
-                    AutoTrackDiagnosticsStorage.markEvent(applicationContext, "实时分析失败，已记录诊断日志")
+                    AutoTrackDiagnosticsStorage.markEvent(applicationContext, "历史刷新失败，已记录诊断日志")
                     updateNotification(reason)
                     saveSnapshot()
                 }
@@ -746,44 +655,22 @@ class BackgroundTrackingService : Service() {
         }
     }
 
-    private fun reportSlowRealtimeAnalysisIfNeeded(
+    private fun reportSlowHistoryRefreshIfNeeded(
         durationMs: Long,
         pointCount: Int,
-        segmentCount: Int,
         reason: String,
     ) {
-        if (durationMs < PERF_WARN_REALTIME_ANALYSIS_MS) return
+        if (durationMs < PERF_WARN_HISTORY_REFRESH_MS) return
         DiagnosticLogger.perfWarn(
             context = applicationContext,
             source = "BackgroundTrackingService",
-            message = "realtime analysis took ${durationMs}ms",
-            fingerprint = "realtime-analysis-slow",
+            message = "local history refresh took ${durationMs}ms",
+            fingerprint = "local-history-refresh-slow",
             payloadJson = JSONObject().apply {
                 put("durationMs", durationMs)
                 put("pointCount", pointCount)
-                put("segmentCount", segmentCount)
                 put("reason", reason)
             }.toString(),
-        )
-    }
-
-    private fun defaultSegmentConfidence(kind: SegmentKind): Float {
-        return when (kind) {
-            SegmentKind.STATIC -> 0.9f
-            SegmentKind.DYNAMIC -> 0.85f
-            SegmentKind.UNCERTAIN -> 0.5f
-        }
-    }
-
-    private fun stableSegmentId(startPointId: Long, endPointId: Long): Long {
-        return (startPointId shl 32) xor (endPointId and 0xFFFF_FFFFL)
-    }
-
-    private fun stableStayId(segmentId: Long, arrivalTime: Long, departureTime: Long): Long {
-        return WorkerSafeIntegerIds.stableStayId(
-            segmentId = segmentId,
-            arrivalTime = arrivalTime,
-            departureTime = departureTime,
         )
     }
 
