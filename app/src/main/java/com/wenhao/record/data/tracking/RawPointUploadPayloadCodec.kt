@@ -2,13 +2,20 @@ package com.wenhao.record.data.tracking
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.TimeZone
 
 object RawPointUploadPayloadCodec {
 
-    fun encode(deviceId: String, appVersion: String, rows: List<RawPointUploadRow>): String {
+    fun encode(
+        deviceId: String,
+        appVersion: String,
+        rows: List<RawPointUploadRow>,
+        utcOffsetMinutes: Int = TimeZone.getDefault().getOffset(System.currentTimeMillis()).div(60_000),
+    ): String {
         return JSONObject().apply {
             put("deviceId", deviceId)
             put("appVersion", appVersion)
+            put("utcOffsetMinutes", utcOffsetMinutes)
             put("points", JSONArray().apply {
                 rows.forEach { row ->
                     put(encodeRow(row))

@@ -10,13 +10,11 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
-import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
 import com.wenhao.record.map.GeoMath
 import com.wenhao.record.map.GeoCoordinate
-import com.wenhao.record.ui.map.HistoryMapGeometryLimiter
 import com.wenhao.record.tracking.TrackingPhase
 import com.wenhao.record.ui.map.TrackMapHeatPoint
 import com.wenhao.record.ui.map.TrackMapPolyline
@@ -30,7 +28,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.Calendar
 
 private const val KEY_CURRENT_TAB = "current_tab"
 
@@ -45,15 +42,12 @@ class MapViewModel(
     var shouldRefit = true
 
     private val currentTrackPoints = mutableListOf<TrackPoint>()
-    private val todayTrackPoints = mutableListOf<GeoCoordinate>()
     private var currentTrackSegments: List<List<TrackPoint>> = emptyList()
     private var activeTrackPolylines: List<TrackMapPolyline> = emptyList()
-    private var todayTrackPolylines: List<TrackMapPolyline> = emptyList()
     private var trackingEnabled = false
     private var currentLocation: GeoCoordinate? = null
     private var viewportSequence = 0L
     private var renderJob: Job? = null
-    private var lastTodayHistoryToken = Long.MIN_VALUE
     private var lastActiveTrackToken = Long.MIN_VALUE
 
     fun configure(previewLocation: GeoCoordinate?, hasLocationPermission: Boolean, defaultCoordinate: GeoCoordinate) {
@@ -63,18 +57,14 @@ class MapViewModel(
 
     fun hasActiveTrack(): Boolean = trackingEnabled && currentTrackPoints.isNotEmpty()
 
-    fun hasTodayTracks(): Boolean = todayTrackPoints.isNotEmpty()
-
     fun render(
         runtimeSnapshot: TrackingRuntimeSnapshot?,
         previewLocation: GeoCoordinate?,
-        todayHistoryItems: List<HistoryItem>,
         activeSessionPoints: List<TrackPoint>,
     ) {
         trackingEnabled = runtimeSnapshot?.isEnabled == true
         renderJob?.cancel()
         renderJob = viewModelScope.launch {
-            renderTodayTracksAsync(todayHistoryItems)
             renderActiveTrackIfNeeded(runtimeSnapshot, activeSessionPoints)
 
             val liveCoordinate = runtimeSnapshot?.latestPoint?.toGeoCoordinate()
@@ -128,28 +118,9 @@ class MapViewModel(
         shouldRefit = false
     }
 
-    fun fitTodayTracksToMap(forceSinglePointZoom: Boolean) {
-        when {
-            todayTrackPoints.isEmpty() -> Unit
-            todayTrackPoints.size == 1 -> {
-                if (forceSinglePointZoom || shouldRefit) {
-                    issueCenter(todayTrackPoints.first(), 17.0)
-                }
-                shouldRefit = false
-            }
-
-            else -> {
-                issueFit(todayTrackPoints, maxZoom = if (forceSinglePointZoom) 17.5 else 16.8)
-                shouldRefit = false
-            }
-        }
-    }
-
     fun onClearedInternal() {
         renderJob?.cancel()
         clearActiveTrack()
-        clearTodayTrackOverlays()
-        lastTodayHistoryToken = Long.MIN_VALUE
         lastActiveTrackToken = Long.MIN_VALUE
         syncScene(viewportRequest = null, heatPoints = emptyList())
     }
@@ -200,56 +171,12 @@ class MapViewModel(
         currentTrackPoints.clear()
     }
 
-    private fun clearTodayTrackOverlays() {
-        todayTrackPolylines = emptyList()
-        todayTrackPoints.clear()
-    }
-
-    private suspend fun renderTodayTracksAsync(historyItems: List<HistoryItem>) = withContext(Dispatchers.Default) {
-        val nextToken = todayHistoryToken(historyItems)
-        if (nextToken == lastTodayHistoryToken) return@withContext
-
-        val sourceSegments = mutableListOf<List<TrackPoint>>()
-        val nextTodayTrackPoints = mutableListOf<GeoCoordinate>()
-        historyItems.forEach { item ->
-            if (!isSameDay(item.timestamp, System.currentTimeMillis())) return@forEach
-            val sanitizedTrack = TrackPathSanitizer.sanitize(item.points, sortByTimestamp = true)
-            val renderableSegments = TrackPathSanitizer.renderableSegments(sanitizedTrack.segments)
-            val geoPoints = renderableSegments.flatten().map { it.toSimpleGeoCoordinate() }
-            nextTodayTrackPoints.addAll(geoPoints)
-            sourceSegments.addAll(renderableSegments)
-        }
-        val limitedSegments = HistoryMapGeometryLimiter.limitSegments(sourceSegments)
-        val nextTodayTrackPolylines = TrackPolylineBuilder.buildCompact(
-            segments = limitedSegments,
-            idPrefix = "today",
-            width = 4.6,
-            maxPointsPerSegment = 90,
-            altitudeBuckets = 2,
-        )
-        if (limitedSegments.isNotEmpty()) {
-            nextTodayTrackPoints.clear()
-            nextTodayTrackPoints.addAll(limitedSegments.flatten().map { it.toSimpleGeoCoordinate() })
-        }
-
-        withContext(Dispatchers.Main) {
-            lastTodayHistoryToken = nextToken
-            clearTodayTrackOverlays()
-            todayTrackPoints.addAll(nextTodayTrackPoints)
-            todayTrackPolylines = nextTodayTrackPolylines
-
-            if (todayTrackPoints.isNotEmpty() && shouldRefit) {
-                fitTodayTracksToMap(forceSinglePointZoom = false)
-            }
-        }
-    }
-
     private fun syncScene(
         viewportRequest: TrackMapViewportRequest? = _renderState.value.viewportRequest,
         heatPoints: List<TrackMapHeatPoint> = _renderState.value.heatPoints,
     ) {
         val nextState = TrackMapSceneState(
-            polylines = activeTrackPolylines + todayTrackPolylines,
+            polylines = activeTrackPolylines,
             heatPoints = heatPoints,
             markers = emptyList(),
             currentLocation = currentLocation,
@@ -285,18 +212,6 @@ class MapViewModel(
         return viewportSequence
     }
 
-    private fun todayHistoryToken(historyItems: List<HistoryItem>): Long {
-        var token = historyItems.size.toLong()
-        historyItems.forEach { item ->
-            token = token * 31 + item.id
-            token = token * 31 + item.timestamp
-            token = token * 31 + item.points.size
-            token = token * 31 + (item.points.firstOrNull()?.timestampMillis ?: 0L)
-            token = token * 31 + (item.points.lastOrNull()?.timestampMillis ?: 0L)
-        }
-        return token
-    }
-
     private fun activeTrackToken(
         runtimeSnapshot: TrackingRuntimeSnapshot?,
         activeSessionPoints: List<TrackPoint>,
@@ -307,17 +222,6 @@ class MapViewModel(
         token = token * 31 + (activeSessionPoints.firstOrNull()?.timestampMillis ?: 0L)
         token = token * 31 + (activeSessionPoints.lastOrNull()?.timestampMillis ?: 0L)
         return token
-    }
-
-    private fun isSameDay(firstTimestamp: Long, secondTimestamp: Long): Boolean {
-        val first = Calendar.getInstance().apply { timeInMillis = firstTimestamp }
-        val second = Calendar.getInstance().apply { timeInMillis = secondTimestamp }
-        return first.get(Calendar.YEAR) == second.get(Calendar.YEAR) &&
-            first.get(Calendar.DAY_OF_YEAR) == second.get(Calendar.DAY_OF_YEAR)
-    }
-
-    private fun TrackPoint.toSimpleGeoCoordinate(): GeoCoordinate {
-        return toGeoCoordinate()
     }
 
     private fun GeoCoordinate?.isSameVisibleLocation(next: GeoCoordinate): Boolean {

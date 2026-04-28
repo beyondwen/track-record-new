@@ -48,24 +48,4 @@ class HistoryMapGeometryLimiterTest {
         assertEquals(segments.first().first(), limited.first().first())
         assertEquals(segments.last().last(), limited.last().last())
     }
-
-    @Test
-    fun `limits cluster markers to a small stable set`() {
-        val markers = List(300) { index ->
-            TrackMapMarker(
-                id = "marker-$index",
-                coordinate = com.wenhao.record.map.GeoCoordinate(
-                    latitude = 30.0 + index * 0.0001,
-                    longitude = 120.0 + index * 0.0001,
-                ),
-                kind = TrackMapMarkerKind.CENTER,
-            )
-        }
-
-        val limited = HistoryMapGeometryLimiter.limitMarkers(markers)
-
-        assertTrue(limited.size <= HistoryMapGeometryLimiter.MAX_CLUSTER_MARKERS)
-        assertEquals(markers.first(), limited.first())
-        assertEquals(markers.last(), limited.last())
-    }
 }

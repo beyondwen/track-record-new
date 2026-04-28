@@ -1,7 +1,6 @@
 package com.wenhao.record.data.history
 
 import android.content.Context
-import androidx.core.content.edit
 import com.wenhao.record.data.local.TrackDatabase
 import com.wenhao.record.data.local.history.HistoryPointEntity
 import com.wenhao.record.data.local.history.HistoryRecordEntity
@@ -9,19 +8,12 @@ import com.wenhao.record.data.local.history.HistoryRecordWithPoints
 import com.wenhao.record.data.tracking.TrackDataChangeNotifier
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.util.AppTaskExecutor
-import java.io.File
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 object HistoryStorage {
-    private const val PREFS_NAME = "track_record_history"
-    private const val KEY_ITEMS = "items"
-    private const val SNAPSHOT_FILE_NAME = "history_snapshot.json"
-
     private val ioExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     private val cacheLock = java.lang.Object()
@@ -158,7 +150,6 @@ object HistoryStorage {
                     }
                 }
             )
-            persistSnapshot(context, normalizedItems)
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -185,7 +176,6 @@ object HistoryStorage {
                 record = normalizedItem.toRecordEntity(),
                 points = normalizedItem.toPointEntities()
             )
-            persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -216,7 +206,6 @@ object HistoryStorage {
                     points = item.toPointEntities(),
                 )
             }
-            persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -247,7 +236,6 @@ object HistoryStorage {
 
         withContext(Dispatchers.IO) {
             TrackDatabase.getInstance(context).historyDao().updateTitle(historyId, newTitle)
-            persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -268,7 +256,6 @@ object HistoryStorage {
 
         withContext(Dispatchers.IO) {
             TrackDatabase.getInstance(context).historyDao().deleteHistory(historyId)
-            persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -291,7 +278,6 @@ object HistoryStorage {
 
         withContext(Dispatchers.IO) {
             TrackDatabase.getInstance(context).historyDao().deleteHistoryList(historyIds)
-            persistSnapshot(context, synchronized(cacheLock) { historyCache })
         }
 
         TrackDataChangeNotifier.notifyHistoryChanged()
@@ -331,11 +317,6 @@ object HistoryStorage {
         val callbacksToDispatch: List<(List<HistoryItem>) -> Unit> = synchronized(cacheLock) {
             historyCache = loadedHistory
             refreshDailyCacheLocked()
-            if (loadedHistory.isNotEmpty()) {
-                ioExecutor.execute {
-                    persistSnapshot(context, loadedHistory)
-                }
-            }
             historyCacheInitialized = true
             historyCacheLoading = false
             cacheLock.notifyAll()
@@ -383,9 +364,6 @@ object HistoryStorage {
                 cacheLock.notifyAll()
                 readyCallbacks.toList().also { readyCallbacks.clear() }
             }
-            if (loadedHistory.isNotEmpty()) {
-                persistSnapshot(context, loadedHistory)
-            }
             TrackDataChangeNotifier.notifyHistoryChanged()
             if (callbacksToDispatch.isNotEmpty()) {
                 callbacksToDispatch.forEach { callback ->
@@ -407,88 +385,10 @@ object HistoryStorage {
     }
 
     private suspend fun loadHistoryFromDisk(context: Context): List<HistoryItem> {
-        migrateLegacyHistoryIfNeeded(context)
-        restoreSnapshotIfNeeded(context)
         return TrackDatabase.getInstance(context)
             .historyDao()
             .getHistoryWithPoints()
             .map { it.toModel() }
-    }
-
-    private suspend fun migrateLegacyHistoryIfNeeded(context: Context) {
-        val raw = prefs(context).getString(KEY_ITEMS, null) ?: return
-        val dao = TrackDatabase.getInstance(context).historyDao()
-        val hasRoomData = dao.getHistoryCount() > 0
-        if (hasRoomData) {
-            prefs(context).edit {
-                remove(KEY_ITEMS)
-            }
-            return
-        }
-
-        val legacyItems = parseLegacyHistory(raw)
-        if (legacyItems.isEmpty()) {
-            prefs(context).edit {
-                remove(KEY_ITEMS)
-            }
-            return
-        }
-
-        dao.replaceAll(
-            records = legacyItems.map { item ->
-                HistoryRecordEntity(
-                    historyId = item.id,
-                    sourceSessionId = null,
-                    dateKey = HistoryDayAggregator.startOfDay(item.timestamp),
-                    timestamp = item.timestamp,
-                    distanceKm = item.distanceKm,
-                    durationSeconds = item.durationSeconds,
-                    averageSpeedKmh = item.averageSpeedKmh,
-                    title = item.title,
-                    syncState = "SYNCED",
-                    version = 1L,
-                    startSource = item.startSource.name,
-                    stopSource = item.stopSource.name,
-                    manualStartAt = item.manualStartAt,
-                    manualStopAt = item.manualStopAt,
-                )
-            },
-            points = legacyItems.flatMap { item ->
-                item.points.mapIndexed { index, point ->
-                    HistoryPointEntity(
-                        historyId = item.id,
-                        pointOrder = index,
-                        latitude = point.latitude,
-                        longitude = point.longitude,
-                        timestampMillis = point.timestampMillis,
-                        accuracyMeters = point.accuracyMeters,
-                        altitudeMeters = point.altitudeMeters
-                    )
-                }
-            }
-        )
-        persistSnapshot(context, legacyItems)
-        prefs(context).edit {
-            remove(KEY_ITEMS)
-        }
-    }
-
-    private suspend fun restoreSnapshotIfNeeded(context: Context) {
-        val dao = TrackDatabase.getInstance(context).historyDao()
-        val hasRoomData = dao.getHistoryCount() > 0
-        if (hasRoomData) return
-
-        val snapshotItems = loadSnapshot(context)
-        if (snapshotItems.isEmpty()) return
-
-        dao.replaceAll(
-            records = snapshotItems.map { item -> item.toRecordEntity() },
-            points = snapshotItems.flatMap { item -> item.toPointEntities() }
-        )
-    }
-
-    private fun parseLegacyHistory(raw: String): List<HistoryItem> {
-        return HistorySnapshotCodec.decode(raw)
     }
 
     private fun HistoryRecordWithPoints.toModel(): HistoryItem {
@@ -554,30 +454,6 @@ object HistoryStorage {
         dailyCacheInitialized = true
     }
 
-    private fun persistSnapshot(context: Context, items: List<HistoryItem>) {
-        val normalizedItems = items.map { item -> item.copy(points = item.points.toList()) }
-        val snapshotFile = context.getFileStreamPath(SNAPSHOT_FILE_NAME)
-        val tempFile = File(snapshotFile.parentFile, "$SNAPSHOT_FILE_NAME.tmp")
-        tempFile.bufferedWriter().use { writer ->
-            writer.write(HistorySnapshotCodec.encode(normalizedItems))
-        }
-        if (snapshotFile.exists() && !snapshotFile.delete()) {
-            tempFile.delete()
-            return
-        }
-        if (!tempFile.renameTo(snapshotFile)) {
-            tempFile.delete()
-        }
-    }
-
-    private fun loadSnapshot(context: Context): List<HistoryItem> {
-        return runCatching {
-            context.openFileInput(SNAPSHOT_FILE_NAME).bufferedReader().use { reader ->
-                parseLegacyHistory(reader.readText())
-            }
-        }.getOrDefault(emptyList())
-    }
-
     private fun copyHistoryList(items: List<HistoryItem>): MutableList<HistoryItem> {
         return items.toMutableList()
     }
@@ -589,7 +465,4 @@ object HistoryStorage {
     private fun copyDailyItem(item: HistoryDayItem): HistoryDayItem {
         return item
     }
-
-    private fun prefs(context: Context) =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 }

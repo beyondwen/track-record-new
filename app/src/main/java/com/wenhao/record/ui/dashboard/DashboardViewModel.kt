@@ -4,10 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.wenhao.record.R
-import com.wenhao.record.data.history.HistoryDayAggregator
-import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.tracking.AutoTrackUiState
+import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.data.tracking.TrackingRuntimeSnapshot
+import com.wenhao.record.map.GeoMath
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,11 +51,17 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
     fun render(
         runtimeSnapshot: TrackingRuntimeSnapshot?,
         state: AutoTrackUiState,
-        todayHistoryItems: List<HistoryItem>,
+        todayTrackPoints: List<TrackPoint>,
     ) {
-        val todayDays = HistoryDayAggregator.aggregate(todayHistoryItems)
-        val displayDistanceKm = todayDays.sumOf { it.totalDistanceKm }
-        val durationSeconds = todayDays.sumOf { it.totalDurationSeconds }
+        val displayDistanceKm = todayTrackPoints.zipWithNext { first, second ->
+            GeoMath.distanceMeters(first, second).toDouble()
+        }.sum() / 1_000.0
+        val durationSeconds = if (todayTrackPoints.size >= 2) {
+            ((todayTrackPoints.last().timestampMillis - todayTrackPoints.first().timestampMillis)
+                .coerceAtLeast(0L) / 1_000L).toInt()
+        } else {
+            0
+        }
         val averageSpeed = if (durationSeconds > 0) {
             displayDistanceKm / (durationSeconds / 3600.0)
         } else {

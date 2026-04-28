@@ -20,8 +20,13 @@ sealed interface RemoteRawPointReadResult {
 
 data class RemoteRawPointDaySummary(
     val dayStartMillis: Long,
+    val firstPointAt: Long,
+    val lastPointAt: Long,
     val pointCount: Int,
     val maxPointId: Long,
+    val totalDistanceKm: Double,
+    val totalDurationSeconds: Int,
+    val averageSpeedKmh: Double,
 )
 
 sealed interface RemoteRawPointDaySummaryReadResult {
@@ -201,13 +206,21 @@ class RemoteRawPointReadService(
             for (index in 0 until items.length()) {
                 val item = items.optJSONObject(index) ?: continue
                 val dayStartMillis = item.optLongOrNull("dayStartMillis") ?: continue
+                val firstPointAt = item.optLongOrNull("firstPointAt") ?: dayStartMillis
+                val lastPointAt = item.optLongOrNull("lastPointAt") ?: firstPointAt
                 val pointCount = item.optLongOrNull("pointCount")?.toInt() ?: continue
                 val maxPointId = item.optLongOrNull("maxPointId") ?: continue
                 add(
                     RemoteRawPointDaySummary(
                         dayStartMillis = dayStartMillis,
+                        firstPointAt = firstPointAt,
+                        lastPointAt = lastPointAt,
                         pointCount = pointCount,
                         maxPointId = maxPointId,
+                        totalDistanceKm = item.optFiniteDouble("totalDistanceKm") ?: 0.0,
+                        totalDurationSeconds = item.optLongOrNull("totalDurationSeconds")?.toInt()
+                            ?: ((lastPointAt - firstPointAt).coerceAtLeast(0L) / 1_000L).toInt(),
+                        averageSpeedKmh = item.optFiniteDouble("averageSpeedKmh") ?: 0.0,
                     )
                 )
             }

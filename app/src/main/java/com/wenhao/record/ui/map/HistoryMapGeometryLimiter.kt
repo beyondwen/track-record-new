@@ -6,7 +6,6 @@ import kotlin.math.roundToInt
 internal object HistoryMapGeometryLimiter {
     const val MAX_RENDER_SEGMENTS = 24
     const val MAX_RENDER_POINTS = 960
-    const val MAX_CLUSTER_MARKERS = 24
 
     fun limitSegments(segments: List<List<TrackPoint>>): List<List<TrackPoint>> {
         val nonEmptySegments = segments.filter { segment -> segment.isNotEmpty() }
@@ -19,10 +18,6 @@ internal object HistoryMapGeometryLimiter {
         return selectedSegments
             .map { segment -> segment.downsample(pointBudgetPerSegment) }
             .filter { segment -> segment.isNotEmpty() }
-    }
-
-    fun limitMarkers(markers: List<TrackMapMarker>): List<TrackMapMarker> {
-        return markers.evenlySample(MAX_CLUSTER_MARKERS)
     }
 
     private fun <T> List<T>.evenlySample(maxItems: Int): List<T> {

@@ -1,10 +1,7 @@
 package com.wenhao.record.data.tracking
 
 import com.wenhao.record.data.local.stream.ContinuousTrackDao
-import com.wenhao.record.data.local.stream.AnalysisCursorEntity
-import com.wenhao.record.data.local.stream.AnalysisSegmentEntity
 import com.wenhao.record.data.local.stream.RawLocationPointEntity
-import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.local.stream.UploadCursorEntity
 import kotlinx.coroutines.runBlocking
 import kotlin.coroutines.Continuation
@@ -102,9 +99,6 @@ class ContinuousPointStorageTest {
 
     private class FakeContinuousTrackDao : ContinuousTrackDao {
         private val items = mutableListOf<RawLocationPointEntity>()
-        private val segments = mutableListOf<AnalysisSegmentEntity>()
-        private val stayClusters = mutableListOf<StayClusterEntity>()
-        private var analysisCursor: AnalysisCursorEntity? = null
         private var nextPointId = 1L
         var lastRawPointsBetweenLimit: Int? = null
             private set
@@ -129,36 +123,6 @@ class ContinuousPointStorageTest {
 
         override suspend fun countRawPoints(): Int {
             return items.size
-        }
-
-        override suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
-            return segments.filter { it.segmentId > afterSegmentId }.sortedBy { it.segmentId }.take(limit)
-        }
-
-        override suspend fun countAnalysisSegments(): Int {
-            return segments.size
-        }
-
-        override suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {
-            return stayClusters.filter { segmentIds.contains(it.segmentId) }.sortedBy { it.segmentId }
-        }
-
-        override suspend fun loadAnalysisCursor(): AnalysisCursorEntity? {
-            return analysisCursor
-        }
-
-        override suspend fun upsertAnalysisCursor(entity: AnalysisCursorEntity) {
-            analysisCursor = entity
-        }
-
-        override suspend fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>) {
-            segments.removeAll { existing -> entities.any { it.segmentId == existing.segmentId } }
-            segments += entities
-        }
-
-        override suspend fun insertStayClusters(entities: List<StayClusterEntity>) {
-            stayClusters.removeAll { existing -> entities.any { it.stayId == existing.stayId } }
-            stayClusters += entities
         }
 
         override suspend fun loadUploadCursor(cursorType: String): UploadCursorEntity? {

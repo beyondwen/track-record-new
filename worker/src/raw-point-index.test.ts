@@ -28,7 +28,7 @@ function createSemanticMockPersistence(
 ): RawPointPersistence {
   const existing = new Set(existingPointIds);
   return {
-    async persistRawPoints(_deviceId, _appVersion, points) {
+    async persistRawPoints(_deviceId, _appVersion, _utcOffsetMinutes, points) {
       const acceptedPointIds = [...new Set(points.map((point) => point.pointId))];
       const insertedPointIds = acceptedPointIds.filter((pointId) => !existing.has(pointId));
       for (const pointId of insertedPointIds) {

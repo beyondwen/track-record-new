@@ -30,54 +30,6 @@ data class RawLocationPointEntity(
     val samplingTier: String,
 )
 
-@Entity(
-    tableName = "analysis_segment",
-    indices = [
-        Index(value = ["startTimestamp"]),
-        Index(value = ["endTimestamp"]),
-    ],
-)
-data class AnalysisSegmentEntity(
-    @PrimaryKey
-    val segmentId: Long,
-    val startPointId: Long,
-    val endPointId: Long,
-    val startTimestamp: Long,
-    val endTimestamp: Long,
-    val segmentType: String,
-    val confidence: Float,
-    val distanceMeters: Float,
-    val durationMillis: Long,
-    val avgSpeedMetersPerSecond: Float,
-    val maxSpeedMetersPerSecond: Float,
-    val analysisVersion: Int,
-)
-
-@Entity(
-    tableName = "stay_cluster",
-    indices = [Index(value = ["segmentId"])],
-)
-data class StayClusterEntity(
-    @PrimaryKey
-    val stayId: Long,
-    val segmentId: Long,
-    val centerLat: Double,
-    val centerLng: Double,
-    val radiusMeters: Float,
-    val arrivalTime: Long,
-    val departureTime: Long,
-    val confidence: Float,
-    val analysisVersion: Int,
-)
-
-@Entity(tableName = "analysis_cursor")
-data class AnalysisCursorEntity(
-    @PrimaryKey
-    val cursorId: Int = 1,
-    val lastAnalyzedPointId: Long,
-    val updatedAt: Long,
-)
-
 @Entity(tableName = "upload_cursor")
 data class UploadCursorEntity(
     @PrimaryKey

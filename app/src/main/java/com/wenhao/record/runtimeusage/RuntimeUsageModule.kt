@@ -10,11 +10,9 @@ enum class RuntimeUsageModule(val key: String) {
     SERVICE_BACKGROUND_TRACKING("service.background_tracking"),
     WORKER_RAW_POINT_UPLOAD("worker.raw_point_upload"),
     WORKER_TODAY_SESSION_SYNC("worker.today_session_sync"),
-    WORKER_HISTORY_UPLOAD("worker.history_upload"),
     WORKER_DIAGNOSTIC_LOG_UPLOAD("worker.diagnostic_log_upload"),
     SERVICE_WORKER_APP_CONFIG("service.worker_app_config"),
     SERVICE_WORKER_CONNECTIVITY("service.worker_connectivity"),
     SERVICE_TODAY_SESSION_REMOTE_READ("service.today_session_remote_read"),
-    SERVICE_REMOTE_HISTORY_READ("service.remote_history_read"),
     SERVICE_REMOTE_RAW_POINT_READ("service.remote_raw_point_read"),
 }

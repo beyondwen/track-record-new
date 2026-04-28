@@ -37,46 +37,6 @@ interface ContinuousTrackDao {
 
     @Query(
         """
-        SELECT * FROM analysis_segment
-        WHERE segmentId > :afterSegmentId
-        ORDER BY segmentId ASC
-        LIMIT :limit
-        """
-    )
-    suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity>
-
-    @Query("SELECT COUNT(*) FROM analysis_segment")
-    suspend fun countAnalysisSegments(): Int
-
-    @Query(
-        """
-        SELECT * FROM stay_cluster
-        WHERE segmentId IN (:segmentIds)
-        ORDER BY segmentId ASC, stayId ASC
-        """
-    )
-    suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity>
-
-    @Query(
-        """
-        SELECT * FROM analysis_cursor
-        WHERE cursorId = 1
-        LIMIT 1
-        """
-    )
-    suspend fun loadAnalysisCursor(): AnalysisCursorEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertAnalysisCursor(entity: AnalysisCursorEntity)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertStayClusters(entities: List<StayClusterEntity>)
-
-    @Query(
-        """
         SELECT * FROM upload_cursor
         WHERE cursorType = :cursorType
         LIMIT 1

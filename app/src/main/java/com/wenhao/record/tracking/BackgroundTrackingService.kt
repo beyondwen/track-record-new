@@ -609,7 +609,6 @@ class BackgroundTrackingService : Service() {
                         context = applicationContext,
                         projectedItems = projectedItems,
                     )
-                    TrackUploadScheduler.kickHistorySync(applicationContext)
 
                     val durationMs = System.currentTimeMillis() - refreshStartedAt
                     reportSlowHistoryRefreshIfNeeded(

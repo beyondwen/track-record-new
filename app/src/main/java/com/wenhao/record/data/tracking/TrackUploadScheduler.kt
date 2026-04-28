@@ -11,7 +11,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.wenhao.record.data.diagnostics.DiagnosticLogUploadWorker
-import com.wenhao.record.data.history.HistoryUploadWorker
 import kotlin.reflect.KClass
 import java.util.concurrent.TimeUnit
 
@@ -26,18 +25,14 @@ object TrackUploadPipelinePlan {
 
 object TrackUploadScheduler {
     private const val RAW_PERIODIC_WORK = "raw-point-upload-periodic"
-    private const val LEGACY_HISTORY_PERIODIC_WORK = "history-upload-periodic"
-    private const val LEGACY_PROCESSED_HISTORY_SYNC_PERIODIC_WORK = "processed-history-sync-periodic"
     private const val HISTORY_UPLOAD_PERIODIC_WORK = "history-upload-periodic-v2"
     private const val DIAGNOSTIC_LOG_PERIODIC_WORK = "diagnostic-log-upload-periodic"
     private const val RAW_ONE_TIME_WORK = "raw-point-upload-once"
-    private const val LEGACY_ANALYSIS_ONE_TIME_WORK = "analysis-upload-once"
     private const val HISTORY_UPLOAD_ONE_TIME_WORK = "history-upload-once"
     private const val TODAY_SESSION_SYNC_ONE_TIME_WORK = "today-session-sync-once"
     private const val FULL_PIPELINE_ONE_TIME_WORK = "track-upload-pipeline-once"
     private const val LOCAL_RESULT_PIPELINE_ONE_TIME_WORK = "track-local-result-upload-pipeline-once"
     private const val DIAGNOSTIC_LOG_ONE_TIME_WORK = "diagnostic-log-upload-once"
-    private const val LEGACY_MIRROR_RECOVERY_ONE_TIME_WORK = "track-mirror-recovery-once"
 
     fun ensureScheduled(context: Context) {
         val appContext = context.applicationContext
@@ -46,23 +41,14 @@ object TrackUploadScheduler {
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
 
-        workManager.cancelUniqueWork(LEGACY_HISTORY_PERIODIC_WORK)
-        workManager.cancelUniqueWork(LEGACY_PROCESSED_HISTORY_SYNC_PERIODIC_WORK)
-        workManager.cancelUniqueWork(LEGACY_ANALYSIS_ONE_TIME_WORK)
+        workManager.cancelUniqueWork(HISTORY_UPLOAD_PERIODIC_WORK)
+        workManager.cancelUniqueWork(HISTORY_UPLOAD_ONE_TIME_WORK)
         workManager.cancelUniqueWork(LOCAL_RESULT_PIPELINE_ONE_TIME_WORK)
-        workManager.cancelUniqueWork(LEGACY_MIRROR_RECOVERY_ONE_TIME_WORK)
 
         workManager.enqueueUniquePeriodicWork(
             RAW_PERIODIC_WORK,
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<RawPointUploadWorker>(15, TimeUnit.MINUTES)
-                .setConstraints(constraints)
-                .build(),
-        )
-        workManager.enqueueUniquePeriodicWork(
-            HISTORY_UPLOAD_PERIODIC_WORK,
-            ExistingPeriodicWorkPolicy.UPDATE,
-            PeriodicWorkRequestBuilder<HistoryUploadWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
                 .build(),
         )
@@ -116,14 +102,6 @@ object TrackUploadScheduler {
             RAW_ONE_TIME_WORK,
             ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<RawPointUploadWorker>().build(),
-        )
-    }
-
-    fun kickHistorySync(context: Context) {
-        workManager(context.applicationContext).enqueueUniqueWork(
-            HISTORY_UPLOAD_ONE_TIME_WORK,
-            ExistingWorkPolicy.KEEP,
-            OneTimeWorkRequestBuilder<HistoryUploadWorker>().build(),
         )
     }
 

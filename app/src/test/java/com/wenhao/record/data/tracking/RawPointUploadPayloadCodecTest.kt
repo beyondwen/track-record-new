@@ -19,6 +19,7 @@ class RawPointUploadPayloadCodecTest {
 
         assertEquals("device-1", json.getString("deviceId"))
         assertEquals("1.0.23", json.getString("appVersion"))
+        assertTrue(json.has("utcOffsetMinutes"))
         assertEquals(1, json.getJSONArray("points").length())
 
         val point = json.getJSONArray("points").getJSONObject(0)

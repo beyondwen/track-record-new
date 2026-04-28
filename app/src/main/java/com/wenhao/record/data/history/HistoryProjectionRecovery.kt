@@ -15,9 +15,6 @@ class HistoryProjectionRecovery(
         if (rawPoints.size < 2) return emptyList()
 
         val orderedPoints = rawPoints.sortedBy { it.timestampMillis }
-        return projector.project(
-            segments = emptyList(),
-            rawPoints = orderedPoints,
-        )
+        return projector.project(rawPoints = orderedPoints)
     }
 }

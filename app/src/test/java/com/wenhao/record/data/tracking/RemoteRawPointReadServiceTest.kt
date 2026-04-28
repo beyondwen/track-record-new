@@ -21,8 +21,13 @@ class RemoteRawPointReadServiceTest {
                         {"ok":true,"days":[
                           {
                             "dayStartMillis":1713398400000,
+                            "firstPointAt":1713398460000,
+                            "lastPointAt":1713402000000,
                             "pointCount":123,
-                            "maxPointId":456
+                            "maxPointId":456,
+                            "totalDistanceKm":12.5,
+                            "totalDurationSeconds":3540,
+                            "averageSpeedKmh":12.7
                           }
                         ]}
                     """.trimIndent(),
@@ -42,7 +47,12 @@ class RemoteRawPointReadServiceTest {
         assertTrue(result is RemoteRawPointDaySummaryReadResult.Success)
         val success = result as RemoteRawPointDaySummaryReadResult.Success
         assertEquals(listOf(1713398400000L), success.days.map { it.dayStartMillis })
+        assertEquals(1713398460000L, success.days.first().firstPointAt)
+        assertEquals(1713402000000L, success.days.first().lastPointAt)
         assertEquals(456L, success.days.first().maxPointId)
+        assertEquals(12.5, success.days.first().totalDistanceKm, 0.0)
+        assertEquals(3540, success.days.first().totalDurationSeconds)
+        assertEquals(12.7, success.days.first().averageSpeedKmh, 0.0)
     }
 
     @Test

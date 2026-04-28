@@ -3,13 +3,9 @@ package com.wenhao.record.data.tracking
 import com.wenhao.record.data.history.HistoryItem
 import com.wenhao.record.data.history.TrackRecordSource
 import com.wenhao.record.map.GeoMath
-import com.wenhao.record.tracking.analysis.SegmentCandidate
 
 class AnalysisHistoryProjector {
-    fun project(
-        segments: List<SegmentCandidate>,
-        rawPoints: List<RawTrackPoint>,
-    ): List<HistoryItem> {
+    fun project(rawPoints: List<RawTrackPoint>): List<HistoryItem> {
         return projectWholeTrack(
             rawPoints = rawPoints,
             historyId = rawPoints

@@ -44,10 +44,9 @@ import com.mapbox.maps.extension.compose.animation.viewport.rememberMapViewportS
 import com.mapbox.maps.extension.compose.annotation.generated.PointAnnotation
 import com.mapbox.maps.extension.compose.annotation.IconImage
 import com.mapbox.maps.extension.style.layers.properties.generated.IconAnchor
-import com.mapbox.maps.plugin.PuckBearing
 import com.mapbox.maps.plugin.gestures.generated.GesturesSettings
 import com.mapbox.maps.plugin.gestures.gestures
-import com.mapbox.maps.plugin.locationcomponent.createDefault2DPuck
+import com.mapbox.maps.plugin.locationcomponent.LocationComponentConstants
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.wenhao.record.BuildConfig
 import com.wenhao.record.R
@@ -66,6 +65,7 @@ fun TrackMapboxCanvas(
     state: TrackMapSceneState,
     accessToken: String,
     modifier: Modifier = Modifier,
+    mapKey: String = "dashboard-map",
     viewportPadding: TrackMapViewportPadding = TrackMapViewportPadding(),
     showCenterIndicator: Boolean = false,
     showUserLocationPuck: Boolean = false,
@@ -127,7 +127,7 @@ fun TrackMapboxCanvas(
     val moveGestureBinding = remember { MoveGestureListenerBinding() }
     val mapState = rememberMapState(
         key = buildString {
-            append("dashboard-map")
+            append(mapKey)
             if (!snapshotCacheKey.isNullOrBlank()) append("-").append(snapshotCacheKey)
         }
     ) {
@@ -152,56 +152,53 @@ fun TrackMapboxCanvas(
     val endIcon = remember(context) {
         IconImage(MapMarkerIconFactory.bitmapFromDrawableResource(context, R.drawable.ic_route_end_marker))
     }
-    val centerIcon = remember(context) {
-        IconImage(MapMarkerIconFactory.bitmapFromDrawableResource(context, R.drawable.ic_route_cluster_center))
-    }
-
     Box(modifier = modifier.fillMaxSize()) {
-        MapboxMap(
-            modifier = Modifier.fillMaxSize(),
-            mapViewportState = mapViewportState,
-            mapState = mapState,
-            onMapClickListener = { clickedPoint ->
-                val currentLocation = state.currentLocation
-                val didHitPuck = currentLocation != null &&
-                    GeoMath.distanceMeters(
-                        clickedPoint.latitude(),
-                        clickedPoint.longitude(),
-                        currentLocation.latitude,
-                        currentLocation.longitude,
-                    ) <= USER_LOCATION_PUCK_HIT_RADIUS_METERS
-                if (didHitPuck && onUserLocationPuckClick != null) {
-                    onUserLocationPuckClick.invoke()
-                    true
-                } else {
-                    onMapClick?.invoke()
-                    false
-                }
-            },
-            compass = {},
-            scaleBar = {},
-        ) {
-            TrackMapboxContent(
-                state = state,
-                resolvedPadding = resolvedPadding,
-                homeIcon = homeIcon,
-                startIcon = startIcon,
-                endIcon = endIcon,
-                centerIcon = centerIcon,
-                shouldCaptureSnapshot = shouldCaptureSnapshot,
-                snapshotRequested = snapshotRequested,
-                snapshotCacheKey = snapshotCacheKey,
-                mainHandler = mainHandler,
-                interactive = interactive,
-                showUserLocationPuck = showUserLocationPuck,
-                onSnapshotReady = { bitmap ->
-                    snapshotBitmap = bitmap
-                    onSnapshotCached?.invoke()
+        key(mapKey) {
+            MapboxMap(
+                modifier = Modifier.fillMaxSize(),
+                mapViewportState = mapViewportState,
+                mapState = mapState,
+                onMapClickListener = { clickedPoint ->
+                    val currentLocation = state.currentLocation
+                    val didHitPuck = currentLocation != null &&
+                        GeoMath.distanceMeters(
+                            clickedPoint.latitude(),
+                            clickedPoint.longitude(),
+                            currentLocation.latitude,
+                            currentLocation.longitude,
+                        ) <= USER_LOCATION_PUCK_HIT_RADIUS_METERS
+                    if (didHitPuck && onUserLocationPuckClick != null) {
+                        onUserLocationPuckClick.invoke()
+                        true
+                    } else {
+                        onMapClick?.invoke()
+                        false
+                    }
                 },
-                onGestureHostChanged = { host ->
-                    gestureHost = host
-                },
-            )
+                compass = {},
+                scaleBar = {},
+            ) {
+                TrackMapboxContent(
+                    state = state,
+                    resolvedPadding = resolvedPadding,
+                    homeIcon = homeIcon,
+                    startIcon = startIcon,
+                    endIcon = endIcon,
+                    shouldCaptureSnapshot = shouldCaptureSnapshot,
+                    snapshotRequested = snapshotRequested,
+                    snapshotCacheKey = snapshotCacheKey,
+                    mainHandler = mainHandler,
+                    interactive = interactive,
+                    showUserLocationPuck = showUserLocationPuck,
+                    onSnapshotReady = { bitmap ->
+                        snapshotBitmap = bitmap
+                        onSnapshotCached?.invoke()
+                    },
+                    onGestureHostChanged = { host ->
+                        gestureHost = host
+                    },
+                )
+            }
         }
 
         if (shouldDisplaySnapshot) {
@@ -286,7 +283,6 @@ private fun TrackMapboxContent(
     homeIcon: IconImage,
     startIcon: IconImage,
     endIcon: IconImage,
-    centerIcon: IconImage,
     shouldCaptureSnapshot: Boolean,
     snapshotRequested: Boolean,
     snapshotCacheKey: String?,
@@ -299,12 +295,26 @@ private fun TrackMapboxContent(
     MapEffect(state.polylines) { mapView ->
         mapView.mapboxMap.style?.let { style ->
             TrackRouteStyleLayerManager.render(style, state.polylines)
+            removeLocationComponentStyle(style)
         }
     }
 
     MapEffect(state.heatPoints) { mapView ->
         mapView.mapboxMap.style?.let { style ->
             TrackRawPointStyleLayerManager.render(style, state.heatPoints)
+            removeLocationComponentStyle(style)
+        }
+    }
+
+    if (showUserLocationPuck) {
+        state.currentLocation?.let { currentLocation ->
+            key("current-location-marker") {
+                PointAnnotation(point = currentLocation.toMapboxPoint()) {
+                    iconImage = homeIcon
+                    iconAnchor = IconAnchor.CENTER
+                    iconSize = 1.0
+                }
+            }
         }
     }
 
@@ -313,7 +323,6 @@ private fun TrackMapboxContent(
             TrackMapMarkerKind.HOME -> homeIcon
             TrackMapMarkerKind.START -> startIcon
             TrackMapMarkerKind.END -> endIcon
-            TrackMapMarkerKind.CENTER -> centerIcon
         }
         key(marker.id) {
             PointAnnotation(point = marker.coordinate.toMapboxPoint()) {
@@ -321,7 +330,6 @@ private fun TrackMapboxContent(
                 iconAnchor = IconAnchor.CENTER
                 iconSize = when (marker.kind) {
                     TrackMapMarkerKind.HOME -> 1.0
-                    TrackMapMarkerKind.CENTER -> 0.92
                     TrackMapMarkerKind.START,
                     TrackMapMarkerKind.END,
                     -> 0.92
@@ -379,15 +387,28 @@ private fun TrackMapboxContent(
         }
     }
 
-    MapEffect(showUserLocationPuck) { mapView ->
+    MapEffect(Unit) { mapView ->
         mapView.location.updateSettings {
-            enabled = showUserLocationPuck
-            locationPuck = createDefault2DPuck(withBearing = true)
-            puckBearingEnabled = showUserLocationPuck
-            puckBearing = PuckBearing.HEADING
+            enabled = false
+            puckBearingEnabled = false
             showAccuracyRing = false
             pulsingEnabled = false
         }
+        mapView.mapboxMap.style?.let(::removeLocationComponentStyle)
+    }
+}
+
+private fun removeLocationComponentStyle(style: com.mapbox.maps.Style) {
+    listOf(
+        LocationComponentConstants.LOCATION_INDICATOR_LAYER,
+        LocationComponentConstants.MODEL_LAYER,
+    ).forEach { layerId ->
+        if (style.styleLayerExists(layerId)) {
+            style.removeStyleLayer(layerId)
+        }
+    }
+    if (style.styleSourceExists(LocationComponentConstants.MODEL_SOURCE)) {
+        style.removeStyleSource(LocationComponentConstants.MODEL_SOURCE)
     }
 }
 

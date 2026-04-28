@@ -25,14 +25,6 @@ data class TrackQuality(
 
 object TrackQualityEvaluator {
 
-    fun evaluate(item: HistoryItem): TrackQuality {
-        return evaluateSegments(
-            segments = listOf(item.points),
-            totalDistanceKm = item.distanceKm,
-            totalDurationSeconds = item.durationSeconds
-        )
-    }
-
     fun evaluateSegments(
         segments: List<List<TrackPoint>>,
         totalDistanceKm: Double,

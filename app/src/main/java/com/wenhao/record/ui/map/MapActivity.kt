@@ -13,7 +13,6 @@ import androidx.core.view.WindowCompat
 import com.wenhao.record.R
 import com.wenhao.record.data.history.HistoryDayItem
 import com.wenhao.record.data.history.RemoteHistoryRepository
-import com.wenhao.record.data.tracking.TrackPathSanitizer
 import com.wenhao.record.data.tracking.TrackPoint
 import com.wenhao.record.map.GeoCoordinate
 import com.wenhao.record.runtimeusage.RuntimeUsageModule
@@ -79,7 +78,7 @@ class MapActivity : AppCompatActivity() {
         val appContext = applicationContext
         AppTaskExecutor.runOnIo {
             val item = runBlocking {
-                remoteHistoryRepository.loadLocalDay(appContext, dayStartMillis)
+                remoteHistoryRepository.loadDay(appContext, dayStartMillis)
             }
             AppTaskExecutor.runOnMain {
                 if (isFinishing || isDestroyed || generation != renderGeneration) return@runOnMain
@@ -159,7 +158,6 @@ class MapActivity : AppCompatActivity() {
                     )
                 }
             }
-            addAll(preparedGeometry.clusterMarkers)
         }
 
         return TrackMapSceneState(
@@ -183,35 +181,13 @@ class MapActivity : AppCompatActivity() {
     private fun prepareHistoryGeometry(
         sourceSegments: List<List<TrackPoint>>,
     ): PreparedHistoryGeometry {
-        val collapsedSegments = mutableListOf<List<TrackPoint>>()
-        val clusterMarkers = mutableListOf<TrackMapMarker>()
-        sourceSegments.forEachIndexed { segmentIndex, segment ->
-            val collapsed = TrackRenderClusterCollapser.collapse(segment)
-            if (collapsed.points.size >= 2) {
-                collapsedSegments += collapsed.points
-            }
-            collapsed.clusterCenters.forEachIndexed { clusterIndex, point ->
-                clusterMarkers += TrackMapMarker(
-                    id = "history-cluster-$segmentIndex-$clusterIndex",
-                    coordinate = point.toGeoCoordinate(),
-                    kind = TrackMapMarkerKind.CENTER,
-                )
-            }
-        }
-
-        val limitedSegments = HistoryMapGeometryLimiter.limitSegments(collapsedSegments)
-        val limitedClusterMarkers = HistoryMapGeometryLimiter.limitMarkers(clusterMarkers)
-        val renderableSegments = TrackPathSanitizer.renderableSegments(limitedSegments)
-        val processedPoints = limitedSegments.flatten()
-        val viewportPoints = renderableSegments.flatten()
-            .ifEmpty { limitedClusterMarkers.map { it.coordinate }.map(::toTrackPoint) }
-            .ifEmpty { processedPoints }
+        val limitedSegments = HistoryMapGeometryLimiter.limitSegments(sourceSegments)
+        val viewportPoints = limitedSegments.flatten()
             .ifEmpty { sourceSegments.flatten() }
 
         return PreparedHistoryGeometry(
-            renderableSegments = renderableSegments,
+            renderableSegments = limitedSegments,
             viewportPoints = viewportPoints,
-            clusterMarkers = limitedClusterMarkers,
         )
     }
 
@@ -267,19 +243,9 @@ class MapActivity : AppCompatActivity() {
         return renderGeneration
     }
 
-    private fun toTrackPoint(coordinate: GeoCoordinate): TrackPoint {
-        return TrackPoint(
-            latitude = coordinate.latitude,
-            longitude = coordinate.longitude,
-            wgs84Latitude = coordinate.latitude,
-            wgs84Longitude = coordinate.longitude,
-        )
-    }
-
     private data class PreparedHistoryGeometry(
         val renderableSegments: List<List<TrackPoint>>,
         val viewportPoints: List<TrackPoint>,
-        val clusterMarkers: List<TrackMapMarker>,
     )
 
 }

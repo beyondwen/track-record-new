@@ -1,7 +1,5 @@
 package com.wenhao.record.data.tracking
 
-import com.wenhao.record.tracking.analysis.SegmentCandidate
-import com.wenhao.record.tracking.analysis.SegmentKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -12,17 +10,8 @@ class AnalysisHistoryProjectorTest {
     fun `project maps dynamic segment to stable history item`() {
         val projector = AnalysisHistoryProjector()
         val rawPoints = demoSegmentPoints()
-        val segment = SegmentCandidate(
-            kind = SegmentKind.DYNAMIC,
-            startTimestamp = 1_000L,
-            endTimestamp = 61_000L,
-            pointCount = rawPoints.size,
-        )
 
-        val projected = projector.project(
-            segments = listOf(segment),
-            rawPoints = rawPoints,
-        )
+        val projected = projector.project(rawPoints = rawPoints)
 
         assertEquals(1, projected.size)
         assertEquals(
@@ -40,37 +29,19 @@ class AnalysisHistoryProjectorTest {
     fun `project keeps raw points as wgs84 coordinates for history points`() {
         val projector = AnalysisHistoryProjector()
         val rawPoints = demoSegmentPoints()
-        val segment = SegmentCandidate(
-            kind = SegmentKind.DYNAMIC,
-            startTimestamp = rawPoints.first().timestampMillis,
-            endTimestamp = rawPoints.last().timestampMillis,
-            pointCount = rawPoints.size,
-        )
 
-        val projectedPoint = projector.project(
-            segments = listOf(segment),
-            rawPoints = rawPoints,
-        ).single().points.first()
+        val projectedPoint = projector.project(rawPoints = rawPoints).single().points.first()
 
         assertEquals(rawPoints.first().latitude, projectedPoint.wgs84Latitude ?: Double.NaN, 1e-6)
         assertEquals(rawPoints.first().longitude, projectedPoint.wgs84Longitude ?: Double.NaN, 1e-6)
     }
 
     @Test
-    fun `project keeps full raw session even when segment only covers prefix`() {
+    fun `project keeps full raw session`() {
         val projector = AnalysisHistoryProjector()
         val rawPoints = demoSegmentPoints()
-        val prefixOnlySegment = SegmentCandidate(
-            kind = SegmentKind.DYNAMIC,
-            startTimestamp = rawPoints.first().timestampMillis,
-            endTimestamp = rawPoints[1].timestampMillis,
-            pointCount = 2,
-        )
 
-        val projected = projector.project(
-            segments = listOf(prefixOnlySegment),
-            rawPoints = rawPoints,
-        )
+        val projected = projector.project(rawPoints = rawPoints)
 
         assertEquals(1, projected.size)
         assertEquals(rawPoints.size, projected.single().points.size)

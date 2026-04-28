@@ -90,18 +90,22 @@ fun MapComposeScreen(
     onRefitClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val historyMapKey = remember { "history-detail-map-${System.nanoTime()}" }
+
     Box(modifier = modifier.fillMaxSize()) {
         // 1. 全屏地图背景
         TrackMapboxCanvas(
             state = state.mapState,
             accessToken = mapboxAccessToken,
             modifier = Modifier.fillMaxSize(),
+            mapKey = historyMapKey,
             viewportPadding = TrackMapViewportPadding(
                 top = 36.dp,
                 start = 20.dp,
                 end = 20.dp,
                 bottom = 200.dp, // 为浮动卡片留出空间
             ),
+            showUserLocationPuck = false,
         )
 
         // 2. 顶部返回按钮

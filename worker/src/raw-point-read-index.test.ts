@@ -118,8 +118,13 @@ describe("GET /raw-points/days", () => {
           return [
             {
               dayStartMillis: 1699891200000,
+              firstPointAt: 1699891200000,
+              lastPointAt: 1699920000000,
               pointCount: 128,
-              maxPointId: 631
+              maxPointId: 631,
+              totalDistanceKm: 12.5,
+              totalDurationSeconds: 28800,
+              averageSpeedKmh: 1.5625
             }
           ];
         }
@@ -143,11 +148,16 @@ describe("GET /raw-points/days", () => {
     await expect(response.json()).resolves.toEqual({
       ok: true,
       days: [
-        {
-          dayStartMillis: 1699891200000,
-          pointCount: 128,
-          maxPointId: 631
-        }
+          {
+            dayStartMillis: 1699891200000,
+            firstPointAt: 1699891200000,
+            lastPointAt: 1699920000000,
+            pointCount: 128,
+            maxPointId: 631,
+            totalDistanceKm: 12.5,
+            totalDurationSeconds: 28800,
+            averageSpeedKmh: 1.5625
+          }
       ]
     });
   });

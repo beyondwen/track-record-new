@@ -1,10 +1,7 @@
 package com.wenhao.record.data.tracking
 
-import com.wenhao.record.data.local.stream.AnalysisCursorEntity
-import com.wenhao.record.data.local.stream.AnalysisSegmentEntity
 import com.wenhao.record.data.local.stream.ContinuousTrackDao
 import com.wenhao.record.data.local.stream.RawLocationPointEntity
-import com.wenhao.record.data.local.stream.StayClusterEntity
 import com.wenhao.record.data.local.stream.UploadCursorEntity
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -52,31 +49,6 @@ class UploadCursorStorageTest {
 
         override suspend fun countRawPoints(): Int {
             return 0
-        }
-
-        override suspend fun loadAnalysisSegments(afterSegmentId: Long, limit: Int): List<AnalysisSegmentEntity> {
-            return emptyList()
-        }
-
-        override suspend fun countAnalysisSegments(): Int {
-            return 0
-        }
-
-        override suspend fun loadStayClustersForSegments(segmentIds: List<Long>): List<StayClusterEntity> {
-            return emptyList()
-        }
-
-        override suspend fun loadAnalysisCursor(): AnalysisCursorEntity? {
-            return null
-        }
-
-        override suspend fun upsertAnalysisCursor(entity: AnalysisCursorEntity) {
-        }
-
-        override suspend fun insertAnalysisSegments(entities: List<AnalysisSegmentEntity>) {
-        }
-
-        override suspend fun insertStayClusters(entities: List<StayClusterEntity>) {
         }
 
         override suspend fun loadUploadCursor(cursorType: String): UploadCursorEntity? {
